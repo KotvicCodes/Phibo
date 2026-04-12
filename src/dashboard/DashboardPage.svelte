@@ -1,10 +1,17 @@
+<script lang="ts">
+  import logoUrl from "../../assets/phibo-mark.svg"
+</script>
+
 <svelte:head>
   <title>Phibo Dashboard</title>
 </svelte:head>
 
 <main class="dashboard">
   <header class="header">
-    <p class="eyebrow">Phibo</p>
+    <div class="brand">
+      <img class="logo" src={logoUrl} alt="" />
+      <p class="eyebrow">Phibo</p>
+    </div>
     <h1>Dashboard</h1>
   </header>
 
@@ -39,8 +46,25 @@
     margin-bottom: 1.25rem;
   }
 
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .logo {
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 999px;
+    background: #111827;
+    padding: 0.28rem;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+  }
+
   .eyebrow {
-    margin: 0 0 0.4rem;
+    margin: 0;
     color: #6b7280;
     font-size: 0.75rem;
     font-weight: 700;
