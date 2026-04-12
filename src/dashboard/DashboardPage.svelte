@@ -1,10 +1,10 @@
 <svelte:head>
-  <title>Dashboard</title>
+  <title>Phibo Dashboard</title>
 </svelte:head>
 
 <main class="dashboard">
   <header class="header">
-    <p class="eyebrow">Oura Analytics</p>
+    <p class="eyebrow">Phibo</p>
     <h1>Dashboard</h1>
   </header>
 
