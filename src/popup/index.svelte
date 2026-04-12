@@ -1,5 +1,6 @@
 <script lang="ts">
   import OpenDashboardButton from "../components/OpenDashboardButton.svelte"
+  import logoUrl from "../../assets/phibo-mark.svg"
 
   const dashboardUrl = chrome.runtime.getURL("tabs/dashboard.html")
 </script>
@@ -9,7 +10,10 @@
 </svelte:head>
 
 <main class="popup">
-  <p class="eyebrow">Phibo</p>
+  <div class="brand">
+    <img class="logo" src={logoUrl} alt="" />
+    <p class="eyebrow">Phibo</p>
+  </div>
   <h1>Phibo</h1>
   <p class="description">A clean shell for the popup and dashboard.</p>
 
@@ -37,8 +41,25 @@
     padding: 1rem;
   }
 
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .logo {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 999px;
+    background: #111827;
+    padding: 0.4rem;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+  }
+
   .eyebrow {
-    margin: 0 0 0.4rem;
+    margin: 0;
     color: #6b7280;
     font-size: 0.75rem;
     font-weight: 700;
