@@ -5,12 +5,12 @@
 </script>
 
 <svelte:head>
-  <title>Oura Analytics</title>
+  <title>Phibo</title>
 </svelte:head>
 
 <main class="popup">
-  <p class="eyebrow">Extension</p>
-  <h1>Oura Analytics</h1>
+  <p class="eyebrow">Phibo</p>
+  <h1>Phibo</h1>
   <p class="description">A clean shell for the popup and dashboard.</p>
 
   <OpenDashboardButton href={dashboardUrl} />

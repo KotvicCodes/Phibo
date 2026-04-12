@@ -1,6 +1,6 @@
 {
-  "name": "oura-analytics",
-  "displayName": "Oura Analytics",
+  "name": "phibo",
+  "displayName": "Phibo",
   "version": "0.0.1",
   "description": "Minimal Plasmo browser extension with a popup and dashboard page.",
   "private": true,
