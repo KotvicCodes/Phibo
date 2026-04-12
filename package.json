@@ -1,0 +1,25 @@
+{
+  "name": "oura-analytics",
+  "displayName": "Oura Analytics",
+  "version": "0.0.1",
+  "description": "Minimal Plasmo browser extension with a popup and dashboard page.",
+  "private": true,
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "plasmo": "^0.90.5",
+    "svelte": "^4.2.20"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.40",
+    "@types/node": "^24.0.2",
+    "svelte-preprocess": "^6.0.3",
+    "typescript": "^5.9.3"
+  },
+  "manifest": {
+    "permissions": ["tabs"]
+  }
+}
