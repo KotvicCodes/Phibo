@@ -45,10 +45,9 @@
     {} as Record<string, string[]>
   )
   $: summaries = [
-    createSummary("Sleep score", "sleepScore", "", "+ vs sample baseline"),
-    createSummary("Readiness", "readinessScore", "", "+ this week"),
-    createSummary("HRV", "averageHrv", " ms", "+ on tagged nights"),
-    createSummary("Resting HR", "restingHeartRate", " bpm", "- after recovery")
+    createSummary("Sleep", "sleepScore", "vs sample baseline"),
+    createSummary("Readiness", "readinessScore", "this week"),
+    createSummary("Activity", "activityScore", "this week")
   ]
   $: trendPoints = dailyMetrics
     .map((day, index) => {
@@ -123,17 +122,16 @@
     label: string,
     key: keyof Pick<
       DailyMetricRow,
-      "averageHrv" | "readinessScore" | "restingHeartRate" | "sleepScore"
+      "activityScore" | "readinessScore" | "sleepScore"
     >,
-    unit: string,
     deltaLabel: string
   ): MetricSummary {
     const value = average(dailyMetrics.map((day) => day[key]))
 
     return {
       label,
-      value: value === null ? "n/a" : `${Math.round(value)}${unit}`,
-      delta: `${label === "Resting HR" ? "-3" : "+4"} ${deltaLabel}`,
+      value: value === null ? "n/a" : `${Math.round(value)}`,
+      delta: `${label === "Sleep" ? "+4" : "+2"} ${deltaLabel}`,
       tone: label === "Readiness" ? "steady" : "good"
     }
   }
@@ -149,12 +147,6 @@
       usableValues.reduce((total, value) => total + value, 0) /
       usableValues.length
     )
-  }
-
-  function describeInsight(item: TagInsight) {
-    const direction = item.delta > 0 ? "higher" : "lower"
-
-    return `Sleep score was ${direction} on tagged days, with ${item.daysWithTag} nights supporting the signal.`
   }
 
   function daysAgo(days: number) {
@@ -245,7 +237,6 @@
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong>{formatDelta(item.delta)}</strong>
-                <p>{describeInsight(item)}</p>
               </article>
             {:else}
               <p class="empty-state">No supported positive pattern yet.</p>
@@ -263,7 +254,6 @@
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong>{formatDelta(item.delta)}</strong>
-                <p>{describeInsight(item)}</p>
               </article>
             {:else}
               <p class="empty-state">No supported concerning pattern yet.</p>
@@ -281,7 +271,6 @@
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong>{formatDelta(item.delta)}</strong>
-                <p>{describeInsight(item)}</p>
               </article>
             {:else}
               <p class="empty-state">No extra notable sleep pattern yet.</p>
@@ -522,7 +511,7 @@
 
   .metric-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.8rem;
     margin-bottom: 0.8rem;
   }
@@ -599,28 +588,24 @@
 
   .insight-layout {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.8rem;
-    align-items: stretch;
+    gap: 0.9rem;
   }
 
   .insight-column {
     display: grid;
-    grid-template-rows: auto 1fr;
-    gap: 0.55rem;
+    gap: 0.5rem;
   }
 
   .insight-column > h3 {
     color: #46564c;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     font-weight: 800;
     text-transform: uppercase;
   }
 
   .insight-stack {
     display: grid;
-    grid-auto-rows: 1fr;
-    gap: 0.55rem;
+    gap: 0.5rem;
   }
 
   .empty-state {
@@ -629,7 +614,11 @@
     color: #65736b;
     font-size: 0.9rem;
     line-height: 1.4;
-    padding: 0.85rem;
+    min-height: 74px;
+    padding: 0.75rem 0.9rem;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
   }
 
   .discoveries {
@@ -642,28 +631,39 @@
     border: 1px solid #e4e9df;
     border-radius: 8px;
     display: grid;
-    gap: 0.6rem;
-    padding: 0.85rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    min-height: 68px;
+    padding: 0.85rem 1rem;
+    box-sizing: border-box;
   }
 
   .correlation-card.rewarding {
-    border-top: 4px solid #4f8a63;
+    border-left: 4px solid #4f8a63;
   }
 
   .correlation-card.concerning {
-    border-top: 4px solid #a96745;
+    border-left: 4px solid #a96745;
   }
 
   .correlation-card.notable {
-    border-top: 4px solid #587a96;
+    border-left: 4px solid #587a96;
   }
 
-  .correlation-title,
-  .impact-row {
+  .correlation-title {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: 0.6rem;
+    min-width: 0;
+  }
+
+  .correlation-title h4 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .correlation-title span {
@@ -673,30 +673,10 @@
     white-space: nowrap;
   }
 
-  .impact-row {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    margin: 0.7rem 0;
-  }
-
-  .impact-row span {
-    border: 1px solid #dbe2d7;
-    border-radius: 999px;
-    color: #24362b;
-    font-size: 0.78rem;
-    font-weight: 750;
-    padding: 0.32rem 0.55rem;
-  }
-
-  .correlation-card p {
-    color: #536258;
-    font-size: 0.9rem;
-    line-height: 1.45;
-  }
-
   .correlation-card > strong {
-    font-size: 2rem;
+    font-size: 1.9rem;
     line-height: 1;
+    white-space: nowrap;
   }
 
   .panel-heading.compact {
@@ -808,9 +788,12 @@
     .header,
     .sync-strip,
     .workspace,
-    .sync-form,
-    .insight-layout {
+    .sync-form {
       grid-template-columns: 1fr;
+    }
+
+    .correlation-card {
+      grid-template-columns: minmax(0, 1fr) auto;
     }
 
     .metric-grid {
