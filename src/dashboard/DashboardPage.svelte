@@ -342,12 +342,8 @@
                 <dd>{day.sleepScore}</dd>
               </div>
               <div>
-                <dt>HRV</dt>
-                <dd>{day.averageHrv}</dd>
-              </div>
-              <div>
-                <dt>RHR</dt>
-                <dd>{day.restingHeartRate}</dd>
+                <dt>Readiness</dt>
+                <dd>{day.readinessScore}</dd>
               </div>
             </dl>
           </article>
@@ -787,7 +783,7 @@
 
   dl {
     display: grid;
-    grid-template-columns: repeat(3, 48px);
+    grid-template-columns: repeat(2, 58px);
     gap: 0.45rem;
     margin: 0;
   }
@@ -853,7 +849,7 @@
     }
 
     dl {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 </style>
