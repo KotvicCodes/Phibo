@@ -1,9 +1,16 @@
 import Dexie, { type Table } from "dexie"
-import type { MetricRow, SessionRow } from "./types"
+import type {
+  AuthTokenRow,
+  DailyMetricRow,
+  ImportRunRow,
+  TagEntryRow
+} from "./types"
 
 export class PhiboDb extends Dexie {
-  metrics!: Table<MetricRow, string>
-  sessions!: Table<SessionRow, string>
+  authTokens!: Table<AuthTokenRow, string>
+  dailyMetrics!: Table<DailyMetricRow, string>
+  importRuns!: Table<ImportRunRow, string>
+  tagEntries!: Table<TagEntryRow, string>
 
   constructor() {
     super("phibo_db")
@@ -11,6 +18,15 @@ export class PhiboDb extends Dexie {
     this.version(1).stores({
       metrics: "",
       sessions: ""
+    })
+
+    this.version(2).stores({
+      authTokens: "id",
+      dailyMetrics: "date",
+      importRuns: "id, startedAt, finishedAt, status",
+      tagEntries: "id, date, tag",
+      metrics: null,
+      sessions: null
     })
   }
 }
