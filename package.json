@@ -23,6 +23,9 @@
   "manifest": {
     "permissions": [
       "tabs"
+    ],
+    "host_permissions": [
+      "https://api.ouraring.com/*"
     ]
   }
 }
