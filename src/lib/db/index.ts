@@ -1,8 +1,9 @@
 import Dexie, { type Table } from "dexie"
+import type { MetricRow, SessionRow } from "./types"
 
 export class PhiboDb extends Dexie {
-  metrics!: Table<Record<string, unknown>, string>
-  sessions!: Table<Record<string, unknown>, string>
+  metrics!: Table<MetricRow, string>
+  sessions!: Table<SessionRow, string>
 
   constructor() {
     super("phibo_db")
