@@ -1,0 +1,173 @@
+import type { DailyMetricRow, TagEntryRow } from "../db/types"
+
+const syncedAt = "2026-04-24T08:00:00.000Z"
+
+export const sampleDailyMetrics: DailyMetricRow[] = [
+  {
+    date: "2026-04-16",
+    sleepScore: 79,
+    readinessScore: 76,
+    activityScore: 82,
+    hrvBalance: 61,
+    averageHrv: 59,
+    restingHeartRate: 53,
+    sleepEfficiency: 83,
+    sleepLatencyMinutes: 19,
+    deepSleepMinutes: 78,
+    remSleepMinutes: 92,
+    totalSleepMinutes: 421,
+    bedtimeStart: "2026-04-15T22:58:00+02:00",
+    bedtimeEnd: "2026-04-16T06:21:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-17",
+    sleepScore: 90,
+    readinessScore: 84,
+    activityScore: 78,
+    hrvBalance: 73,
+    averageHrv: 71,
+    restingHeartRate: 48,
+    sleepEfficiency: 91,
+    sleepLatencyMinutes: 9,
+    deepSleepMinutes: 94,
+    remSleepMinutes: 108,
+    totalSleepMinutes: 462,
+    bedtimeStart: "2026-04-16T22:24:00+02:00",
+    bedtimeEnd: "2026-04-17T06:18:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-18",
+    sleepScore: 86,
+    readinessScore: 81,
+    activityScore: 80,
+    hrvBalance: 69,
+    averageHrv: 67,
+    restingHeartRate: 50,
+    sleepEfficiency: 88,
+    sleepLatencyMinutes: 13,
+    deepSleepMinutes: 88,
+    remSleepMinutes: 101,
+    totalSleepMinutes: 448,
+    bedtimeStart: "2026-04-17T22:41:00+02:00",
+    bedtimeEnd: "2026-04-18T06:24:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-19",
+    sleepScore: 74,
+    readinessScore: 70,
+    activityScore: 74,
+    hrvBalance: 52,
+    averageHrv: 55,
+    restingHeartRate: 54,
+    sleepEfficiency: 79,
+    sleepLatencyMinutes: 26,
+    deepSleepMinutes: 62,
+    remSleepMinutes: 81,
+    totalSleepMinutes: 388,
+    bedtimeStart: "2026-04-19T00:18:00+02:00",
+    bedtimeEnd: "2026-04-19T06:47:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-20",
+    sleepScore: 83,
+    readinessScore: 79,
+    activityScore: 83,
+    hrvBalance: 66,
+    averageHrv: 65,
+    restingHeartRate: 50,
+    sleepEfficiency: 86,
+    sleepLatencyMinutes: 15,
+    deepSleepMinutes: 82,
+    remSleepMinutes: 96,
+    totalSleepMinutes: 435,
+    bedtimeStart: "2026-04-19T22:36:00+02:00",
+    bedtimeEnd: "2026-04-20T06:07:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-21",
+    sleepScore: 88,
+    readinessScore: 81,
+    activityScore: 79,
+    hrvBalance: 70,
+    averageHrv: 69,
+    restingHeartRate: 49,
+    sleepEfficiency: 90,
+    sleepLatencyMinutes: 11,
+    deepSleepMinutes: 90,
+    remSleepMinutes: 103,
+    totalSleepMinutes: 456,
+    bedtimeStart: "2026-04-20T22:29:00+02:00",
+    bedtimeEnd: "2026-04-21T06:17:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-22",
+    sleepScore: 76,
+    readinessScore: 72,
+    activityScore: 76,
+    hrvBalance: 55,
+    averageHrv: 58,
+    restingHeartRate: 53,
+    sleepEfficiency: 80,
+    sleepLatencyMinutes: 24,
+    deepSleepMinutes: 67,
+    remSleepMinutes: 86,
+    totalSleepMinutes: 397,
+    bedtimeStart: "2026-04-21T23:51:00+02:00",
+    bedtimeEnd: "2026-04-22T06:38:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  },
+  {
+    date: "2026-04-23",
+    sleepScore: 91,
+    readinessScore: 84,
+    activityScore: 81,
+    hrvBalance: 75,
+    averageHrv: 72,
+    restingHeartRate: 48,
+    sleepEfficiency: 92,
+    sleepLatencyMinutes: 8,
+    deepSleepMinutes: 96,
+    remSleepMinutes: 112,
+    totalSleepMinutes: 468,
+    bedtimeStart: "2026-04-22T22:18:00+02:00",
+    bedtimeEnd: "2026-04-23T06:14:00+02:00",
+    sourceUpdatedAt: null,
+    syncedAt
+  }
+]
+
+export const sampleTagEntries: TagEntryRow[] = [
+  createTag("2026-04-17", "dark bedroom"),
+  createTag("2026-04-17", "cool room"),
+  createTag("2026-04-18", "cool room"),
+  createTag("2026-04-19", "late caffeine"),
+  createTag("2026-04-20", "early dinner"),
+  createTag("2026-04-21", "dark bedroom"),
+  createTag("2026-04-22", "late caffeine"),
+  createTag("2026-04-23", "dark bedroom"),
+  createTag("2026-04-23", "cool room")
+]
+
+function createTag(date: string, tag: string): TagEntryRow {
+  return {
+    id: `${date}-${tag.replaceAll(" ", "-")}`,
+    date,
+    tag,
+    comment: null,
+    sourceUpdatedAt: null,
+    syncedAt
+  }
+}

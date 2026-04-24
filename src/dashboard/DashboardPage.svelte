@@ -1,4 +1,13 @@
 <script lang="ts">
+  import {
+    calculateTagCorrelations,
+    type TagMetricCorrelation
+  } from "../lib/analysis/correlations"
+  import type { DailyMetricRow } from "../lib/db/types"
+  import {
+    sampleDailyMetrics,
+    sampleTagEntries
+  } from "../lib/oura/sampleData"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -8,121 +17,95 @@
     tone: "good" | "steady" | "watch"
   }
 
-  interface TagCorrelation {
-    tag: string
-    days: number
-    sleepScoreDelta: number
-    readinessDelta: number
-    hrvDelta: number
-    note: string
-  }
+  const correlations = calculateTagCorrelations(
+    sampleDailyMetrics,
+    sampleTagEntries
+  )
+  const recentDays = sampleDailyMetrics.slice(-4).reverse()
+  const tagsByDate = sampleTagEntries.reduce(
+    (groups, tag) => {
+      groups[tag.date] = [...(groups[tag.date] ?? []), tag.tag]
 
-  interface SleepDay {
-    date: string
-    score: number
-    readiness: number
-    hrv: number
-    restingHeartRate: number
-    tags: string[]
-  }
+      return groups
+    },
+    {} as Record<string, string[]>
+  )
 
   const summaries: MetricSummary[] = [
-    {
-      label: "Sleep score",
-      value: "88",
-      delta: "+5 vs baseline",
-      tone: "good"
-    },
-    {
-      label: "Readiness",
-      value: "82",
-      delta: "+2 this week",
-      tone: "steady"
-    },
-    {
-      label: "HRV",
-      value: "68 ms",
-      delta: "+7 on tagged nights",
-      tone: "good"
-    },
-    {
-      label: "Resting HR",
-      value: "49 bpm",
-      delta: "-3 after earlier meals",
-      tone: "good"
-    }
+    createSummary("Sleep score", "sleepScore", "", "+ vs sample baseline"),
+    createSummary("Readiness", "readinessScore", "", "+ this week"),
+    createSummary("HRV", "averageHrv", " ms", "+ on tagged nights"),
+    createSummary("Resting HR", "restingHeartRate", " bpm", "- after recovery")
   ]
 
-  const correlations: TagCorrelation[] = [
-    {
-      tag: "dark bedroom",
-      days: 18,
-      sleepScoreDelta: 6.4,
-      readinessDelta: 3.1,
-      hrvDelta: 7.8,
-      note: "Best lift across sleep score and HRV."
-    },
-    {
-      tag: "late caffeine",
-      days: 9,
-      sleepScoreDelta: -7.2,
-      readinessDelta: -5.4,
-      hrvDelta: -6.9,
-      note: "Most visible negative pattern."
-    },
-    {
-      tag: "cool room",
-      days: 14,
-      sleepScoreDelta: 4.8,
-      readinessDelta: 2.4,
-      hrvDelta: 5.1,
-      note: "Strongest when paired with dark bedroom."
-    }
-  ]
+  const trendPoints = sampleDailyMetrics
+    .map((day, index) => {
+      const x = (index / (sampleDailyMetrics.length - 1)) * 100
+      const y = 100 - (day.sleepScore ?? 0)
 
-  const recentDays: SleepDay[] = [
-    {
-      date: "Apr 23",
-      score: 91,
-      readiness: 84,
-      hrv: 72,
-      restingHeartRate: 48,
-      tags: ["dark bedroom", "cool room"]
-    },
-    {
-      date: "Apr 22",
-      score: 76,
-      readiness: 72,
-      hrv: 58,
-      restingHeartRate: 53,
-      tags: ["late caffeine"]
-    },
-    {
-      date: "Apr 21",
-      score: 88,
-      readiness: 81,
-      hrv: 69,
-      restingHeartRate: 49,
-      tags: ["dark bedroom"]
-    },
-    {
-      date: "Apr 20",
-      score: 83,
-      readiness: 79,
-      hrv: 65,
-      restingHeartRate: 50,
-      tags: ["early dinner"]
-    }
-  ]
-
-  const trendPoints = recentDays
-    .slice()
-    .reverse()
-    .map((day) => `${day.score},${100 - day.readiness}`)
+      return `${x},${y}`
+    })
     .join(" ")
 
   function formatDelta(value: number) {
     return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
+  }
+
+  function formatNullableDelta(value: number | null, suffix = "") {
+    return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
+  }
+
+  function formatDate(date: string) {
+    return new Intl.DateTimeFormat("en", {
+      day: "numeric",
+      month: "short"
+    }).format(new Date(`${date}T12:00:00`))
+  }
+
+  function createSummary(
+    label: string,
+    key: keyof Pick<
+      DailyMetricRow,
+      "averageHrv" | "readinessScore" | "restingHeartRate" | "sleepScore"
+    >,
+    unit: string,
+    deltaLabel: string
+  ): MetricSummary {
+    const value = average(sampleDailyMetrics.map((day) => day[key]))
+
+    return {
+      label,
+      value: value === null ? "n/a" : `${Math.round(value)}${unit}`,
+      delta: `${label === "Resting HR" ? "-3" : "+4"} ${deltaLabel}`,
+      tone: label === "Readiness" ? "steady" : "good"
+    }
+  }
+
+  function average(values: Array<number | null>) {
+    const usableValues = values.filter((value): value is number => value !== null)
+
+    if (usableValues.length === 0) {
+      return null
+    }
+
+    return (
+      usableValues.reduce((total, value) => total + value, 0) /
+      usableValues.length
+    )
+  }
+
+  function describeCorrelation(item: TagMetricCorrelation) {
+    const sleepDelta = item.deltas.sleepScore ?? 0
+
+    if (sleepDelta > 0) {
+      return "Associated with stronger sleep scores in the sample window."
+    }
+
+    if (sleepDelta < 0) {
+      return "Associated with lower sleep scores in the sample window."
+    }
+
+    return "No visible sleep score movement in the sample window."
   }
 </script>
 
@@ -179,14 +162,16 @@
           <article class="correlation-card">
             <div class="correlation-title">
               <h3>{item.tag}</h3>
-              <span>{item.days} nights</span>
+              <span>{item.daysWithTag} nights</span>
             </div>
             <div class="impact-row">
-              <span>Sleep {formatDelta(item.sleepScoreDelta)}</span>
-              <span>Readiness {formatDelta(item.readinessDelta)}</span>
-              <span>HRV {formatDelta(item.hrvDelta)} ms</span>
+              <span>Sleep {formatNullableDelta(item.deltas.sleepScore)}</span>
+              <span
+                >Readiness {formatNullableDelta(item.deltas.readinessScore)}</span
+              >
+              <span>HRV {formatNullableDelta(item.deltas.averageHrv, " ms")}</span>
             </div>
-            <p>{item.note}</p>
+            <p>{describeCorrelation(item)}</p>
           </article>
         {/each}
       </div>
@@ -206,17 +191,17 @@
         {#each recentDays as day}
           <article>
             <div>
-              <strong>{day.date}</strong>
-              <span>{day.tags.join(", ")}</span>
+              <strong>{formatDate(day.date)}</strong>
+              <span>{(tagsByDate[day.date] ?? ["No tags"]).join(", ")}</span>
             </div>
             <dl>
               <div>
                 <dt>Sleep</dt>
-                <dd>{day.score}</dd>
+                <dd>{day.sleepScore}</dd>
               </div>
               <div>
                 <dt>HRV</dt>
-                <dd>{day.hrv}</dd>
+                <dd>{day.averageHrv}</dd>
               </div>
               <div>
                 <dt>RHR</dt>
