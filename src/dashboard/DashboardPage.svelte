@@ -4,6 +4,7 @@
     calculateTagCorrelations,
     getRankedTagInsights,
     getTagDiscoveries,
+    type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
   import { db } from "../lib/db"
@@ -22,10 +23,17 @@
     tone: "good" | "steady" | "watch"
   }
 
+  interface MetricComparison {
+    baselineAverage: number | null
+    delta: number | null
+    taggedAverage: number | null
+  }
+
   let accessToken = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
   let isSyncing = false
+  let selectedInsightKey = ""
   let startDate = formatInputDate(daysAgo(30))
   let syncMessage = "Sample data is showing until your first sync."
   let tagEntries = sampleTagEntries
@@ -33,8 +41,25 @@
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
   $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
   $: insights = getRankedTagInsights(correlations)
+  $: allInsights = [
+    ...insights.rewarding,
+    ...insights.concerning,
+    ...insights.notable
+  ]
+  $: selectedInsight =
+    allInsights.find((insight) => insightKey(insight) === selectedInsightKey) ??
+    allInsights[0]
   $: latestMetricDate = dailyMetrics.at(-1)?.date ?? endDate
   $: discoveries = getTagDiscoveries(tagEntries, latestMetricDate)
+  $: selectedComparison = selectedInsight
+    ? {
+        readinessScore: getMetricComparison(
+          selectedInsight.tag,
+          "readinessScore"
+        ),
+        sleepScore: getMetricComparison(selectedInsight.tag, "sleepScore")
+      }
+    : null
   $: recentDays = dailyMetrics.slice(-4).reverse()
   $: tagsByDate = tagEntries.reduce(
     (groups, tag) => {
@@ -49,15 +74,6 @@
     createSummary("Readiness", "readinessScore", "this week"),
     createSummary("Activity", "activityScore", "this week")
   ]
-  $: trendPoints = dailyMetrics
-    .map((day, index) => {
-      const x = (index / Math.max(dailyMetrics.length - 1, 1)) * 100
-      const y = 100 - (day.sleepScore ?? 0)
-
-      return `${x},${y}`
-    })
-    .join(" ")
-
   onMount(async () => {
     const savedToken = await db.authTokens.get("oura")
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
@@ -107,6 +123,10 @@
     return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
   }
 
+  function formatInsightDelta(item: TagInsight) {
+    return `${metricLabel(item.metric)} ${formatDelta(item.delta)}`
+  }
+
   function formatNullableDelta(value: number | null, suffix = "") {
     return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
   }
@@ -147,6 +167,95 @@
       usableValues.reduce((total, value) => total + value, 0) /
       usableValues.length
     )
+  }
+
+  function comparisonWidth(value: number | null) {
+    return `${Math.max(0, Math.min(value ?? 0, 100))}%`
+  }
+
+  function discoveryImpact(tag: string) {
+    const correlation = correlations.find((item) => item.tag === tag)
+
+    if (!correlation) {
+      return null
+    }
+
+    const impacts = (["sleepScore", "readinessScore"] as const)
+      .map((metric) => ({
+        delta: correlation.deltas[metric],
+        metric
+      }))
+      .filter(
+        (impact): impact is { delta: number; metric: PrimaryInsightMetric } =>
+          impact.delta !== null
+      )
+
+    return impacts.sort(
+      (left, right) => Math.abs(right.delta) - Math.abs(left.delta)
+    )[0]
+  }
+
+  function discoveryAction(tag: string, reason: "new" | "neglected") {
+    const impact = discoveryImpact(tag)
+
+    if (!impact) {
+      return reason === "new" ? "Track a few more nights" : "Try again soon"
+    }
+
+    if (impact.delta > 0) {
+      return `May improve ${metricPlainLabel(impact.metric).toLowerCase()}`
+    }
+
+    if (impact.delta < 0) {
+      return `May reduce ${metricPlainLabel(impact.metric).toLowerCase()}`
+    }
+
+    return "Keep observing"
+  }
+
+  function formatDiscoveryImpact(tag: string) {
+    const impact = discoveryImpact(tag)
+
+    return impact ? formatInsightDelta({ ...impact, kind: "notable", tag, daysWithTag: 0, supportScore: 0, weightedImpact: 0 }) : "n/a"
+  }
+
+  function getMetricComparison(
+    tag: string,
+    metric: PrimaryInsightMetric
+  ): MetricComparison {
+    const taggedDays = dailyMetrics.filter((day) =>
+      (tagsByDate[day.date] ?? []).includes(tag)
+    )
+    const untaggedDays = dailyMetrics.filter(
+      (day) => !(tagsByDate[day.date] ?? []).includes(tag)
+    )
+    const taggedAverage = average(taggedDays.map((day) => day[metric]))
+    const baselineAverage = average(untaggedDays.map((day) => day[metric]))
+
+    return {
+      baselineAverage,
+      delta:
+        taggedAverage === null || baselineAverage === null
+          ? null
+          : Math.round((taggedAverage - baselineAverage) * 10) / 10,
+      taggedAverage
+    }
+  }
+
+  function insightKey(item: TagInsight) {
+    return `${item.tag}-${item.metric}`
+  }
+
+  function metricLabel(metric: PrimaryInsightMetric) {
+    return metric === "sleepScore" ? "Sleep" : "Readiness"
+  }
+
+  function metricPlainLabel(metric: PrimaryInsightMetric) {
+    return metric === "sleepScore" ? "sleep score" : "readiness"
+  }
+
+  function selectInsight(item: TagInsight) {
+    selectedInsightKey = insightKey(item)
   }
 
   function daysAgo(days: number) {
@@ -231,13 +340,18 @@
           <h3>Rewarding</h3>
           <div class="insight-stack">
             {#each insights.rewarding as item}
-              <article class="correlation-card rewarding">
+              <button
+                type="button"
+                class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
+                class="correlation-card rewarding"
+                on:click={() => selectInsight(item)}
+              >
                 <div class="correlation-title">
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatDelta(item.delta)}</strong>
-              </article>
+                <strong>{formatInsightDelta(item)}</strong>
+              </button>
             {:else}
               <p class="empty-state">No supported positive pattern yet.</p>
             {/each}
@@ -248,13 +362,18 @@
           <h3>Concerning</h3>
           <div class="insight-stack">
             {#each insights.concerning as item}
-              <article class="correlation-card concerning">
+              <button
+                type="button"
+                class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
+                class="correlation-card concerning"
+                on:click={() => selectInsight(item)}
+              >
                 <div class="correlation-title">
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatDelta(item.delta)}</strong>
-              </article>
+                <strong>{formatInsightDelta(item)}</strong>
+              </button>
             {:else}
               <p class="empty-state">No supported concerning pattern yet.</p>
             {/each}
@@ -265,13 +384,18 @@
           <h3>Notable</h3>
           <div class="insight-stack">
             {#each insights.notable as item}
-              <article class="correlation-card notable">
+              <button
+                type="button"
+                class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
+                class="correlation-card notable"
+                on:click={() => selectInsight(item)}
+              >
                 <div class="correlation-title">
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatDelta(item.delta)}</strong>
-              </article>
+                <strong>{formatInsightDelta(item)}</strong>
+              </button>
             {:else}
               <p class="empty-state">No extra notable sleep pattern yet.</p>
             {/each}
@@ -289,19 +413,32 @@
         <div class="discovery-list">
           {#each discoveries as item}
             <article>
-              <div>
-                <strong>{item.tag}</strong>
-                <span>{item.reason === "new" ? "Newly appearing" : "Not tried lately"}</span>
+              <div class="discovery-main">
+                <span class="discovery-badge {item.reason}">
+                  {item.reason === "new" ? "New" : "Neglected"}
+                </span>
+                <div>
+                  <strong>{item.tag}</strong>
+                  <span>{discoveryAction(item.tag, item.reason)}</span>
+                </div>
               </div>
-              <p>{item.daysWithTag} nights, last seen {formatDate(item.lastSeenDate)}</p>
+              <div class="discovery-meta">
+                <strong>{formatDiscoveryImpact(item.tag)}</strong>
+                <span>{item.daysWithTag} {item.daysWithTag === 1 ? "night" : "nights"}</span>
+              </div>
             </article>
           {:else}
             <article>
-              <div>
-                <strong>No new tags yet</strong>
-                <span>Try a behavior and tag it for a few nights</span>
+              <div class="discovery-main">
+                <span class="discovery-badge neglected">Pending</span>
+                <div>
+                  <strong>No new tags yet</strong>
+                  <span>Tag a behavior for a few nights</span>
+                </div>
               </div>
-              <p>Waiting for fresh data</p>
+              <div class="discovery-meta">
+                <strong>n/a</strong>
+              </div>
             </article>
           {/each}
         </div>
@@ -311,13 +448,88 @@
     <div class="trend-panel">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">Trend</p>
-          <h2>Sleep vs readiness</h2>
+          <p class="section-kicker">Insight detail</p>
+          <h2>{selectedInsight ? selectedInsight.tag : "Select an insight"}</h2>
         </div>
+        {#if selectedInsight}
+          <span>{formatInsightDelta(selectedInsight)}</span>
+        {/if}
       </div>
-      <svg viewBox="0 0 100 100" role="img" aria-label="Sleep score trend">
-        <polyline points={trendPoints} />
-      </svg>
+
+      {#if selectedInsight && selectedComparison}
+        <div class="comparison-chart" aria-label="Selected insight comparison">
+          <article>
+            <div class="comparison-heading">
+              <strong>Sleep score</strong>
+              <span
+                >{formatNullableDelta(selectedComparison.sleepScore.delta)}</span
+              >
+            </div>
+            <div class="bar-row">
+              <span>Tagged</span>
+              <div class="bar-track">
+                <span
+                  class="bar-fill tagged"
+                  style={`width: ${comparisonWidth(
+                    selectedComparison.sleepScore.taggedAverage
+                  )}`}
+                />
+              </div>
+              <strong>{Math.round(selectedComparison.sleepScore.taggedAverage ?? 0)}</strong>
+            </div>
+            <div class="bar-row">
+              <span>Other</span>
+              <div class="bar-track">
+                <span
+                  class="bar-fill baseline"
+                  style={`width: ${comparisonWidth(
+                    selectedComparison.sleepScore.baselineAverage
+                  )}`}
+                />
+              </div>
+              <strong>{Math.round(selectedComparison.sleepScore.baselineAverage ?? 0)}</strong>
+            </div>
+          </article>
+
+          <article>
+            <div class="comparison-heading">
+              <strong>Readiness</strong>
+              <span
+                >{formatNullableDelta(
+                  selectedComparison.readinessScore.delta
+                )}</span
+              >
+            </div>
+            <div class="bar-row">
+              <span>Tagged</span>
+              <div class="bar-track">
+                <span
+                  class="bar-fill tagged"
+                  style={`width: ${comparisonWidth(
+                    selectedComparison.readinessScore.taggedAverage
+                  )}`}
+                />
+              </div>
+              <strong>{Math.round(selectedComparison.readinessScore.taggedAverage ?? 0)}</strong>
+            </div>
+            <div class="bar-row">
+              <span>Other</span>
+              <div class="bar-track">
+                <span
+                  class="bar-fill baseline"
+                  style={`width: ${comparisonWidth(
+                    selectedComparison.readinessScore.baselineAverage
+                  )}`}
+                />
+              </div>
+              <strong>{Math.round(selectedComparison.readinessScore.baselineAverage ?? 0)}</strong>
+            </div>
+          </article>
+        </div>
+      {:else}
+        <p class="empty-state">Select an insight to compare tagged nights.</p>
+      {/if}
+
       <div class="recent-table">
         {#each recentDays as day}
           <article>
@@ -353,7 +565,9 @@
       BlinkMacSystemFont,
       "Segoe UI",
       sans-serif;
-    background: #f7f8f4;
+    background:
+      radial-gradient(circle at top left, #f6efe6 0%, #f1eadf 34%, transparent 58%),
+      linear-gradient(135deg, #ebe5d9 0%, #e7e9df 58%, #dde4d8 100%);
     color: #17201b;
   }
 
@@ -390,7 +604,7 @@
     width: 1.55rem;
     height: 1.55rem;
     border-radius: 999px;
-    background: #17201b;
+    background: #1d2a22;
     padding: 0.28rem;
     box-sizing: border-box;
     flex: 0 0 auto;
@@ -399,7 +613,7 @@
   .eyebrow,
   .section-kicker {
     margin: 0;
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.75rem;
     font-weight: 750;
     letter-spacing: 0.12em;
@@ -438,8 +652,8 @@
     appearance: none;
     border: 0;
     border-radius: 999px;
-    background: #17201b;
-    color: #fbfdf9;
+    background: #1d2a22;
+    color: #f8f3ea;
     cursor: pointer;
     font: inherit;
     font-weight: 700;
@@ -450,7 +664,7 @@
   }
 
   .sync-button:hover {
-    background: #24362b;
+    background: #304235;
     transform: translateY(-1px);
   }
 
@@ -464,7 +678,7 @@
     display: grid;
     grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr);
     gap: 1rem;
-    border-block: 1px solid #dbe2d7;
+    border-block: 1px solid #d3d5c8;
     padding-block: 1rem;
     margin-bottom: 1rem;
   }
@@ -484,7 +698,7 @@
   }
 
   .sync-form span {
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.72rem;
     font-weight: 750;
     text-transform: uppercase;
@@ -493,9 +707,9 @@
   .sync-form input {
     width: 100%;
     min-width: 0;
-    border: 1px solid #cfd8ca;
+    border: 1px solid #cdcfc2;
     border-radius: 8px;
-    background: #fffffb;
+    background: #fbf7ef;
     box-sizing: border-box;
     color: #17201b;
     font: inherit;
@@ -504,7 +718,7 @@
 
   .sync-form p {
     grid-column: 1 / -1;
-    color: #46564c;
+    color: #566157;
     font-size: 0.9rem;
     line-height: 1.45;
   }
@@ -519,9 +733,10 @@
   .metric-card,
   .analysis-panel,
   .trend-panel {
-    border: 1px solid #dbe2d7;
+    border: 1px solid #d3d5c8;
     border-radius: 8px;
-    background: #fffffb;
+    background: rgba(251, 247, 239, 0.88);
+    box-shadow: 0 10px 30px rgba(55, 64, 54, 0.045);
   }
 
   .metric-card {
@@ -531,7 +746,7 @@
   }
 
   .metric-card p {
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.85rem;
     font-weight: 700;
   }
@@ -544,7 +759,7 @@
   }
 
   .metric-card span {
-    color: #536258;
+    color: #5d685e;
     font-size: 0.9rem;
   }
 
@@ -580,7 +795,7 @@
   }
 
   .panel-heading > span {
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.85rem;
     font-weight: 700;
     white-space: nowrap;
@@ -597,7 +812,7 @@
   }
 
   .insight-column > h3 {
-    color: #46564c;
+    color: #4f5f53;
     font-size: 0.8rem;
     font-weight: 800;
     text-transform: uppercase;
@@ -609,9 +824,9 @@
   }
 
   .empty-state {
-    border: 1px dashed #cfd8ca;
+    border: 1px dashed #c5cbbd;
     border-radius: 8px;
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.9rem;
     line-height: 1.4;
     min-height: 74px;
@@ -622,21 +837,41 @@
   }
 
   .discoveries {
-    border-top: 1px solid #e4e9df;
+    border-top: 1px solid #d8d8cc;
     margin-top: 1rem;
     padding-top: 1rem;
   }
 
   .correlation-card {
-    border: 1px solid #e4e9df;
+    appearance: none;
+    background: transparent;
+    border: 1px solid #d8d8cc;
     border-radius: 8px;
+    color: inherit;
+    cursor: pointer;
     display: grid;
+    font: inherit;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 1rem;
     align-items: center;
     min-height: 68px;
     padding: 0.85rem 1rem;
     box-sizing: border-box;
+    text-align: left;
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease,
+      transform 120ms ease;
+  }
+
+  .correlation-card:hover,
+  .correlation-card.selected {
+    background: rgba(255, 252, 246, 0.62);
+    border-color: #bdc5b4;
+  }
+
+  .correlation-card:hover {
+    transform: translateY(-1px);
   }
 
   .correlation-card.rewarding {
@@ -667,7 +902,7 @@
   }
 
   .correlation-title span {
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.82rem;
     font-weight: 700;
     white-space: nowrap;
@@ -685,54 +920,144 @@
 
   .discovery-list {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.6rem;
+    gap: 0.5rem;
   }
 
   .discovery-list article {
-    border: 1px solid #e4e9df;
+    border: 1px solid #d8d8cc;
     border-radius: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 70px;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .discovery-main {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.8rem;
-    padding: 0.75rem;
+    gap: 0.7rem;
+    min-width: 0;
   }
 
-  .discovery-list span,
-  .discovery-list p {
-    color: #65736b;
-    font-size: 0.82rem;
-  }
-
-  .discovery-list span {
+  .discovery-main strong,
+  .discovery-main span:not(.discovery-badge) {
     display: block;
-    margin-top: 0.15rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .discovery-list p {
-    text-align: right;
+  .discovery-main strong {
+    font-size: 1rem;
   }
 
-  svg {
-    width: 100%;
-    height: 180px;
-    border: 1px solid #e4e9df;
-    border-radius: 8px;
-    background:
-      linear-gradient(#eef3ea 1px, transparent 1px),
-      linear-gradient(90deg, #eef3ea 1px, transparent 1px);
-    background-size: 25% 25%;
+  .discovery-main span:not(.discovery-badge) {
+    color: #6f786f;
+    font-size: 0.9rem;
+    margin-top: 0.2rem;
+  }
+
+  .discovery-badge {
+    border: 1px solid #cbd3c3;
+    border-radius: 999px;
+    color: #4f5f53;
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 0.24rem 0.48rem;
+    text-transform: uppercase;
+  }
+
+  .discovery-badge.new {
+    background: #e9efe2;
+  }
+
+  .discovery-badge.neglected {
+    background: #f3eadf;
+  }
+
+  .discovery-meta {
+    color: #6f786f;
+    display: grid;
+    gap: 0.18rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    justify-items: end;
+    white-space: nowrap;
+  }
+
+  .discovery-meta strong {
+    color: #17201b;
+    font-size: 1.15rem;
+    line-height: 1;
+  }
+
+  .comparison-chart {
+    display: grid;
+    gap: 0.7rem;
     margin-bottom: 0.8rem;
   }
 
-  polyline {
-    fill: none;
-    stroke: #4f8a63;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 3;
-    vector-effect: non-scaling-stroke;
+  .comparison-chart article {
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    background-color: #fbf7ef;
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.8rem;
+  }
+
+  .comparison-heading,
+  .bar-row {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr) 42px;
+    gap: 0.6rem;
+    align-items: center;
+  }
+
+  .comparison-heading {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .comparison-heading span {
+    color: #4f5f53;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .bar-row > span {
+    color: #6f786f;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .bar-row > strong {
+    text-align: right;
+  }
+
+  .bar-track {
+    background: #ebe7dd;
+    border-radius: 999px;
+    height: 0.6rem;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    display: block;
+    height: 100%;
+  }
+
+  .bar-fill.tagged {
+    background: #4f8a63;
+  }
+
+  .bar-fill.baseline {
+    background: #9ca69a;
   }
 
   .recent-table {
@@ -745,7 +1070,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.8rem;
-    border-bottom: 1px solid #e4e9df;
+    border-bottom: 1px solid #d8d8cc;
     padding-bottom: 0.55rem;
   }
 
@@ -756,7 +1081,7 @@
 
   .recent-table span {
     display: block;
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.82rem;
     margin-top: 0.15rem;
   }
@@ -769,7 +1094,7 @@
   }
 
   dt {
-    color: #65736b;
+    color: #6f786f;
     font-size: 0.68rem;
     font-weight: 750;
     text-transform: uppercase;
@@ -819,16 +1144,13 @@
       grid-template-columns: 1fr;
     }
 
-    .discovery-list {
-      grid-template-columns: 1fr;
-    }
-
     .discovery-list article {
-      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.45rem;
     }
 
-    .discovery-list p {
-      text-align: left;
+    .discovery-meta {
+      justify-items: start;
     }
 
     dl {

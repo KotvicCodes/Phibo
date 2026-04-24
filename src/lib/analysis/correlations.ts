@@ -7,6 +7,8 @@ export type MetricKey =
   | "sleepEfficiency"
   | "sleepScore"
 
+export type PrimaryInsightMetric = "readinessScore" | "sleepScore"
+
 export interface TagMetricCorrelation {
   tag: string
   daysWithTag: number
@@ -20,7 +22,7 @@ export type InsightKind = "concerning" | "notable" | "rewarding"
 
 export interface TagInsight {
   kind: InsightKind
-  metric: MetricKey
+  metric: PrimaryInsightMetric
   tag: string
   daysWithTag: number
   delta: number
@@ -41,6 +43,10 @@ const metricKeys: MetricKey[] = [
   "averageHrv",
   "restingHeartRate",
   "sleepEfficiency"
+]
+const primaryInsightMetrics: PrimaryInsightMetric[] = [
+  "sleepScore",
+  "readinessScore"
 ]
 
 export function calculateTagCorrelations(
@@ -85,7 +91,7 @@ export function calculateTagCorrelations(
 
 export function getRankedTagInsights(correlations: TagMetricCorrelation[]) {
   const insights = correlations.flatMap((correlation) =>
-    (["sleepScore"] as const).flatMap((metric): TagInsight[] => {
+    primaryInsightMetrics.flatMap((metric): TagInsight[] => {
       const delta = correlation.deltas[metric]
 
       if (delta === null) {
@@ -214,10 +220,6 @@ function calculateSupportScore(daysWithTag: number, daysWithoutTag: number) {
 }
 
 function classifyInsight(metric: MetricKey, delta: number): InsightKind {
-  if (metric === "restingHeartRate") {
-    return delta < 0 ? "rewarding" : "concerning"
-  }
-
   return delta > 0 ? "rewarding" : "concerning"
 }
 
