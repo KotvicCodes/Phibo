@@ -150,6 +150,7 @@ export const sampleDailyMetrics: DailyMetricRow[] = [
 ]
 
 export const sampleTagEntries: TagEntryRow[] = [
+  createTag("2026-03-18", "blackout curtains"),
   createTag("2026-04-17", "dark bedroom"),
   createTag("2026-04-17", "cool room"),
   createTag("2026-04-18", "cool room"),
