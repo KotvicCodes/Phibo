@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { onMount } from "svelte"
   import {
     calculateTagCorrelations,
     type TagMetricCorrelation
   } from "../lib/analysis/correlations"
+  import { db } from "../lib/db"
   import type { DailyMetricRow } from "../lib/db/types"
   import {
     sampleDailyMetrics,
     sampleTagEntries
   } from "../lib/oura/sampleData"
+  import { syncOuraRange } from "../lib/oura/sync"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -17,12 +20,18 @@
     tone: "good" | "steady" | "watch"
   }
 
-  const correlations = calculateTagCorrelations(
-    sampleDailyMetrics,
-    sampleTagEntries
-  )
-  const recentDays = sampleDailyMetrics.slice(-4).reverse()
-  const tagsByDate = sampleTagEntries.reduce(
+  let accessToken = ""
+  let dailyMetrics = sampleDailyMetrics
+  let endDate = formatInputDate(new Date())
+  let isSyncing = false
+  let startDate = formatInputDate(daysAgo(30))
+  let syncMessage = "Sample data is showing until your first sync."
+  let tagEntries = sampleTagEntries
+
+  $: hasLocalData = dailyMetrics !== sampleDailyMetrics
+  $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
+  $: recentDays = dailyMetrics.slice(-4).reverse()
+  $: tagsByDate = tagEntries.reduce(
     (groups, tag) => {
       groups[tag.date] = [...(groups[tag.date] ?? []), tag.tag]
 
@@ -30,22 +39,65 @@
     },
     {} as Record<string, string[]>
   )
-
-  const summaries: MetricSummary[] = [
+  $: summaries = [
     createSummary("Sleep score", "sleepScore", "", "+ vs sample baseline"),
     createSummary("Readiness", "readinessScore", "", "+ this week"),
     createSummary("HRV", "averageHrv", " ms", "+ on tagged nights"),
     createSummary("Resting HR", "restingHeartRate", " bpm", "- after recovery")
   ]
-
-  const trendPoints = sampleDailyMetrics
+  $: trendPoints = dailyMetrics
     .map((day, index) => {
-      const x = (index / (sampleDailyMetrics.length - 1)) * 100
+      const x = (index / Math.max(dailyMetrics.length - 1, 1)) * 100
       const y = 100 - (day.sleepScore ?? 0)
 
       return `${x},${y}`
     })
     .join(" ")
+
+  onMount(async () => {
+    const savedToken = await db.authTokens.get("oura")
+    const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
+    const savedTags = await db.tagEntries.orderBy("date").toArray()
+
+    accessToken = savedToken?.accessToken ?? ""
+
+    if (savedMetrics.length > 0) {
+      dailyMetrics = savedMetrics
+      tagEntries = savedTags
+      syncMessage = `Loaded ${savedMetrics.length} saved Oura days.`
+    }
+  })
+
+  async function syncData() {
+    if (!accessToken.trim()) {
+      syncMessage = "Paste an Oura access token before syncing."
+      return
+    }
+
+    isSyncing = true
+    syncMessage = "Syncing Oura data..."
+
+    try {
+      await db.authTokens.put({
+        id: "oura",
+        accessToken: accessToken.trim(),
+        expiresAt: null,
+        scopes: ["daily", "tag"],
+        tokenType: "bearer",
+        updatedAt: new Date().toISOString()
+      })
+
+      const result = await syncOuraRange(accessToken.trim(), startDate, endDate)
+
+      dailyMetrics = result.dailyMetrics
+      tagEntries = result.tagEntries
+      syncMessage = `Synced ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags.`
+    } catch (error) {
+      syncMessage = error instanceof Error ? error.message : "Sync failed."
+    } finally {
+      isSyncing = false
+    }
+  }
 
   function formatDelta(value: number) {
     return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
@@ -71,7 +123,7 @@
     unit: string,
     deltaLabel: string
   ): MetricSummary {
-    const value = average(sampleDailyMetrics.map((day) => day[key]))
+    const value = average(dailyMetrics.map((day) => day[key]))
 
     return {
       label,
@@ -107,6 +159,17 @@
 
     return "No visible sleep score movement in the sample window."
   }
+
+  function daysAgo(days: number) {
+    const date = new Date()
+    date.setDate(date.getDate() - days)
+
+    return date
+  }
+
+  function formatInputDate(date: Date) {
+    return date.toISOString().slice(0, 10)
+  }
 </script>
 
 <svelte:head>
@@ -122,19 +185,36 @@
       </div>
       <h1>Oura Patterns</h1>
     </div>
-    <button type="button" class="sync-button">Sync data</button>
+    <button type="button" class="sync-button" on:click={syncData} disabled={isSyncing}>
+      {isSyncing ? "Syncing" : "Sync data"}
+    </button>
   </header>
 
   <section class="sync-strip">
     <div>
-      <p class="section-kicker">MVP preview</p>
+      <p class="section-kicker">{hasLocalData ? "Local data" : "MVP preview"}</p>
       <h2>Local Oura analysis workspace</h2>
     </div>
-    <p>
-      Mock data is powering this view while the sync layer is being wired in.
-      The layout is shaped around tag correlations, metric trends, and local
-      storage.
-    </p>
+    <form class="sync-form" on:submit|preventDefault={syncData}>
+      <label>
+        <span>Access token</span>
+        <input
+          bind:value={accessToken}
+          type="password"
+          autocomplete="off"
+          placeholder="Paste temporary Oura token"
+        />
+      </label>
+      <label>
+        <span>Start</span>
+        <input bind:value={startDate} type="date" />
+      </label>
+      <label>
+        <span>End</span>
+        <input bind:value={endDate} type="date" />
+      </label>
+      <p>{syncMessage}</p>
+    </form>
   </section>
 
   <section class="metric-grid" aria-label="Metric summary">
@@ -321,6 +401,12 @@
     transform: translateY(-1px);
   }
 
+  .sync-button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+    transform: none;
+  }
+
   .sync-strip {
     display: grid;
     grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr);
@@ -330,10 +416,44 @@
     margin-bottom: 1rem;
   }
 
-  .sync-strip p:last-child {
+  .sync-form {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.55fr) minmax(
+        130px,
+        0.55fr
+      );
+    gap: 0.65rem;
+  }
+
+  .sync-form label {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .sync-form span {
+    color: #65736b;
+    font-size: 0.72rem;
+    font-weight: 750;
+    text-transform: uppercase;
+  }
+
+  .sync-form input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #cfd8ca;
+    border-radius: 8px;
+    background: #fffffb;
+    box-sizing: border-box;
+    color: #17201b;
+    font: inherit;
+    padding: 0.68rem 0.75rem;
+  }
+
+  .sync-form p {
+    grid-column: 1 / -1;
     color: #46564c;
-    line-height: 1.55;
-    max-width: 680px;
+    font-size: 0.9rem;
+    line-height: 1.45;
   }
 
   .metric-grid {
@@ -532,7 +652,8 @@
 
     .header,
     .sync-strip,
-    .workspace {
+    .workspace,
+    .sync-form {
       grid-template-columns: 1fr;
     }
 
