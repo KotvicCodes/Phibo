@@ -2,7 +2,9 @@
   import { onMount } from "svelte"
   import {
     calculateTagCorrelations,
-    type TagMetricCorrelation
+    getRankedTagInsights,
+    getTagDiscoveries,
+    type TagInsight
   } from "../lib/analysis/correlations"
   import { db } from "../lib/db"
   import type { DailyMetricRow } from "../lib/db/types"
@@ -30,6 +32,9 @@
 
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
   $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
+  $: insights = getRankedTagInsights(correlations)
+  $: latestMetricDate = dailyMetrics.at(-1)?.date ?? endDate
+  $: discoveries = getTagDiscoveries(tagEntries, latestMetricDate)
   $: recentDays = dailyMetrics.slice(-4).reverse()
   $: tagsByDate = tagEntries.reduce(
     (groups, tag) => {
@@ -146,18 +151,41 @@
     )
   }
 
-  function describeCorrelation(item: TagMetricCorrelation) {
-    const sleepDelta = item.deltas.sleepScore ?? 0
+  function describeInsight(item: TagInsight) {
+    const direction =
+      item.metric === "restingHeartRate"
+        ? item.delta < 0
+          ? "lower"
+          : "higher"
+        : item.delta > 0
+          ? "higher"
+          : "lower"
 
-    if (sleepDelta > 0) {
-      return "Associated with stronger sleep scores in the sample window."
+    return `${metricLabel(item.metric)} was ${direction} on tagged days, weighted by ${item.daysWithTag} tagged nights.`
+  }
+
+  function metricLabel(metric: TagInsight["metric"]) {
+    const labels: Record<TagInsight["metric"], string> = {
+      averageHrv: "HRV",
+      readinessScore: "Readiness",
+      restingHeartRate: "Resting HR",
+      sleepEfficiency: "Efficiency",
+      sleepScore: "Sleep"
     }
 
-    if (sleepDelta < 0) {
-      return "Associated with lower sleep scores in the sample window."
+    return labels[metric]
+  }
+
+  function metricUnit(metric: TagInsight["metric"]) {
+    const units: Record<TagInsight["metric"], string> = {
+      averageHrv: " ms",
+      readinessScore: "",
+      restingHeartRate: " bpm",
+      sleepEfficiency: "%",
+      sleepScore: ""
     }
 
-    return "No visible sleep score movement in the sample window."
+    return units[metric]
   }
 
   function daysAgo(days: number) {
@@ -231,29 +259,109 @@
     <div class="analysis-panel">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">Correlations</p>
-          <h2>Tags linked to sleep score</h2>
+          <p class="section-kicker">Insights</p>
+          <h2>What deserves attention</h2>
         </div>
         <span>Last 30 days</span>
       </div>
 
-      <div class="correlation-list">
-        {#each correlations as item}
-          <article class="correlation-card">
-            <div class="correlation-title">
-              <h3>{item.tag}</h3>
-              <span>{item.daysWithTag} nights</span>
-            </div>
-            <div class="impact-row">
-              <span>Sleep {formatNullableDelta(item.deltas.sleepScore)}</span>
-              <span
-                >Readiness {formatNullableDelta(item.deltas.readinessScore)}</span
-              >
-              <span>HRV {formatNullableDelta(item.deltas.averageHrv, " ms")}</span>
-            </div>
-            <p>{describeCorrelation(item)}</p>
-          </article>
-        {/each}
+      <div class="insight-layout">
+        <section class="insight-group">
+          <h3>Rewarding</h3>
+          {#each insights.rewarding as item}
+            <article class="correlation-card rewarding">
+              <div class="correlation-title">
+                <h4>{item.tag}</h4>
+                <span>{item.daysWithTag} nights</span>
+              </div>
+              <div class="impact-row">
+                <span
+                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
+                    item.metric
+                  )}</span
+                >
+                <span>Weight {item.weightedImpact}</span>
+              </div>
+              <p>{describeInsight(item)}</p>
+            </article>
+          {:else}
+            <p class="empty-state">No supported positive pattern yet.</p>
+          {/each}
+        </section>
+
+        <section class="insight-group">
+          <h3>Concerning</h3>
+          {#each insights.concerning as item}
+            <article class="correlation-card concerning">
+              <div class="correlation-title">
+                <h4>{item.tag}</h4>
+                <span>{item.daysWithTag} nights</span>
+              </div>
+              <div class="impact-row">
+                <span
+                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
+                    item.metric
+                  )}</span
+                >
+                <span>Weight {item.weightedImpact}</span>
+              </div>
+              <p>{describeInsight(item)}</p>
+            </article>
+          {:else}
+            <p class="empty-state">No supported concerning pattern yet.</p>
+          {/each}
+        </section>
+
+        <section class="insight-group">
+          <h3>Notable</h3>
+          {#each insights.notable as item}
+            <article class="correlation-card notable">
+              <div class="correlation-title">
+                <h4>{item.tag}</h4>
+                <span>{item.daysWithTag} nights</span>
+              </div>
+              <div class="impact-row">
+                <span
+                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
+                    item.metric
+                  )}</span
+                >
+                <span>Weight {item.weightedImpact}</span>
+              </div>
+              <p>{describeInsight(item)}</p>
+            </article>
+          {:else}
+            <p class="empty-state">No extra notable pattern yet.</p>
+          {/each}
+        </section>
+      </div>
+
+      <div class="discoveries">
+        <div class="panel-heading compact">
+          <div>
+            <p class="section-kicker">Discoveries</p>
+            <h2>New or neglected tags</h2>
+          </div>
+        </div>
+        <div class="discovery-list">
+          {#each discoveries as item}
+            <article>
+              <div>
+                <strong>{item.tag}</strong>
+                <span>{item.reason === "new" ? "Newly appearing" : "Not tried lately"}</span>
+              </div>
+              <p>{item.daysWithTag} nights, last seen {formatDate(item.lastSeenDate)}</p>
+            </article>
+          {:else}
+            <article>
+              <div>
+                <strong>No new tags yet</strong>
+                <span>Try a behavior and tag it for a few nights</span>
+              </div>
+              <p>Waiting for fresh data</p>
+            </article>
+          {/each}
+        </div>
       </div>
     </div>
 
@@ -362,6 +470,7 @@
   h1,
   h2,
   h3,
+  h4,
   p {
     margin: 0;
   }
@@ -378,6 +487,11 @@
 
   h3 {
     font-size: 1rem;
+    line-height: 1.25;
+  }
+
+  h4 {
+    font-size: 0.95rem;
     line-height: 1.25;
   }
 
@@ -533,15 +647,56 @@
     white-space: nowrap;
   }
 
-  .correlation-list {
+  .insight-layout {
     display: grid;
-    gap: 0.7rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+  }
+
+  .insight-group {
+    display: grid;
+    align-content: start;
+    gap: 0.55rem;
+  }
+
+  .insight-group > h3 {
+    color: #46564c;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .empty-state {
+    border: 1px dashed #cfd8ca;
+    border-radius: 8px;
+    color: #65736b;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    padding: 0.85rem;
+  }
+
+  .discoveries {
+    border-top: 1px solid #e4e9df;
+    margin-top: 1rem;
+    padding-top: 1rem;
   }
 
   .correlation-card {
     border: 1px solid #e4e9df;
     border-radius: 8px;
     padding: 0.85rem;
+  }
+
+  .correlation-card.rewarding {
+    border-top: 4px solid #4f8a63;
+  }
+
+  .correlation-card.concerning {
+    border-top: 4px solid #a96745;
+  }
+
+  .correlation-card.notable {
+    border-top: 4px solid #587a96;
   }
 
   .correlation-title,
@@ -576,7 +731,43 @@
 
   .correlation-card p {
     color: #536258;
+    font-size: 0.9rem;
     line-height: 1.45;
+  }
+
+  .panel-heading.compact {
+    margin-bottom: 0.7rem;
+  }
+
+  .discovery-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+
+  .discovery-list article {
+    border: 1px solid #e4e9df;
+    border-radius: 8px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.75rem;
+  }
+
+  .discovery-list span,
+  .discovery-list p {
+    color: #65736b;
+    font-size: 0.82rem;
+  }
+
+  .discovery-list span {
+    display: block;
+    margin-top: 0.15rem;
+  }
+
+  .discovery-list p {
+    text-align: right;
   }
 
   svg {
@@ -653,7 +844,8 @@
     .header,
     .sync-strip,
     .workspace,
-    .sync-form {
+    .sync-form,
+    .insight-layout {
       grid-template-columns: 1fr;
     }
 
@@ -678,6 +870,18 @@
 
     .recent-table article {
       grid-template-columns: 1fr;
+    }
+
+    .discovery-list {
+      grid-template-columns: 1fr;
+    }
+
+    .discovery-list article {
+      display: grid;
+    }
+
+    .discovery-list p {
+      text-align: left;
     }
 
     dl {
