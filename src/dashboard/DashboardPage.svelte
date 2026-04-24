@@ -152,40 +152,9 @@
   }
 
   function describeInsight(item: TagInsight) {
-    const direction =
-      item.metric === "restingHeartRate"
-        ? item.delta < 0
-          ? "lower"
-          : "higher"
-        : item.delta > 0
-          ? "higher"
-          : "lower"
+    const direction = item.delta > 0 ? "higher" : "lower"
 
-    return `${metricLabel(item.metric)} was ${direction} on tagged days, weighted by ${item.daysWithTag} tagged nights.`
-  }
-
-  function metricLabel(metric: TagInsight["metric"]) {
-    const labels: Record<TagInsight["metric"], string> = {
-      averageHrv: "HRV",
-      readinessScore: "Readiness",
-      restingHeartRate: "Resting HR",
-      sleepEfficiency: "Efficiency",
-      sleepScore: "Sleep"
-    }
-
-    return labels[metric]
-  }
-
-  function metricUnit(metric: TagInsight["metric"]) {
-    const units: Record<TagInsight["metric"], string> = {
-      averageHrv: " ms",
-      readinessScore: "",
-      restingHeartRate: " bpm",
-      sleepEfficiency: "%",
-      sleepScore: ""
-    }
-
-    return units[metric]
+    return `Sleep score was ${direction} on tagged days, with ${item.daysWithTag} nights supporting the signal.`
   }
 
   function daysAgo(days: number) {
@@ -266,73 +235,58 @@
       </div>
 
       <div class="insight-layout">
-        <section class="insight-group">
+        <section class="insight-column">
           <h3>Rewarding</h3>
-          {#each insights.rewarding as item}
-            <article class="correlation-card rewarding">
-              <div class="correlation-title">
-                <h4>{item.tag}</h4>
-                <span>{item.daysWithTag} nights</span>
-              </div>
-              <div class="impact-row">
-                <span
-                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
-                    item.metric
-                  )}</span
-                >
-                <span>Weight {item.weightedImpact}</span>
-              </div>
-              <p>{describeInsight(item)}</p>
-            </article>
-          {:else}
-            <p class="empty-state">No supported positive pattern yet.</p>
-          {/each}
+          <div class="insight-stack">
+            {#each insights.rewarding as item}
+              <article class="correlation-card rewarding">
+                <div class="correlation-title">
+                  <h4>{item.tag}</h4>
+                  <span>{item.daysWithTag} nights</span>
+                </div>
+                <strong>{formatDelta(item.delta)}</strong>
+                <p>{describeInsight(item)}</p>
+              </article>
+            {:else}
+              <p class="empty-state">No supported positive pattern yet.</p>
+            {/each}
+          </div>
         </section>
 
-        <section class="insight-group">
+        <section class="insight-column">
           <h3>Concerning</h3>
-          {#each insights.concerning as item}
-            <article class="correlation-card concerning">
-              <div class="correlation-title">
-                <h4>{item.tag}</h4>
-                <span>{item.daysWithTag} nights</span>
-              </div>
-              <div class="impact-row">
-                <span
-                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
-                    item.metric
-                  )}</span
-                >
-                <span>Weight {item.weightedImpact}</span>
-              </div>
-              <p>{describeInsight(item)}</p>
-            </article>
-          {:else}
-            <p class="empty-state">No supported concerning pattern yet.</p>
-          {/each}
+          <div class="insight-stack">
+            {#each insights.concerning as item}
+              <article class="correlation-card concerning">
+                <div class="correlation-title">
+                  <h4>{item.tag}</h4>
+                  <span>{item.daysWithTag} nights</span>
+                </div>
+                <strong>{formatDelta(item.delta)}</strong>
+                <p>{describeInsight(item)}</p>
+              </article>
+            {:else}
+              <p class="empty-state">No supported concerning pattern yet.</p>
+            {/each}
+          </div>
         </section>
 
-        <section class="insight-group">
+        <section class="insight-column">
           <h3>Notable</h3>
-          {#each insights.notable as item}
-            <article class="correlation-card notable">
-              <div class="correlation-title">
-                <h4>{item.tag}</h4>
-                <span>{item.daysWithTag} nights</span>
-              </div>
-              <div class="impact-row">
-                <span
-                  >{metricLabel(item.metric)} {formatDelta(item.delta)}{metricUnit(
-                    item.metric
-                  )}</span
-                >
-                <span>Weight {item.weightedImpact}</span>
-              </div>
-              <p>{describeInsight(item)}</p>
-            </article>
-          {:else}
-            <p class="empty-state">No extra notable pattern yet.</p>
-          {/each}
+          <div class="insight-stack">
+            {#each insights.notable as item}
+              <article class="correlation-card notable">
+                <div class="correlation-title">
+                  <h4>{item.tag}</h4>
+                  <span>{item.daysWithTag} nights</span>
+                </div>
+                <strong>{formatDelta(item.delta)}</strong>
+                <p>{describeInsight(item)}</p>
+              </article>
+            {:else}
+              <p class="empty-state">No extra notable sleep pattern yet.</p>
+            {/each}
+          </div>
         </section>
       </div>
 
@@ -651,19 +605,26 @@
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.8rem;
+    align-items: stretch;
   }
 
-  .insight-group {
+  .insight-column {
     display: grid;
-    align-content: start;
+    grid-template-rows: auto 1fr;
     gap: 0.55rem;
   }
 
-  .insight-group > h3 {
+  .insight-column > h3 {
     color: #46564c;
     font-size: 0.82rem;
     font-weight: 800;
     text-transform: uppercase;
+  }
+
+  .insight-stack {
+    display: grid;
+    grid-auto-rows: 1fr;
+    gap: 0.55rem;
   }
 
   .empty-state {
@@ -684,6 +645,8 @@
   .correlation-card {
     border: 1px solid #e4e9df;
     border-radius: 8px;
+    display: grid;
+    gap: 0.6rem;
     padding: 0.85rem;
   }
 
@@ -733,6 +696,11 @@
     color: #536258;
     font-size: 0.9rem;
     line-height: 1.45;
+  }
+
+  .correlation-card > strong {
+    font-size: 2rem;
+    line-height: 1;
   }
 
   .panel-heading.compact {
