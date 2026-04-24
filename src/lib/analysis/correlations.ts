@@ -85,7 +85,7 @@ export function calculateTagCorrelations(
 
 export function getRankedTagInsights(correlations: TagMetricCorrelation[]) {
   const insights = correlations.flatMap((correlation) =>
-    metricKeys.flatMap((metric): TagInsight[] => {
+    (["sleepScore"] as const).flatMap((metric): TagInsight[] => {
       const delta = correlation.deltas[metric]
 
       if (delta === null) {
