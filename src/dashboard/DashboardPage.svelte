@@ -701,10 +701,10 @@
   .oura-o::before {
     content: "";
     position: absolute;
-    top: -0.14em;
-    left: 0.04em;
-    width: 0.72em;
-    border-top: 0.08em solid currentColor;
+    top: 0.01em;
+    left: 0.082em;
+    width: 0.58em;
+    border-top: 0.11em solid currentColor;
     border-radius: 999px;
   }
 
@@ -1007,13 +1007,11 @@
   .score-impact b {
     font-size: 1.9rem;
     line-height: 1;
+    paint-order: stroke fill;
   }
 
   .score-impact.excellent b {
-    color: #3d6f94;
-    text-shadow:
-      0 1px 0 #d9bc6c,
-      0 -1px 0 rgba(217, 188, 108, 0.5);
+    color: #1e2c64;
   }
 
   .score-impact.positive b {
