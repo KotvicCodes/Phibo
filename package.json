@@ -11,12 +11,15 @@
   },
   "dependencies": {
     "dexie": "^4.4.2",
+    "jszip": "^3.10.1",
+    "papaparse": "^5.5.3",
     "plasmo": "^0.90.5",
     "svelte": "^4.2.20"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.40",
     "@types/node": "^24.0.2",
+    "@types/papaparse": "^5.5.2",
     "svelte-preprocess": "^6.0.3",
     "typescript": "^5.9.3"
   },

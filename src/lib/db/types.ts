@@ -96,6 +96,7 @@ export interface ImportRunRow {
   startedAt: string
   finishedAt: string | null
   status: "running" | "success" | "error"
+  source?: "api_sync" | "file_import"
   startDate: string
   endDate: string
   recordsSynced: number
