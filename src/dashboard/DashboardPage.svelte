@@ -17,7 +17,8 @@
     type TagInsight
   } from "../lib/analysis/correlations"
   import { db } from "../lib/db"
-  import type { DailyMetricRow } from "../lib/db/types"
+  import type { AuthTokenRow, DailyMetricRow } from "../lib/db/types"
+  import { OuraApiError, validateOuraToken } from "../lib/oura/client"
   import {
     sampleDailyMetrics,
     sampleTagEntries
@@ -72,6 +73,8 @@
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
   let isSyncing = false
+  let isEditingToken = false
+  let savedOuraToken: AuthTokenRow | null = null
   let selectedInsightKey = ""
   let selectedExploreDate = ""
   let selectedExploreTags: string[] = []
@@ -174,6 +177,8 @@
       }
     : null
   $: selectedStats = selectedInsight ? createInsightStats(selectedInsight) : []
+  $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
+  $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
   $: summaries = [
     createSummary("Sleep", "sleepScore", "vs sample baseline"),
     createSummary("Readiness", "readinessScore", "this week"),
@@ -184,18 +189,71 @@
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
     const savedTags = await db.tagEntries.orderBy("date").toArray()
 
-    accessToken = savedToken?.accessToken ?? ""
+    savedOuraToken = savedToken ?? null
 
     if (savedMetrics.length > 0) {
       dailyMetrics = savedMetrics
       tagEntries = savedTags
       syncMessage = `Loaded ${savedMetrics.length} saved Oura days.`
+    } else if (savedToken) {
+      syncMessage = "Oura key is connected. Your data stays on this device."
     }
   })
 
+  async function connectAndSyncData() {
+    const token = accessToken.trim()
+
+    if (!token) {
+      syncMessage = "Paste an Oura access token before connecting."
+      return
+    }
+
+    if (!validateDateRange()) {
+      return
+    }
+
+    isSyncing = true
+    syncMessage = "Checking Oura key..."
+
+    try {
+      await validateOuraToken(token)
+
+      const now = new Date().toISOString()
+      const authToken: AuthTokenRow = {
+        id: "oura",
+        accessToken: token,
+        expiresAt: null,
+        lastSyncedAt: null,
+        lastValidatedAt: now,
+        scopes: ["daily", "tag"],
+        source: "user_token",
+        tokenType: "bearer",
+        updatedAt: now
+      }
+
+      await db.authTokens.put(authToken)
+      savedOuraToken = authToken
+      isEditingToken = false
+      accessToken = ""
+
+      await syncWithToken(token)
+    } catch (error) {
+      syncMessage = formatOuraConnectionError(error)
+    } finally {
+      isSyncing = false
+    }
+  }
+
   async function syncData() {
-    if (!accessToken.trim()) {
-      syncMessage = "Paste an Oura access token before syncing."
+    const token = savedOuraToken?.accessToken
+
+    if (!token) {
+      syncMessage = "Connect an Oura key before syncing."
+      isEditingToken = true
+      return
+    }
+
+    if (!validateDateRange()) {
       return
     }
 
@@ -203,25 +261,112 @@
     syncMessage = "Syncing Oura data..."
 
     try {
-      await db.authTokens.put({
-        id: "oura",
-        accessToken: accessToken.trim(),
-        expiresAt: null,
-        scopes: ["daily", "tag"],
-        tokenType: "bearer",
-        updatedAt: new Date().toISOString()
-      })
-
-      const result = await syncOuraRange(accessToken.trim(), startDate, endDate)
-
-      dailyMetrics = result.dailyMetrics
-      tagEntries = result.tagEntries
-      syncMessage = `Synced ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags.`
+      await syncWithToken(token)
     } catch (error) {
-      syncMessage = error instanceof Error ? error.message : "Sync failed."
+      syncMessage = formatOuraConnectionError(error)
     } finally {
       isSyncing = false
     }
+  }
+
+  async function syncWithToken(token: string) {
+    const result = await syncOuraRange(token, startDate, endDate)
+    const lastSyncedAt = new Date().toISOString()
+
+    dailyMetrics = result.dailyMetrics
+    tagEntries = result.tagEntries
+    syncMessage = `Synced ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags.`
+
+    if (savedOuraToken) {
+      savedOuraToken = {
+        ...savedOuraToken,
+        lastSyncedAt,
+        updatedAt: lastSyncedAt
+      }
+      await db.authTokens.put(savedOuraToken)
+    }
+  }
+
+  async function disconnectOura() {
+    await db.authTokens.delete("oura")
+    accessToken = ""
+    savedOuraToken = null
+    isEditingToken = true
+    syncMessage = "Oura key disconnected. Imported data remains on this device."
+  }
+
+  function changeOuraToken() {
+    accessToken = ""
+    isEditingToken = true
+    syncMessage = "Paste a new Oura key to replace the saved connection."
+  }
+
+  function cancelTokenChange() {
+    accessToken = ""
+    isEditingToken = false
+    syncMessage = savedOuraToken
+      ? "Oura key is connected. Your data stays on this device."
+      : "Sample data is showing until your first sync."
+  }
+
+  function validateDateRange() {
+    if (!startDate || !endDate) {
+      syncMessage = "Choose both a start and end date."
+      return false
+    }
+
+    if (startDate > endDate) {
+      syncMessage = "Start date must be before the end date."
+      return false
+    }
+
+    const today = formatInputDate(new Date())
+
+    if (endDate > today) {
+      syncMessage = "End date cannot be in the future."
+      return false
+    }
+
+    return true
+  }
+
+  function formatOuraConnectionError(error: unknown) {
+    if (error instanceof OuraApiError) {
+      if (error.status === 401) {
+        return "Oura rejected this key. Check that it is active and pasted correctly."
+      }
+
+      if (error.status === 403) {
+        return "Oura blocked this request. Check that your key has daily and tag scopes and that API access is available for your account."
+      }
+
+      if (error.status === 429) {
+        return "Oura rate limit reached. Wait a few minutes before syncing again."
+      }
+
+      if (error.status >= 500) {
+        return "Oura is having trouble right now. Try syncing again later."
+      }
+
+      return error.detail ?? error.title ?? "Oura could not complete the request."
+    }
+
+    return error instanceof Error
+      ? "Could not reach Oura. Check your connection and try again."
+      : "Sync failed."
+  }
+
+  function formatConnectionDate(value: string | null | undefined) {
+    if (!value) {
+      return "Not yet"
+    }
+
+    return new Intl.DateTimeFormat("en", {
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      month: "short"
+    }).format(new Date(value))
   }
 
   function formatDelta(value: number) {
@@ -669,8 +814,13 @@
       </div>
       <h1><span class="oura-o">O</span>ura Patterns</h1>
     </div>
-    <button type="button" class="sync-button" on:click={syncData} disabled={isSyncing}>
-      {isSyncing ? "Syncing" : "Sync data"}
+    <button
+      type="button"
+      class="sync-button"
+      on:click={isOuraConnected ? syncData : connectAndSyncData}
+      disabled={isSyncing}
+    >
+      {isSyncing ? "Syncing" : connectionActionLabel}
     </button>
   </header>
 
@@ -694,29 +844,90 @@
   {#if activeView === "insights"}
   <section class="sync-strip">
     <div>
-      <p class="section-kicker">{hasLocalData ? "Local data" : "MVP preview"}</p>
-      <h2>Local Oura analysis workspace</h2>
+      <p class="section-kicker">{isOuraConnected ? "Connected locally" : hasLocalData ? "Local data" : "Private setup"}</p>
+      <h2>{isOuraConnected ? "Oura key saved on this device" : "Connect Oura with your key"}</h2>
+      <p class="privacy-note">
+        Your key and imported health data stay in this browser extension. Phibo only contacts Oura's API.
+      </p>
     </div>
-    <form class="sync-form" on:submit|preventDefault={syncData}>
-      <label>
-        <span>Access token</span>
-        <input
-          bind:value={accessToken}
-          type="password"
-          autocomplete="off"
-          placeholder="Paste temporary Oura token"
-        />
-      </label>
-      <label>
-        <span>Start</span>
-        <input bind:value={startDate} type="date" />
-      </label>
-      <label>
-        <span>End</span>
-        <input bind:value={endDate} type="date" />
-      </label>
-      <p>{syncMessage}</p>
-    </form>
+    {#if isOuraConnected && savedOuraToken}
+      <div class="connection-panel">
+        <div class="connection-status">
+          <div>
+            <span>Saved key</span>
+            <strong aria-label="Oura key is hidden">•••• •••• ••••</strong>
+          </div>
+          <div>
+            <span>Validated</span>
+            <strong>{formatConnectionDate(savedOuraToken.lastValidatedAt)}</strong>
+          </div>
+          <div>
+            <span>Last synced</span>
+            <strong>{formatConnectionDate(savedOuraToken.lastSyncedAt)}</strong>
+          </div>
+        </div>
+        <form class="sync-form connected" on:submit|preventDefault={syncData}>
+          <label>
+            <span>Start</span>
+            <input bind:value={startDate} type="date" />
+          </label>
+          <label>
+            <span>End</span>
+            <input bind:value={endDate} type="date" />
+          </label>
+          <div class="connection-actions">
+            <button type="submit" disabled={isSyncing}>
+              {isSyncing ? "Syncing" : "Sync data"}
+            </button>
+            <button type="button" class="secondary" on:click={changeOuraToken}>
+              Change key
+            </button>
+            <button type="button" class="danger" on:click={disconnectOura}>
+              Disconnect
+            </button>
+          </div>
+          <p>{syncMessage}</p>
+        </form>
+      </div>
+    {:else}
+      <form class="sync-form" on:submit|preventDefault={connectAndSyncData}>
+        <label>
+          <span>Oura key</span>
+          <input
+            bind:value={accessToken}
+            type="password"
+            autocomplete="off"
+            placeholder="Paste Oura personal access token"
+          />
+        </label>
+        <label>
+          <span>Start</span>
+          <input bind:value={startDate} type="date" />
+        </label>
+        <label>
+          <span>End</span>
+          <input bind:value={endDate} type="date" />
+        </label>
+        <div class="connection-actions">
+          <button type="submit" disabled={isSyncing}>
+            {isSyncing ? "Connecting" : "Connect & sync"}
+          </button>
+          {#if savedOuraToken}
+            <button type="button" class="secondary" on:click={cancelTokenChange}>
+              Cancel
+            </button>
+          {/if}
+          <a
+            href="https://cloud.ouraring.com/personal-access-tokens"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Get Oura key
+          </a>
+        </div>
+        <p>{syncMessage}</p>
+      </form>
+    {/if}
   </section>
 
   <section class="metric-grid" aria-label="Metric summary">
@@ -1447,6 +1658,53 @@
     margin-bottom: 1rem;
   }
 
+  .privacy-note {
+    color: #566157;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin-top: 0.45rem;
+    max-width: 34rem;
+  }
+
+  .connection-panel {
+    display: grid;
+    gap: 0.7rem;
+    min-width: 0;
+  }
+
+  .connection-status {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .connection-status div {
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    background: rgba(255, 252, 246, 0.52);
+    min-width: 0;
+    padding: 0.65rem 0.7rem;
+  }
+
+  .connection-status span,
+  .connection-actions a {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .connection-status strong {
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.25;
+    margin-top: 0.2rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .sync-form {
     display: grid;
     grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.55fr) minmax(
@@ -1454,6 +1712,13 @@
         0.55fr
       );
     gap: 0.65rem;
+  }
+
+  .sync-form.connected {
+    grid-template-columns: minmax(130px, 0.55fr) minmax(130px, 0.55fr) minmax(
+        260px,
+        1fr
+      );
   }
 
   .sync-form label {
@@ -1478,6 +1743,54 @@
     color: #17201b;
     font: inherit;
     padding: 0.68rem 0.75rem;
+  }
+
+  .connection-actions {
+    align-items: end;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+
+  .connection-actions button,
+  .connection-actions a {
+    align-items: center;
+    appearance: none;
+    border: 1px solid #c5cbbd;
+    border-radius: 8px;
+    background: #fbf7ef;
+    color: #17201b;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0.58rem 0.72rem;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .connection-actions button[type="submit"] {
+    background: #1d2a22;
+    border-color: #1d2a22;
+    color: #f8f3ea;
+  }
+
+  .connection-actions button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
+  .connection-actions .secondary {
+    background: #f7f1e8;
+  }
+
+  .connection-actions .danger {
+    border-color: #d2b5a5;
+    color: #8a3f2f;
   }
 
   .sync-form p {
@@ -2246,7 +2559,9 @@
     .sync-strip,
     .workspace,
     .explore-builder,
-    .sync-form {
+    .sync-form,
+    .sync-form.connected,
+    .connection-status {
       grid-template-columns: 1fr;
     }
 
