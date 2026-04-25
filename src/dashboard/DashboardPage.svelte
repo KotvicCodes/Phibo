@@ -1732,7 +1732,7 @@
     align-items: center;
     border-bottom: 1px solid #d8d8cc;
     display: grid;
-    grid-template-columns: minmax(190px, 0.95fr) minmax(140px, 1fr) auto;
+    grid-template-columns: minmax(190px, 0.95fr) minmax(220px, 1fr) 92px;
     gap: 0.8rem;
     min-height: 58px;
     padding-block: 0.65rem;
@@ -1760,11 +1760,16 @@
     font-size: 1rem;
   }
 
+  .impact-list > article > .score-impact {
+    justify-content: flex-end;
+  }
+
   .impact-bar {
     background: #ebe7dd;
     border-radius: 999px;
     height: 0.55rem;
     overflow: hidden;
+    width: 100%;
   }
 
   .impact-fill {
