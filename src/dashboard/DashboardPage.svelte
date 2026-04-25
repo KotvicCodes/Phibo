@@ -29,6 +29,13 @@
     taggedAverage: number | null
   }
 
+  interface InsightStat {
+    helper: string
+    label: string
+    unit: string
+    value: string
+  }
+
   let accessToken = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
@@ -60,15 +67,7 @@
         sleepScore: getMetricComparison(selectedInsight.tag, "sleepScore")
       }
     : null
-  $: recentDays = dailyMetrics.slice(-4).reverse()
-  $: tagsByDate = tagEntries.reduce(
-    (groups, tag) => {
-      groups[tag.date] = [...(groups[tag.date] ?? []), tag.tag]
-
-      return groups
-    },
-    {} as Record<string, string[]>
-  )
+  $: selectedStats = selectedInsight ? createInsightStats(selectedInsight) : []
   $: summaries = [
     createSummary("Sleep", "sleepScore", "vs sample baseline"),
     createSummary("Readiness", "readinessScore", "this week"),
@@ -154,6 +153,65 @@
       delta: `${label === "Sleep" ? "+4" : "+2"} ${deltaLabel}`,
       tone: label === "Readiness" ? "steady" : "good"
     }
+  }
+
+  function createInsightStats(item: TagInsight): InsightStat[] {
+    const correlation = correlations.find((correlation) => correlation.tag === item.tag)
+    const daysWithoutTag =
+      correlation?.daysWithoutTag ?? Math.max(dailyMetrics.length - item.daysWithTag, 0)
+    const metricStats = correlation
+      ? ([
+          {
+            helper: "average HRV difference",
+            label: "HRV",
+            metric: "averageHrv",
+            unit: "ms"
+          },
+          {
+            helper: "resting heart rate difference",
+            label: "RHR",
+            metric: "restingHeartRate",
+            unit: "bpm"
+          }
+        ] as const).map((stat) => ({
+          helper: stat.helper,
+          label: stat.label,
+          unit: stat.unit,
+          value: formatMetricDelta(correlation.deltas[stat.metric])
+        }))
+      : []
+
+    return [
+      {
+        helper: `nights with ${item.tag}`,
+        label: "Tagged",
+        unit: item.daysWithTag === 1 ? "night" : "nights",
+        value: `${item.daysWithTag}`
+      },
+      {
+        helper: `nights without ${item.tag}`,
+        label: "Other",
+        unit: daysWithoutTag === 1 ? "night" : "nights",
+        value: `${daysWithoutTag}`
+      },
+      {
+        helper: "sample confidence",
+        label: "Support",
+        unit: "%",
+        value: `${Math.round(item.supportScore * 100)}`
+      },
+      {
+        helper: "effect after support weighting",
+        label: "Signal",
+        unit: "pts",
+        value: item.weightedImpact.toFixed(1)
+      },
+      ...metricStats
+    ]
+  }
+
+  function formatMetricDelta(value: number | null) {
+    return value === null ? "n/a" : formatDelta(value)
   }
 
   function average(values: Array<number | null>) {
@@ -590,24 +648,13 @@
         <p class="empty-state">Select an insight to compare tagged nights.</p>
       {/if}
 
-      <div class="recent-table">
-        {#each recentDays as day}
-          <article>
-            <div>
-              <strong>{formatDate(day.date)}</strong>
-              <span>{(tagsByDate[day.date] ?? ["No tags"]).join(", ")}</span>
-            </div>
-            <dl>
-              <div>
-                <dt>Sleep</dt>
-                <dd>{day.sleepScore}</dd>
-              </div>
-              <div>
-                <dt>Readiness</dt>
-                <dd>{day.readinessScore}</dd>
-              </div>
-            </dl>
-          </article>
+      <div class="detail-stats" aria-label="Selected insight stats">
+        {#each selectedStats as stat}
+          <div>
+            <span>{stat.label}</span>
+            <p>{stat.helper}</p>
+            <strong>{stat.value} <small>{stat.unit}</small></strong>
+          </div>
         {/each}
       </div>
     </div>
@@ -1186,49 +1233,54 @@
     background: #9ca69a;
   }
 
-  .recent-table {
+  .detail-stats {
     display: grid;
-    gap: 0.55rem;
+    gap: 0;
+    border-top: 1px solid #d8d8cc;
   }
 
-  .recent-table article {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+  .detail-stats div {
     align-items: center;
-    gap: 0.8rem;
     border-bottom: 1px solid #d8d8cc;
-    padding-bottom: 0.55rem;
-  }
-
-  .recent-table article:last-child {
-    border-bottom: 0;
-    padding-bottom: 0;
-  }
-
-  .recent-table span {
-    display: block;
-    color: #6f786f;
-    font-size: 0.82rem;
-    margin-top: 0.15rem;
-  }
-
-  dl {
     display: grid;
-    grid-template-columns: repeat(2, 58px);
-    gap: 0.45rem;
-    margin: 0;
+    grid-template-columns: 88px minmax(0, 1fr) auto;
+    gap: 0.7rem;
+    min-height: 52px;
+    padding: 0.6rem 0;
+    box-sizing: border-box;
   }
 
-  dt {
+  .detail-stats span,
+  .detail-stats p {
     color: #6f786f;
-    font-size: 0.68rem;
-    font-weight: 750;
+  }
+
+  .detail-stats span {
+    font-size: 0.82rem;
+    font-weight: 800;
     text-transform: uppercase;
   }
 
-  dd {
-    margin: 0.1rem 0 0;
+  .detail-stats strong {
+    font-size: 1.15rem;
+    line-height: 1;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .detail-stats small {
+    color: #6f786f;
+    font-size: 0.72rem;
     font-weight: 800;
+  }
+
+  .detail-stats p {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   @media (max-width: 820px) {
@@ -1266,8 +1318,19 @@
       grid-template-columns: 1fr;
     }
 
-    .recent-table article {
-      grid-template-columns: 1fr;
+    .detail-stats {
+      border-top: 0;
+    }
+
+    .detail-stats div {
+      grid-template-columns: 1fr auto;
+      padding: 0.65rem 0;
+    }
+
+    .detail-stats p {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      white-space: normal;
     }
 
     .discovery-list article {
@@ -1279,8 +1342,5 @@
       justify-items: start;
     }
 
-    dl {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 </style>
