@@ -9,6 +9,25 @@ export type MetricKey =
 
 export type PrimaryInsightMetric = "readinessScore" | "sleepScore"
 
+export type ExploreMetricKey =
+  | "activityScore"
+  | "averageHrv"
+  | "deepSleepMinutes"
+  | "readinessScore"
+  | "remSleepMinutes"
+  | "restingHeartRate"
+  | "sleepEfficiency"
+  | "sleepLatencyMinutes"
+  | "sleepScore"
+  | "totalSleepMinutes"
+
+export interface ExploreMetricDefinition {
+  higherIsBetter: boolean
+  key: ExploreMetricKey
+  label: string
+  unit: string
+}
+
 export interface TagMetricCorrelation {
   tag: string
   daysWithTag: number
@@ -37,12 +56,91 @@ export interface TagDiscovery {
   reason: "new" | "neglected"
 }
 
+export interface ExploreDay {
+  date: string
+  matches: boolean
+  metric: DailyMetricRow
+  tags: string[]
+}
+
+export interface ExploreMetricImpact {
+  delta: number | null
+  metric: ExploreMetricDefinition
+  otherAverage: number | null
+  otherCount: number
+  taggedAverage: number | null
+  taggedCount: number
+  toneDelta: number | null
+}
+
 const metricKeys: MetricKey[] = [
   "sleepScore",
   "readinessScore",
   "averageHrv",
   "restingHeartRate",
   "sleepEfficiency"
+]
+export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
+  {
+    higherIsBetter: true,
+    key: "sleepScore",
+    label: "Sleep score",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessScore",
+    label: "Readiness",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityScore",
+    label: "Activity",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "averageHrv",
+    label: "HRV",
+    unit: "ms"
+  },
+  {
+    higherIsBetter: false,
+    key: "restingHeartRate",
+    label: "Resting HR",
+    unit: "bpm"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepEfficiency",
+    label: "Sleep efficiency",
+    unit: "%"
+  },
+  {
+    higherIsBetter: false,
+    key: "sleepLatencyMinutes",
+    label: "Latency",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "deepSleepMinutes",
+    label: "Deep sleep",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "remSleepMinutes",
+    label: "REM sleep",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "totalSleepMinutes",
+    label: "Total sleep",
+    unit: "min"
+  }
 ]
 const primaryInsightMetrics: PrimaryInsightMetric[] = [
   "sleepScore",
@@ -180,6 +278,88 @@ export function getTagDiscoveries(tags: TagEntryRow[], latestDate: string) {
       return right.lastSeenDate.localeCompare(left.lastSeenDate)
     })
     .slice(0, 4)
+}
+
+export function getAvailableTags(tags: TagEntryRow[]) {
+  return Array.from(new Set(tags.map((tag) => tag.tag))).sort((left, right) =>
+    left.localeCompare(right)
+  )
+}
+
+export function buildExploreDays(
+  metrics: DailyMetricRow[],
+  tags: TagEntryRow[],
+  selectedTags: string[]
+): ExploreDay[] {
+  const tagsByDate = groupTagsByDate(tags)
+
+  return metrics.map((metric) => {
+    const dayTags = Array.from(tagsByDate.get(metric.date) ?? []).sort()
+
+    return {
+      date: metric.date,
+      matches:
+        selectedTags.length > 0 &&
+        selectedTags.every((tag) => dayTags.includes(tag)),
+      metric,
+      tags: dayTags
+    }
+  })
+}
+
+export function calculateExploreMetricImpacts(
+  metrics: DailyMetricRow[],
+  tags: TagEntryRow[],
+  selectedTags: string[]
+): ExploreMetricImpact[] {
+  const days = buildExploreDays(metrics, tags, selectedTags)
+  const taggedDays = days.filter((day) => day.matches).map((day) => day.metric)
+  const otherDays = days.filter((day) => !day.matches).map((day) => day.metric)
+
+  return exploreMetricDefinitions.map((definition) => {
+    const taggedAverage = average(
+      taggedDays.map((day) => day[definition.key])
+    )
+    const otherAverage = average(otherDays.map((day) => day[definition.key]))
+    const delta =
+      taggedAverage === null || otherAverage === null
+        ? null
+        : roundToOne(taggedAverage - otherAverage)
+
+    return {
+      delta,
+      metric: definition,
+      otherAverage,
+      otherCount: otherDays.length,
+      taggedAverage,
+      taggedCount: taggedDays.length,
+      toneDelta: delta === null ? null : metricToneDelta(definition, delta)
+    }
+  })
+}
+
+export function getExploreMetric(key: ExploreMetricKey) {
+  return (
+    exploreMetricDefinitions.find((definition) => definition.key === key) ??
+    exploreMetricDefinitions[0]
+  )
+}
+
+export function metricToneDelta(
+  metric: ExploreMetricDefinition,
+  delta: number
+) {
+  return metric.higherIsBetter ? delta : -delta
+}
+
+function groupTagsByDate(tags: TagEntryRow[]) {
+  return tags.reduce((groups, entry) => {
+    const dates = groups.get(entry.date) ?? new Set<string>()
+    dates.add(entry.tag)
+    groups.set(entry.date, dates)
+
+    return groups
+  }, new Map<string, Set<string>>())
 }
 
 function groupTagsByName(tags: TagEntryRow[]) {
