@@ -1,9 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte"
   import {
+    buildExploreDays,
+    calculateExploreMetricImpacts,
     calculateTagCorrelations,
+    exploreMetricDefinitions,
+    getAvailableTags,
+    getExploreMetric,
     getRankedTagInsights,
     getTagDiscoveries,
+    type ExploreDay,
+    type ExploreMetricDefinition,
+    type ExploreMetricImpact,
+    type ExploreMetricKey,
     type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
@@ -36,17 +45,81 @@
     value: string
   }
 
+  type ChartMode = "impact" | "scatter" | "timeline"
+  type DashboardView = "explore" | "insights"
+
+  interface ChartPoint {
+    day: ExploreDay
+    x: number
+    y: number
+  }
+
+  const chartWidth = 640
+  const chartHeight = 320
+  const chartModes: ChartMode[] = ["scatter", "impact", "timeline"]
+  const chartPadding = 36
+
   let accessToken = ""
+  let activeView: DashboardView = "insights"
+  let exploreChartMode: ChartMode = "scatter"
+  let exploreTagsInitialized = false
+  let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
   let isSyncing = false
   let selectedInsightKey = ""
+  let selectedExploreDate = ""
+  let selectedExploreTags: string[] = []
+  let selectedXMetric: ExploreMetricKey = "sleepScore"
+  let selectedYMetric: ExploreMetricKey = "readinessScore"
   let startDate = formatInputDate(daysAgo(30))
   let syncMessage = "Sample data is showing until your first sync."
   let tagEntries = sampleTagEntries
 
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
   $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
+  $: availableTags = getAvailableTags(tagEntries)
+  $: if (!exploreTagsInitialized && availableTags.length > 0) {
+    const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
+      availableTags.includes(tag)
+    )
+    selectedExploreTags =
+      preferredTags.length > 0 ? preferredTags : availableTags.slice(0, 1)
+    exploreTagsInitialized = true
+  }
+  $: {
+    const validExploreTags = selectedExploreTags.filter((tag) =>
+      availableTags.includes(tag)
+    )
+
+    if (validExploreTags.length !== selectedExploreTags.length) {
+      selectedExploreTags = validExploreTags
+    }
+  }
+  $: exploreDays = buildExploreDays(
+    dailyMetrics,
+    tagEntries,
+    selectedExploreTags
+  )
+  $: exploreImpacts = calculateExploreMetricImpacts(
+    dailyMetrics,
+    tagEntries,
+    selectedExploreTags
+  )
+  $: matchingExploreDays = exploreDays.filter((day) => day.matches)
+  $: otherExploreDays = exploreDays.filter((day) => !day.matches)
+  $: selectedXDefinition = getExploreMetric(selectedXMetric)
+  $: selectedYDefinition = getExploreMetric(selectedYMetric)
+  $: scatterPoints = createScatterPoints(
+    exploreDays,
+    selectedXMetric,
+    selectedYMetric
+  )
+  $: timelinePoints = createTimelinePoints(exploreDays, selectedYMetric)
+  $: activeExploreDay =
+    exploreDays.find((day) => day.date === (hoveredExploreDate || selectedExploreDate)) ??
+    matchingExploreDays[0] ??
+    exploreDays[0]
   $: insights = getRankedTagInsights(correlations)
   $: allInsights = [
     ...insights.rewarding,
@@ -210,8 +283,91 @@
     ]
   }
 
+  function createScatterPoints(
+    days: ExploreDay[],
+    xMetric: ExploreMetricKey,
+    yMetric: ExploreMetricKey
+  ): ChartPoint[] {
+    const xExtent = metricExtent(days, xMetric)
+    const yExtent = metricExtent(days, yMetric)
+
+    return days
+      .filter(
+        (day) => day.metric[xMetric] !== null && day.metric[yMetric] !== null
+      )
+      .map((day) => ({
+        day,
+        x: scaleNumber(
+          day.metric[xMetric] ?? 0,
+          xExtent,
+          chartPadding,
+          chartWidth - chartPadding
+        ),
+        y: scaleNumber(
+          day.metric[yMetric] ?? 0,
+          yExtent,
+          chartHeight - chartPadding,
+          chartPadding
+        )
+      }))
+  }
+
+  function createTimelinePoints(
+    days: ExploreDay[],
+    metric: ExploreMetricKey
+  ): ChartPoint[] {
+    const yExtent = metricExtent(days, metric)
+    const usableDays = days.filter((day) => day.metric[metric] !== null)
+    const xStep =
+      usableDays.length <= 1
+        ? 0
+        : (chartWidth - chartPadding * 2) / (usableDays.length - 1)
+
+    return usableDays.map((day, index) => ({
+      day,
+      x: chartPadding + xStep * index,
+      y: scaleNumber(
+        day.metric[metric] ?? 0,
+        yExtent,
+        chartHeight - chartPadding,
+        chartPadding
+      )
+    }))
+  }
+
+  function formatAverage(
+    value: number | null,
+    metric: ExploreMetricDefinition
+  ) {
+    return value === null ? "n/a" : formatMetricValue(value, metric)
+  }
+
+  function formatExploreDelta(row: ExploreMetricImpact) {
+    if (row.delta === null) {
+      return "n/a"
+    }
+
+    return `${formatDelta(row.delta)} ${row.metric.unit}`
+  }
+
   function formatMetricDelta(value: number | null) {
     return value === null ? "n/a" : formatDelta(value)
+  }
+
+  function formatMetricValue(
+    value: number | null,
+    metric: ExploreMetricDefinition
+  ) {
+    if (value === null) {
+      return "n/a"
+    }
+
+    const rounded =
+      Number.isInteger(value) || Math.abs(value) >= 10
+        ? `${Math.round(value)}`
+        : value.toFixed(1)
+
+    return metric.unit === "pts" ? rounded : `${rounded} ${metric.unit}`
   }
 
   function average(values: Array<number | null>) {
@@ -229,6 +385,14 @@
 
   function comparisonWidth(value: number | null) {
     return `${Math.max(0, Math.min(value ?? 0, 100))}%`
+  }
+
+  function detailTags(day: ExploreDay | undefined) {
+    if (!day) {
+      return "No day selected"
+    }
+
+    return day.tags.length > 0 ? day.tags.join(", ") : "No tags"
   }
 
   function discoveryImpact(tag: string) {
@@ -319,6 +483,67 @@
     return "warning"
   }
 
+  function impactWidth(row: ExploreMetricImpact) {
+    const maxDelta = Math.max(
+      ...exploreImpacts.map((impact) => Math.abs(impact.delta ?? 0)),
+      1
+    )
+
+    return `${Math.min((Math.abs(row.delta ?? 0) / maxDelta) * 100, 100)}%`
+  }
+
+  function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
+    const values = days
+      .map((day) => day.metric[metric])
+      .filter((value): value is number => value !== null)
+
+    if (values.length === 0) {
+      return [0, 1] as const
+    }
+
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+
+    if (min === max) {
+      return [min - 1, max + 1] as const
+    }
+
+    const padding = (max - min) * 0.08
+
+    return [min - padding, max + padding] as const
+  }
+
+  function scaleNumber(
+    value: number,
+    extent: readonly [number, number],
+    outputMin: number,
+    outputMax: number
+  ) {
+    const [inputMin, inputMax] = extent
+
+    return (
+      outputMin +
+      ((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)
+    )
+  }
+
+  function selectExploreDay(day: ExploreDay) {
+    selectedExploreDate = day.date
+  }
+
+  function toggleExploreTag(tag: string) {
+    selectedExploreDate = ""
+    selectedExploreTags = selectedExploreTags.includes(tag)
+      ? selectedExploreTags.filter((selectedTag) => selectedTag !== tag)
+      : [...selectedExploreTags, tag]
+  }
+
+  function timelinePath(points: ChartPoint[]) {
+    return points
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+      .join(" ")
+  }
+
   function buildTagsByDate(entries: typeof tagEntries) {
     return entries.reduce(
       (groups, tag) => {
@@ -372,6 +597,24 @@
     </button>
   </header>
 
+  <nav class="view-tabs" aria-label="Dashboard views">
+    <button
+      type="button"
+      class:active={activeView === "insights"}
+      on:click={() => (activeView = "insights")}
+    >
+      Insights
+    </button>
+    <button
+      type="button"
+      class:active={activeView === "explore"}
+      on:click={() => (activeView = "explore")}
+    >
+      Explore
+    </button>
+  </nav>
+
+  {#if activeView === "insights"}
   <section class="sync-strip">
     <div>
       <p class="section-kicker">{hasLocalData ? "Local data" : "MVP preview"}</p>
@@ -651,6 +894,223 @@
       </div>
     </div>
   </section>
+  {:else}
+    <section class="explore-workspace">
+      <div class="explore-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Explore</p>
+            <h2>Build your own Oura comparison</h2>
+          </div>
+          <span>{matchingExploreDays.length} matching nights</span>
+        </div>
+
+        <div class="explore-builder">
+          <section class="explore-control">
+            <h3>Tags</h3>
+            <div class="tag-picker">
+              {#each availableTags as tag}
+                <button
+                  type="button"
+                  class:active={selectedExploreTags.includes(tag)}
+                  on:click={() => toggleExploreTag(tag)}
+                >
+                  {tag}
+                </button>
+              {:else}
+                <p class="empty-state">Sync or add tags to explore patterns.</p>
+              {/each}
+            </div>
+          </section>
+
+          <section class="explore-control">
+            <h3>Outcomes</h3>
+            <div class="metric-selectors">
+              <label>
+                <span>X axis</span>
+                <select bind:value={selectedXMetric}>
+                  {#each exploreMetricDefinitions as metric}
+                    <option value={metric.key}>{metric.label}</option>
+                  {/each}
+                </select>
+              </label>
+              <label>
+                <span>Y axis</span>
+                <select bind:value={selectedYMetric}>
+                  {#each exploreMetricDefinitions as metric}
+                    <option value={metric.key}>{metric.label}</option>
+                  {/each}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section class="explore-control">
+            <h3>View</h3>
+            <div class="segmented-control" aria-label="Explore chart mode">
+              {#each chartModes as mode}
+                <button
+                  type="button"
+                  class:active={exploreChartMode === mode}
+                  on:click={() => (exploreChartMode = mode)}
+                >
+                  {mode}
+                </button>
+              {/each}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="explore-panel chart-panel">
+        <div class="chart-heading">
+          <div>
+            <p class="section-kicker">
+              {selectedExploreTags.length > 0 ? "All selected tags" : "No tag selected"}
+            </p>
+            <h2>
+              {selectedExploreTags.length > 0
+                ? selectedExploreTags.join(" + ")
+                : "Choose a tag combination"}
+            </h2>
+          </div>
+          <div class="chart-counts">
+            <span>{matchingExploreDays.length} tagged</span>
+            <span>{otherExploreDays.length} other</span>
+          </div>
+        </div>
+
+        {#if selectedExploreTags.length === 0}
+          <p class="empty-state">Select at least one tag to build an Explore view.</p>
+        {:else if matchingExploreDays.length === 0}
+          <p class="empty-state">No nights match every selected tag yet.</p>
+        {:else if exploreChartMode === "scatter"}
+          <div class="svg-chart">
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
+              <line
+                class="axis-line"
+                x1={chartPadding}
+                x2={chartPadding}
+                y1={chartPadding}
+                y2={chartHeight - chartPadding}
+              />
+              <line
+                class="axis-line"
+                x1={chartPadding}
+                x2={chartWidth - chartPadding}
+                y1={chartHeight - chartPadding}
+                y2={chartHeight - chartPadding}
+              />
+              {#each scatterPoints as point}
+                <circle
+                  class:match={point.day.matches}
+                  class="scatter-point"
+                  cx={point.x}
+                  cy={point.y}
+                  r={point.day.matches ? 8 : 5}
+                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
+                  on:mouseleave={() => (hoveredExploreDate = "")}
+                  on:click={() => selectExploreDay(point.day)}
+                />
+              {/each}
+            </svg>
+            <div class="chart-axis-labels">
+              <span>{selectedYDefinition.label}</span>
+              <span>{selectedXDefinition.label}</span>
+            </div>
+          </div>
+        {:else if exploreChartMode === "impact"}
+          <div class="impact-list">
+            {#each exploreImpacts as row}
+              <article>
+                <div>
+                  <strong>{row.metric.label}</strong>
+                  <span>
+                    {formatAverage(row.taggedAverage, row.metric)} tagged vs
+                    {formatAverage(row.otherAverage, row.metric)} other
+                  </span>
+                </div>
+                <div class="impact-bar">
+                  <span
+                    class="impact-fill {impactTone(row.toneDelta)}"
+                    style={`width: ${impactWidth(row)}`}
+                  />
+                </div>
+                <strong class="score-impact {impactTone(row.toneDelta)}">
+                  <b>{formatExploreDelta(row)}</b>
+                </strong>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <div class="svg-chart">
+            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
+              <line
+                class="axis-line"
+                x1={chartPadding}
+                x2={chartPadding}
+                y1={chartPadding}
+                y2={chartHeight - chartPadding}
+              />
+              <line
+                class="axis-line"
+                x1={chartPadding}
+                x2={chartWidth - chartPadding}
+                y1={chartHeight - chartPadding}
+                y2={chartHeight - chartPadding}
+              />
+              <path class="timeline-line" d={timelinePath(timelinePoints)} />
+              {#each timelinePoints as point}
+                <circle
+                  class:match={point.day.matches}
+                  class="scatter-point"
+                  cx={point.x}
+                  cy={point.y}
+                  r={point.day.matches ? 7 : 4}
+                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
+                  on:mouseleave={() => (hoveredExploreDate = "")}
+                  on:click={() => selectExploreDay(point.day)}
+                />
+              {/each}
+            </svg>
+            <div class="chart-axis-labels">
+              <span>{selectedYDefinition.label}</span>
+              <span>Timeline</span>
+            </div>
+          </div>
+        {/if}
+
+        <div class="explore-detail">
+          <div>
+            <span>Date</span>
+            <strong>{activeExploreDay ? formatDate(activeExploreDay.date) : "n/a"}</strong>
+          </div>
+          <div>
+            <span>{selectedXDefinition.label}</span>
+            <strong>
+              {formatMetricValue(
+                activeExploreDay?.metric[selectedXMetric] ?? null,
+                selectedXDefinition
+              )}
+            </strong>
+          </div>
+          <div>
+            <span>{selectedYDefinition.label}</span>
+            <strong>
+              {formatMetricValue(
+                activeExploreDay?.metric[selectedYMetric] ?? null,
+                selectedYDefinition
+              )}
+            </strong>
+          </div>
+          <div>
+            <span>Tags</span>
+            <strong>{detailTags(activeExploreDay)}</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+  {/if}
 </main>
 
 <style>
@@ -677,7 +1137,9 @@
   }
 
   .header,
+  .view-tabs,
   .sync-strip,
+  .explore-workspace,
   .workspace,
   .metric-grid {
     width: min(1180px, 100%);
@@ -788,6 +1250,40 @@
     transform: none;
   }
 
+  .view-tabs {
+    border-bottom: 1px solid #d3d5c8;
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 1rem;
+  }
+
+  .view-tabs button,
+  .segmented-control button,
+  .tag-picker button {
+    appearance: none;
+    border: 1px solid transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .view-tabs button {
+    background: transparent;
+    border-radius: 8px 8px 0 0;
+    color: #6f786f;
+    font-size: 0.9rem;
+    font-weight: 800;
+    padding: 0.7rem 0.9rem;
+  }
+
+  .view-tabs button.active {
+    background: rgba(251, 247, 239, 0.78);
+    border-color: #d3d5c8;
+    border-bottom-color: rgba(251, 247, 239, 0.78);
+    color: #17201b;
+    transform: translateY(1px);
+  }
+
   .sync-strip {
     display: grid;
     grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr);
@@ -846,6 +1342,7 @@
 
   .metric-card,
   .analysis-panel,
+  .explore-panel,
   .trend-panel {
     border: 1px solid #d3d5c8;
     border-radius: 8px;
@@ -896,8 +1393,268 @@
   }
 
   .analysis-panel,
+  .explore-panel,
   .trend-panel {
     padding: 1rem;
+  }
+
+  .explore-workspace {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .explore-builder {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.9fr) minmax(
+        220px,
+        0.7fr
+      );
+    gap: 0.9rem;
+  }
+
+  .explore-control {
+    display: grid;
+    gap: 0.55rem;
+    min-width: 0;
+  }
+
+  .explore-control h3 {
+    color: #4f5f53;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .tag-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .tag-picker button,
+  .segmented-control button {
+    background: #f7f1e8;
+    border-color: #d8d8cc;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 750;
+    padding: 0.5rem 0.72rem;
+  }
+
+  .tag-picker button.active,
+  .segmented-control button.active {
+    background: #1d2a22;
+    border-color: #1d2a22;
+    color: #f8f3ea;
+  }
+
+  .metric-selectors {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+  }
+
+  .metric-selectors label {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .metric-selectors span {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .metric-selectors select {
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    background: #fbf7ef;
+    color: #17201b;
+    font: inherit;
+    min-width: 0;
+    padding: 0.65rem 0.7rem;
+  }
+
+  .segmented-control {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .chart-panel {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .chart-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .chart-counts {
+    color: #6f786f;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    font-size: 0.85rem;
+    font-weight: 800;
+    justify-content: flex-end;
+    white-space: nowrap;
+  }
+
+  .svg-chart {
+    border-block: 1px solid #d8d8cc;
+    padding-block: 0.65rem;
+  }
+
+  .svg-chart svg {
+    display: block;
+    height: auto;
+    width: 100%;
+  }
+
+  .axis-line {
+    stroke: #cfd2c4;
+    stroke-width: 2;
+  }
+
+  .scatter-point {
+    cursor: pointer;
+    fill: #9ca69a;
+    opacity: 0.82;
+    stroke: #fbf7ef;
+    stroke-width: 2;
+  }
+
+  .scatter-point.match {
+    fill: #4f8a63;
+    opacity: 1;
+  }
+
+  .timeline-line {
+    fill: none;
+    stroke: #6f786f;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+  }
+
+  .chart-axis-labels {
+    color: #6f786f;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    font-weight: 800;
+    margin-top: 0.4rem;
+    text-transform: uppercase;
+  }
+
+  .impact-list {
+    display: grid;
+    gap: 0;
+    border-top: 1px solid #d8d8cc;
+  }
+
+  .impact-list article {
+    align-items: center;
+    border-bottom: 1px solid #d8d8cc;
+    display: grid;
+    grid-template-columns: minmax(190px, 0.95fr) minmax(140px, 1fr) auto;
+    gap: 0.8rem;
+    min-height: 58px;
+    padding-block: 0.65rem;
+  }
+
+  .impact-list article > div:first-child {
+    min-width: 0;
+  }
+
+  .impact-list strong,
+  .impact-list span {
+    display: block;
+  }
+
+  .impact-list article > div:first-child span {
+    color: #6f786f;
+    font-size: 0.82rem;
+    margin-top: 0.15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .impact-list .score-impact b {
+    font-size: 1rem;
+  }
+
+  .impact-bar {
+    background: #ebe7dd;
+    border-radius: 999px;
+    height: 0.55rem;
+    overflow: hidden;
+  }
+
+  .impact-fill {
+    display: block;
+    height: 100%;
+  }
+
+  .impact-fill.excellent {
+    background: #1e2c64;
+  }
+
+  .impact-fill.positive {
+    background: #3f7b54;
+  }
+
+  .impact-fill.neutral {
+    background: #17201b;
+  }
+
+  .impact-fill.warning {
+    background: #b46b3f;
+  }
+
+  .impact-fill.negative {
+    background: #a8423e;
+  }
+
+  .explore-detail {
+    border-top: 1px solid #d8d8cc;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .explore-detail div {
+    border-right: 1px solid #d8d8cc;
+    display: grid;
+    gap: 0.25rem;
+    min-height: 58px;
+    padding: 0.65rem 0.75rem 0 0;
+  }
+
+  .explore-detail div:last-child {
+    border-right: 0;
+  }
+
+  .explore-detail span {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .explore-detail strong {
+    font-size: 0.95rem;
+    line-height: 1.25;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .panel-heading {
@@ -1275,6 +2032,7 @@
     .header,
     .sync-strip,
     .workspace,
+    .explore-builder,
     .sync-form {
       grid-template-columns: 1fr;
     }
@@ -1285,6 +2043,19 @@
 
     .metric-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .explore-detail {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .explore-detail div {
+      border-right: 0;
+      border-bottom: 1px solid #d8d8cc;
+    }
+
+    .impact-list article {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 
@@ -1300,6 +2071,19 @@
 
     .metric-grid {
       grid-template-columns: 1fr;
+    }
+
+    .metric-selectors,
+    .explore-detail {
+      grid-template-columns: 1fr;
+    }
+
+    .chart-heading {
+      display: grid;
+    }
+
+    .chart-counts {
+      justify-content: flex-start;
     }
 
     .detail-stats {
