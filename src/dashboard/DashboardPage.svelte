@@ -1224,35 +1224,6 @@
         {/if}
 
         <div class="explore-log">
-          <section class="focus-summary" aria-label="Focused explore day">
-            <div>
-              <span>Focus</span>
-              <strong>{activeExploreDay ? formatDate(activeExploreDay.date) : "n/a"}</strong>
-            </div>
-            <div>
-              <span>{selectedXDefinition.label}</span>
-              <strong>
-                {formatMetricValue(
-                  activeExploreDay?.metric[selectedXMetric] ?? null,
-                  selectedXDefinition
-                )}
-              </strong>
-            </div>
-            <div>
-              <span>{selectedYDefinition.label}</span>
-              <strong>
-                {formatMetricValue(
-                  activeExploreDay?.metric[selectedYMetric] ?? null,
-                  selectedYDefinition
-                )}
-              </strong>
-            </div>
-            <div>
-              <span>Tags</span>
-              <strong>{detailTags(activeExploreDay)}</strong>
-            </div>
-          </section>
-
           <section class="matching-log" aria-label="Matching explore nights">
             <div class="log-heading">
               <div>
@@ -1824,33 +1795,9 @@
   .explore-log {
     border-top: 1px solid #d8d8cc;
     display: grid;
-    gap: 0.85rem;
-    padding-top: 0.85rem;
+    padding-top: 0.75rem;
   }
 
-  .focus-summary {
-    display: grid;
-    grid-template-columns: 0.55fr 0.7fr 0.7fr minmax(0, 1.3fr);
-    gap: 0;
-  }
-
-  .focus-summary div {
-    border-right: 1px solid #d8d8cc;
-    display: grid;
-    gap: 0.25rem;
-    min-height: 54px;
-    padding-right: 0.75rem;
-  }
-
-  .focus-summary div + div {
-    padding-left: 0.75rem;
-  }
-
-  .focus-summary div:last-child {
-    border-right: 0;
-  }
-
-  .focus-summary span,
   .log-row.header span,
   .log-heading > span {
     color: #6f786f;
@@ -1859,20 +1806,9 @@
     text-transform: uppercase;
   }
 
-  .focus-summary strong {
-    font-size: 0.95rem;
-    line-height: 1.25;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .matching-log {
-    border-top: 1px solid #d8d8cc;
     display: grid;
     gap: 0.45rem;
-    padding-top: 0.75rem;
   }
 
   .log-heading {
@@ -2317,20 +2253,6 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .focus-summary {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .focus-summary div {
-      border-right: 0;
-      border-bottom: 1px solid #d8d8cc;
-      padding: 0.55rem 0;
-    }
-
-    .focus-summary div + div {
-      padding-left: 0;
-    }
-
     .log-row {
       grid-template-columns: 80px repeat(2, minmax(90px, 0.5fr)) minmax(160px, 1fr);
       overflow-x: auto;
@@ -2355,8 +2277,7 @@
       grid-template-columns: 1fr;
     }
 
-    .metric-selectors,
-    .focus-summary {
+    .metric-selectors {
       grid-template-columns: 1fr;
     }
 
