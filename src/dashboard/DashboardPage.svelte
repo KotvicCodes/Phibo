@@ -19,6 +19,7 @@
   import { db } from "../lib/db"
   import type { AuthTokenRow, DailyMetricRow } from "../lib/db/types"
   import { OuraApiError, validateOuraToken } from "../lib/oura/client"
+  import { importOuraFiles, OuraImportError } from "../lib/oura/import"
   import {
     sampleDailyMetrics,
     sampleTagEntries
@@ -72,7 +73,10 @@
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
+  let importFileInput: HTMLInputElement | null = null
+  let importMessage = "Import your Oura personal data export to begin."
   let isSyncing = false
+  let isImporting = false
   let isEditingToken = false
   let savedOuraToken: AuthTokenRow | null = null
   let selectedInsightKey = ""
@@ -179,6 +183,7 @@
   $: selectedStats = selectedInsight ? createInsightStats(selectedInsight) : []
   $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
   $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
+  $: headerActionLabel = isOuraConnected ? connectionActionLabel : "Import data"
   $: summaries = [
     createSummary("Sleep", "sleepScore", "vs sample baseline"),
     createSummary("Readiness", "readinessScore", "this week"),
@@ -194,11 +199,52 @@
     if (savedMetrics.length > 0) {
       dailyMetrics = savedMetrics
       tagEntries = savedTags
+      importMessage = `Loaded ${savedMetrics.length} saved Oura days from local storage.`
       syncMessage = `Loaded ${savedMetrics.length} saved Oura days.`
     } else if (savedToken) {
       syncMessage = "Oura key is connected. Your data stays on this device."
     }
   })
+
+  async function handleOuraFileInput(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    await importFiles(Array.from(input.files ?? []))
+    input.value = ""
+  }
+
+  async function handleImportDrop(event: DragEvent) {
+    await importFiles(Array.from(event.dataTransfer?.files ?? []))
+  }
+
+  async function importFiles(files: File[]) {
+    if (files.length === 0) {
+      importMessage = "Choose an Oura export ZIP, JSON, or CSV file."
+      return
+    }
+
+    isImporting = true
+    importMessage = "Reading Oura export locally..."
+
+    try {
+      const result = await importOuraFiles(files)
+
+      await loadLocalOuraData()
+      exploreTagsInitialized = false
+      importMessage =
+        result.tagEntries.length > 0
+          ? `Imported ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags from ${result.filesImported} Oura files.`
+          : `Imported ${result.dailyMetrics.length} days. No tags were found in this export; existing local tags remain available.`
+    } catch (error) {
+      importMessage = formatOuraImportError(error)
+    } finally {
+      isImporting = false
+    }
+  }
 
   async function connectAndSyncData() {
     const token = accessToken.trim()
@@ -273,8 +319,8 @@
     const result = await syncOuraRange(token, startDate, endDate)
     const lastSyncedAt = new Date().toISOString()
 
-    dailyMetrics = result.dailyMetrics
-    tagEntries = result.tagEntries
+    await loadLocalOuraData()
+    exploreTagsInitialized = false
     syncMessage = `Synced ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags.`
 
     if (savedOuraToken) {
@@ -354,6 +400,26 @@
     return error instanceof Error
       ? "Could not reach Oura. Check your connection and try again."
       : "Sync failed."
+  }
+
+  function formatOuraImportError(error: unknown) {
+    if (error instanceof OuraImportError) {
+      return error.message
+    }
+
+    return error instanceof Error
+      ? "Could not import that Oura export. Check the file and try again."
+      : "Import failed."
+  }
+
+  async function loadLocalOuraData() {
+    const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
+    const savedTags = await db.tagEntries.orderBy("date").toArray()
+
+    if (savedMetrics.length > 0) {
+      dailyMetrics = savedMetrics
+      tagEntries = savedTags
+    }
   }
 
   function formatConnectionDate(value: string | null | undefined) {
@@ -817,10 +883,10 @@
     <button
       type="button"
       class="sync-button"
-      on:click={isOuraConnected ? syncData : connectAndSyncData}
-      disabled={isSyncing}
+      on:click={isOuraConnected ? syncData : () => importFileInput?.click()}
+      disabled={isSyncing || isImporting}
     >
-      {isSyncing ? "Syncing" : connectionActionLabel}
+      {isSyncing ? "Syncing" : isImporting ? "Importing" : headerActionLabel}
     </button>
   </header>
 
@@ -842,31 +908,108 @@
   </nav>
 
   {#if activeView === "insights"}
-  <section class="sync-strip">
+  <section class="import-strip">
     <div>
-      <p class="section-kicker">{isOuraConnected ? "Connected locally" : hasLocalData ? "Local data" : "Private setup"}</p>
-      <h2>{isOuraConnected ? "Oura key saved on this device" : "Connect Oura with your key"}</h2>
+      <p class="section-kicker">{hasLocalData ? "Local data" : "Private import"}</p>
+      <h2>Import Oura export</h2>
       <p class="privacy-note">
-        Your key and imported health data stay in this browser extension. Phibo only contacts Oura's API.
+        Download your Oura personal data export, then import it here. Files are read locally and never uploaded.
       </p>
+      <ol class="import-steps">
+        <li>
+          Open
+          <a href="https://membership.ouraring.com" target="_blank" rel="noreferrer">
+            Oura Membership Hub
+          </a>
+        </li>
+        <li>Choose Export data, request your data, then download the export.</li>
+        <li>Import the ZIP, JSON, or CSV files into Phibo.</li>
+      </ol>
     </div>
-    {#if isOuraConnected && savedOuraToken}
-      <div class="connection-panel">
-        <div class="connection-status">
-          <div>
-            <span>Saved key</span>
-            <strong aria-label="Oura key is hidden">•••• •••• ••••</strong>
+    <div
+      class="import-panel"
+      on:dragover|preventDefault
+      on:drop|preventDefault={handleImportDrop}
+    >
+      <input
+        bind:this={importFileInput}
+        class="file-input"
+        type="file"
+        accept=".zip,.json,.csv"
+        multiple
+        on:change={handleOuraFileInput}
+      />
+      <div>
+        <strong>{isImporting ? "Importing Oura export" : "Drop Oura export here"}</strong>
+        <span>Supports personal export ZIPs and Oura JSON or CSV files.</span>
+      </div>
+      <button type="button" on:click={() => importFileInput?.click()} disabled={isImporting}>
+        {isImporting ? "Reading files" : "Choose files"}
+      </button>
+      <p>{importMessage}</p>
+    </div>
+  </section>
+
+  <details class="advanced-sync" open={isOuraConnected || isEditingToken}>
+    <summary>Automatic sync with Oura key</summary>
+    <div class="sync-strip compact">
+      <div>
+        <p class="section-kicker">{isOuraConnected ? "Connected locally" : "Optional"}</p>
+        <h2>{isOuraConnected ? "Oura key saved on this device" : "Connect with your Oura key"}</h2>
+        <p class="privacy-note">
+          Automatic sync stores your key locally. Import is the recommended path if you prefer not to grant API access.
+        </p>
+      </div>
+      {#if isOuraConnected && savedOuraToken}
+        <div class="connection-panel">
+          <div class="connection-status">
+            <div>
+              <span>Saved key</span>
+              <strong aria-label="Oura key is hidden">•••• •••• ••••</strong>
+            </div>
+            <div>
+              <span>Validated</span>
+              <strong>{formatConnectionDate(savedOuraToken.lastValidatedAt)}</strong>
+            </div>
+            <div>
+              <span>Last synced</span>
+              <strong>{formatConnectionDate(savedOuraToken.lastSyncedAt)}</strong>
+            </div>
           </div>
-          <div>
-            <span>Validated</span>
-            <strong>{formatConnectionDate(savedOuraToken.lastValidatedAt)}</strong>
-          </div>
-          <div>
-            <span>Last synced</span>
-            <strong>{formatConnectionDate(savedOuraToken.lastSyncedAt)}</strong>
-          </div>
+          <form class="sync-form connected" on:submit|preventDefault={syncData}>
+            <label>
+              <span>Start</span>
+              <input bind:value={startDate} type="date" />
+            </label>
+            <label>
+              <span>End</span>
+              <input bind:value={endDate} type="date" />
+            </label>
+            <div class="connection-actions">
+              <button type="submit" disabled={isSyncing}>
+                {isSyncing ? "Syncing" : "Sync data"}
+              </button>
+              <button type="button" class="secondary" on:click={changeOuraToken}>
+                Change key
+              </button>
+              <button type="button" class="danger" on:click={disconnectOura}>
+                Disconnect
+              </button>
+            </div>
+            <p>{syncMessage}</p>
+          </form>
         </div>
-        <form class="sync-form connected" on:submit|preventDefault={syncData}>
+      {:else}
+        <form class="sync-form" on:submit|preventDefault={connectAndSyncData}>
+          <label>
+            <span>Oura key</span>
+            <input
+              bind:value={accessToken}
+              type="password"
+              autocomplete="off"
+              placeholder="Paste Oura personal access token"
+            />
+          </label>
           <label>
             <span>Start</span>
             <input bind:value={startDate} type="date" />
@@ -877,69 +1020,37 @@
           </label>
           <div class="connection-actions">
             <button type="submit" disabled={isSyncing}>
-              {isSyncing ? "Syncing" : "Sync data"}
+              {isSyncing ? "Connecting" : "Connect & sync"}
             </button>
-            <button type="button" class="secondary" on:click={changeOuraToken}>
-              Change key
-            </button>
-            <button type="button" class="danger" on:click={disconnectOura}>
-              Disconnect
-            </button>
+            {#if savedOuraToken}
+              <button type="button" class="secondary" on:click={cancelTokenChange}>
+                Cancel
+              </button>
+            {/if}
+            <a
+              href="https://cloud.ouraring.com/personal-access-tokens"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open Oura keys
+            </a>
           </div>
+          <p class="key-help">
+            Find or create your key in
+            <a
+              href="https://cloud.ouraring.com/personal-access-tokens"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Oura Cloud Personal Access Tokens
+            </a>
+            and enable daily and tag access.
+          </p>
           <p>{syncMessage}</p>
         </form>
-      </div>
-    {:else}
-      <form class="sync-form" on:submit|preventDefault={connectAndSyncData}>
-        <label>
-          <span>Oura key</span>
-          <input
-            bind:value={accessToken}
-            type="password"
-            autocomplete="off"
-            placeholder="Paste Oura personal access token"
-          />
-        </label>
-        <label>
-          <span>Start</span>
-          <input bind:value={startDate} type="date" />
-        </label>
-        <label>
-          <span>End</span>
-          <input bind:value={endDate} type="date" />
-        </label>
-        <div class="connection-actions">
-          <button type="submit" disabled={isSyncing}>
-            {isSyncing ? "Connecting" : "Connect & sync"}
-          </button>
-          {#if savedOuraToken}
-            <button type="button" class="secondary" on:click={cancelTokenChange}>
-              Cancel
-            </button>
-          {/if}
-          <a
-            href="https://cloud.ouraring.com/personal-access-tokens"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open Oura keys
-          </a>
-        </div>
-        <p class="key-help">
-          Find or create your key in
-          <a
-            href="https://cloud.ouraring.com/personal-access-tokens"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Oura Cloud Personal Access Tokens
-          </a>
-          and enable daily and tag access.
-        </p>
-        <p>{syncMessage}</p>
-      </form>
-    {/if}
-  </section>
+      {/if}
+    </div>
+  </details>
 
   <section class="metric-grid" aria-label="Metric summary">
     {#each summaries as summary}
@@ -1660,6 +1771,7 @@
     transform: translateY(1px);
   }
 
+  .import-strip,
   .sync-strip {
     display: grid;
     grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr);
@@ -1669,12 +1781,108 @@
     margin-bottom: 1rem;
   }
 
+  .import-strip {
+    align-items: stretch;
+  }
+
+  .sync-strip.compact {
+    border-bottom: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+
   .privacy-note {
     color: #566157;
     font-size: 0.9rem;
     line-height: 1.45;
     margin-top: 0.45rem;
     max-width: 34rem;
+  }
+
+  .import-steps {
+    color: #566157;
+    display: grid;
+    gap: 0.32rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    margin: 0.7rem 0 0;
+    padding-left: 1.25rem;
+  }
+
+  .import-steps a,
+  .key-help a {
+    color: #263f6f;
+    font-weight: 800;
+  }
+
+  .import-panel {
+    align-items: center;
+    border: 1px dashed #b8c1af;
+    border-radius: 8px;
+    background: rgba(255, 252, 246, 0.52);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    min-height: 148px;
+    padding: 1rem;
+  }
+
+  .import-panel div {
+    display: grid;
+    gap: 0.22rem;
+    min-width: 0;
+  }
+
+  .import-panel strong {
+    font-size: 1.05rem;
+  }
+
+  .import-panel span,
+  .import-panel p {
+    color: #566157;
+    font-size: 0.9rem;
+    line-height: 1.45;
+  }
+
+  .import-panel p {
+    grid-column: 1 / -1;
+  }
+
+  .import-panel button {
+    appearance: none;
+    border: 1px solid #1d2a22;
+    border-radius: 8px;
+    background: #1d2a22;
+    color: #f8f3ea;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    min-height: 42px;
+    padding: 0.58rem 0.8rem;
+    white-space: nowrap;
+  }
+
+  .import-panel button:disabled {
+    cursor: wait;
+    opacity: 0.72;
+  }
+
+  .file-input {
+    display: none;
+  }
+
+  .advanced-sync {
+    border-bottom: 1px solid #d3d5c8;
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .advanced-sync summary {
+    color: #4f5f53;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 
   .connection-panel {
@@ -1809,11 +2017,6 @@
     color: #566157;
     font-size: 0.9rem;
     line-height: 1.45;
-  }
-
-  .key-help a {
-    color: #263f6f;
-    font-weight: 800;
   }
 
   .metric-grid {
@@ -2572,6 +2775,8 @@
     }
 
     .header,
+    .import-strip,
+    .import-panel,
     .sync-strip,
     .workspace,
     .explore-builder,
