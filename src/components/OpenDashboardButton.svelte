@@ -1,17 +1,29 @@
 <script lang="ts">
   export let href = ""
 
-  function openDashboard() {
-    chrome.tabs.create({ url: href })
+  function openDashboard(event: MouseEvent) {
+    if (!href) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (globalThis.chrome?.tabs?.create) {
+      globalThis.chrome.tabs.create({ url: href })
+      return
+    }
+
+    window.open(href, "_blank", "noopener")
   }
 </script>
 
-<button type="button" class="button" on:click={openDashboard}>
+<a class="button" href={href} target="_blank" rel="noreferrer" on:click={openDashboard}>
   Open Dashboard
-</button>
+</a>
 
 <style>
   .button {
+    display: inline-block;
     appearance: none;
     border: 0;
     border-radius: 999px;
@@ -21,6 +33,7 @@
     font: inherit;
     font-weight: 600;
     padding: 0.9rem 1.2rem;
+    text-decoration: none;
     transition:
       transform 120ms ease,
       opacity 120ms ease,
