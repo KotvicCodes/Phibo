@@ -12,7 +12,10 @@ export interface AuthTokenRow {
   id: "oura"
   accessToken: string
   expiresAt: string | null
+  lastSyncedAt?: string | null
+  lastValidatedAt?: string | null
   scopes: OuraScope[]
+  source?: "user_token"
   tokenType: "bearer"
   updatedAt: string
 }
