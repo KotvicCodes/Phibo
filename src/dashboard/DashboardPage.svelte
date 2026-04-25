@@ -922,9 +922,20 @@
             target="_blank"
             rel="noreferrer"
           >
-            Get Oura key
+            Open Oura keys
           </a>
         </div>
+        <p class="key-help">
+          Find or create your key in
+          <a
+            href="https://cloud.ouraring.com/personal-access-tokens"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Oura Cloud Personal Access Tokens
+          </a>
+          and enable daily and tag access.
+        </p>
         <p>{syncMessage}</p>
       </form>
     {/if}
@@ -1798,6 +1809,11 @@
     color: #566157;
     font-size: 0.9rem;
     line-height: 1.45;
+  }
+
+  .key-help a {
+    color: #263f6f;
+    font-weight: 800;
   }
 
   .metric-grid {
