@@ -1732,10 +1732,10 @@
     align-items: center;
     border-bottom: 1px solid #d8d8cc;
     display: grid;
-    grid-template-columns: minmax(190px, 0.95fr) minmax(220px, 1fr) 92px;
+    grid-template-columns: minmax(190px, 0.9fr) minmax(200px, 1fr) 118px;
     gap: 0.8rem;
     min-height: 58px;
-    padding-block: 0.65rem;
+    padding: 0.65rem 0.4rem 0.65rem 0;
   }
 
   .impact-list article > div:first-child {
