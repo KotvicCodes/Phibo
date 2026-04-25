@@ -10,15 +10,58 @@ export type MetricKey =
 export type PrimaryInsightMetric = "readinessScore" | "sleepScore"
 
 export type ExploreMetricKey =
+  | "activeCalories"
   | "activityScore"
+  | "activityContributorMeetDailyTargets"
+  | "activityContributorMoveEveryHour"
+  | "activityContributorRecoveryTime"
+  | "activityContributorStayActive"
+  | "activityContributorTrainingFrequency"
+  | "activityContributorTrainingVolume"
+  | "averageBreath"
+  | "averageHeartRate"
   | "averageHrv"
+  | "averageMetMinutes"
+  | "awakeMinutes"
   | "deepSleepMinutes"
+  | "equivalentWalkingDistance"
+  | "highActivityMetMinutes"
+  | "highActivityMinutes"
+  | "lightSleepMinutes"
+  | "lowActivityMinutes"
+  | "mediumActivityMetMinutes"
+  | "mediumActivityMinutes"
+  | "nonWearMinutes"
+  | "readinessContributorActivityBalance"
+  | "readinessContributorBodyTemperature"
+  | "readinessContributorHrvBalance"
+  | "readinessContributorPreviousDayActivity"
+  | "readinessContributorPreviousNight"
+  | "readinessContributorRecoveryIndex"
+  | "readinessContributorRestingHeartRate"
+  | "readinessContributorSleepBalance"
+  | "readinessScoreDelta"
   | "readinessScore"
   | "remSleepMinutes"
+  | "restingMinutes"
   | "restingHeartRate"
+  | "restlessPeriods"
+  | "sedentaryMinutes"
+  | "sleepContributorDeepSleep"
+  | "sleepContributorEfficiency"
+  | "sleepContributorLatency"
+  | "sleepContributorRemSleep"
+  | "sleepContributorRestfulness"
+  | "sleepContributorTiming"
+  | "sleepContributorTotalSleep"
   | "sleepEfficiency"
   | "sleepLatencyMinutes"
+  | "sleepScoreDelta"
   | "sleepScore"
+  | "steps"
+  | "targetCalories"
+  | "timeInBedMinutes"
+  | "totalCalories"
   | "totalSleepMinutes"
 
 export interface ExploreMetricDefinition {
@@ -101,15 +144,111 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     higherIsBetter: true,
+    key: "activeCalories",
+    label: "Active calories",
+    unit: "cal"
+  },
+  {
+    higherIsBetter: true,
+    key: "totalCalories",
+    label: "Total calories",
+    unit: "cal"
+  },
+  {
+    higherIsBetter: true,
+    key: "targetCalories",
+    label: "Target calories",
+    unit: "cal"
+  },
+  {
+    higherIsBetter: true,
+    key: "steps",
+    label: "Steps",
+    unit: "steps"
+  },
+  {
+    higherIsBetter: true,
+    key: "equivalentWalkingDistance",
+    label: "Walking distance",
+    unit: "m"
+  },
+  {
+    higherIsBetter: true,
+    key: "averageMetMinutes",
+    label: "Avg MET",
+    unit: "MET"
+  },
+  {
+    higherIsBetter: true,
+    key: "highActivityMetMinutes",
+    label: "High MET min",
+    unit: "MET min"
+  },
+  {
+    higherIsBetter: true,
+    key: "mediumActivityMetMinutes",
+    label: "Medium MET min",
+    unit: "MET min"
+  },
+  {
+    higherIsBetter: true,
+    key: "highActivityMinutes",
+    label: "High activity",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "mediumActivityMinutes",
+    label: "Medium activity",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "lowActivityMinutes",
+    label: "Low activity",
+    unit: "min"
+  },
+  {
+    higherIsBetter: false,
+    key: "sedentaryMinutes",
+    label: "Sedentary",
+    unit: "min"
+  },
+  {
+    higherIsBetter: false,
+    key: "nonWearMinutes",
+    label: "Non-wear",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
+    key: "restingMinutes",
+    label: "Resting",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
     key: "averageHrv",
     label: "HRV",
     unit: "ms"
   },
   {
     higherIsBetter: false,
+    key: "averageHeartRate",
+    label: "Avg sleep HR",
+    unit: "bpm"
+  },
+  {
+    higherIsBetter: false,
     key: "restingHeartRate",
     label: "Resting HR",
     unit: "bpm"
+  },
+  {
+    higherIsBetter: true,
+    key: "averageBreath",
+    label: "Breathing rate",
+    unit: "br/min"
   },
   {
     higherIsBetter: true,
@@ -131,6 +270,12 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     higherIsBetter: true,
+    key: "lightSleepMinutes",
+    label: "Light sleep",
+    unit: "min"
+  },
+  {
+    higherIsBetter: true,
     key: "remSleepMinutes",
     label: "REM sleep",
     unit: "min"
@@ -140,6 +285,162 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     key: "totalSleepMinutes",
     label: "Total sleep",
     unit: "min"
+  },
+  {
+    higherIsBetter: false,
+    key: "awakeMinutes",
+    label: "Awake time",
+    unit: "min"
+  },
+  {
+    higherIsBetter: false,
+    key: "timeInBedMinutes",
+    label: "Time in bed",
+    unit: "min"
+  },
+  {
+    higherIsBetter: false,
+    key: "restlessPeriods",
+    label: "Restless periods",
+    unit: "periods"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepScoreDelta",
+    label: "Sleep score delta",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessScoreDelta",
+    label: "Readiness delta",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorDeepSleep",
+    label: "Deep contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorEfficiency",
+    label: "Efficiency contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorLatency",
+    label: "Latency contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorRemSleep",
+    label: "REM contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorRestfulness",
+    label: "Restfulness contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorTiming",
+    label: "Timing contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "sleepContributorTotalSleep",
+    label: "Total sleep contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorActivityBalance",
+    label: "Activity balance",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorBodyTemperature",
+    label: "Body temp contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorHrvBalance",
+    label: "HRV balance",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorPreviousDayActivity",
+    label: "Prev day activity",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorPreviousNight",
+    label: "Previous night",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorRecoveryIndex",
+    label: "Recovery index",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorRestingHeartRate",
+    label: "RHR contributor",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "readinessContributorSleepBalance",
+    label: "Sleep balance",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorMeetDailyTargets",
+    label: "Meet targets",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorMoveEveryHour",
+    label: "Move hourly",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorRecoveryTime",
+    label: "Recovery time",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorStayActive",
+    label: "Stay active",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorTrainingFrequency",
+    label: "Training frequency",
+    unit: "pts"
+  },
+  {
+    higherIsBetter: true,
+    key: "activityContributorTrainingVolume",
+    label: "Training volume",
+    unit: "pts"
   }
 ]
 const primaryInsightMetrics: PrimaryInsightMetric[] = [
@@ -430,8 +731,8 @@ function insightId(insight: TagInsight) {
   return `${insight.tag}-${insight.metric}`
 }
 
-function average(values: Array<number | null>) {
-  const usableValues = values.filter((value): value is number => value !== null)
+function average(values: Array<number | null | undefined>) {
+  const usableValues = values.filter((value): value is number => value != null)
 
   if (usableValues.length === 0) {
     return null

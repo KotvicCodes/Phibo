@@ -2,7 +2,7 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 const syncedAt = "2026-04-24T08:00:00.000Z"
 
-export const sampleDailyMetrics: DailyMetricRow[] = [
+export const sampleDailyMetrics: DailyMetricRow[] = withSampleExtras([
   {
     date: "2026-04-16",
     sleepScore: 83,
@@ -147,7 +147,7 @@ export const sampleDailyMetrics: DailyMetricRow[] = [
     sourceUpdatedAt: null,
     syncedAt
   }
-]
+])
 
 export const sampleTagEntries: TagEntryRow[] = [
   createTag("2026-03-18", "blackout curtains"),
@@ -173,4 +173,60 @@ function createTag(date: string, tag: string): TagEntryRow {
     sourceUpdatedAt: null,
     syncedAt
   }
+}
+
+function withSampleExtras(rows: DailyMetricRow[]) {
+  return rows.map((row, index) => ({
+    ...row,
+    activeCalories: 280 + index * 18 + (row.activityScore ?? 0),
+    activityContributorMeetDailyTargets: clampScore((row.activityScore ?? 0) + 2),
+    activityContributorMoveEveryHour: clampScore((row.activityScore ?? 0) + 8),
+    activityContributorRecoveryTime: clampScore((row.readinessScore ?? 0) + 4),
+    activityContributorStayActive: clampScore((row.activityScore ?? 0) + 5),
+    activityContributorTrainingFrequency: clampScore((row.activityScore ?? 0) - 4),
+    activityContributorTrainingVolume: clampScore((row.activityScore ?? 0) - 2),
+    averageBreath: 14.4 + index * 0.1,
+    averageHeartRate: (row.restingHeartRate ?? 50) + 5,
+    averageMetMinutes: 1.2 + index * 0.08,
+    awakeMinutes: Math.max((row.timeInBedMinutes ?? 465) - (row.totalSleepMinutes ?? 420), 18),
+    equivalentWalkingDistance: 5200 + index * 420,
+    highActivityMetMinutes: 12 + index * 3,
+    highActivityMinutes: 4 + index,
+    lightSleepMinutes:
+      (row.totalSleepMinutes ?? 0) -
+      (row.deepSleepMinutes ?? 0) -
+      (row.remSleepMinutes ?? 0),
+    lowActivityMinutes: 210 + index * 8,
+    mediumActivityMetMinutes: 38 + index * 4,
+    mediumActivityMinutes: 26 + index * 2,
+    nonWearMinutes: index % 3 === 0 ? 18 : 0,
+    readinessContributorActivityBalance: clampScore((row.readinessScore ?? 0) - 1),
+    readinessContributorBodyTemperature: clampScore((row.readinessScore ?? 0) + 3),
+    readinessContributorHrvBalance: row.hrvBalance,
+    readinessContributorPreviousDayActivity: clampScore((row.activityScore ?? 0) - 1),
+    readinessContributorPreviousNight: clampScore((row.sleepScore ?? 0) - 2),
+    readinessContributorRecoveryIndex: clampScore((row.readinessScore ?? 0) + 2),
+    readinessContributorRestingHeartRate: clampScore(100 - ((row.restingHeartRate ?? 50) - 45) * 5),
+    readinessContributorSleepBalance: clampScore((row.sleepScore ?? 0) - 1),
+    readinessScoreDelta: Math.round(((row.readinessScore ?? 78) - 78) / 2),
+    restingMinutes: 420 + index * 10,
+    restlessPeriods: 4 + (index % 4),
+    sedentaryMinutes: 430 - index * 12,
+    sleepContributorDeepSleep: clampScore((row.deepSleepMinutes ?? 80) - 5),
+    sleepContributorEfficiency: row.sleepEfficiency,
+    sleepContributorLatency: clampScore(100 - (row.sleepLatencyMinutes ?? 15) * 2),
+    sleepContributorRemSleep: clampScore((row.remSleepMinutes ?? 90) - 12),
+    sleepContributorRestfulness: clampScore((row.sleepScore ?? 80) - 3),
+    sleepContributorTiming: clampScore((row.sleepScore ?? 80) - 1),
+    sleepContributorTotalSleep: clampScore(((row.totalSleepMinutes ?? 420) - 300) / 2),
+    sleepScoreDelta: Math.round(((row.sleepScore ?? 82) - 82) / 2),
+    steps: 6200 + index * 520,
+    targetCalories: 420 + index * 12,
+    timeInBedMinutes: (row.totalSleepMinutes ?? 420) + 42,
+    totalCalories: 2180 + index * 34
+  }))
+}
+
+function clampScore(value: number | null) {
+  return value === null ? null : Math.max(0, Math.min(Math.round(value), 100))
 }
