@@ -213,12 +213,6 @@
     return "Keep observing"
   }
 
-  function formatDiscoveryImpact(tag: string) {
-    const impact = discoveryImpact(tag)
-
-    return impact ? formatInsightDelta({ ...impact, kind: "notable", tag, daysWithTag: 0, supportScore: 0, weightedImpact: 0 }) : "n/a"
-  }
-
   function getMetricComparison(
     tag: string,
     metric: PrimaryInsightMetric
@@ -245,6 +239,34 @@
 
   function insightKey(item: TagInsight) {
     return `${item.tag}-${item.metric}`
+  }
+
+  function impactTone(value: number | null) {
+    if (value === null || Math.abs(value) < 1.5) {
+      return "neutral"
+    }
+
+    if (value >= 10) {
+      return "excellent"
+    }
+
+    if (value >= 6) {
+      return "positive"
+    }
+
+    if (value >= 1.5) {
+      return "mild-positive"
+    }
+
+    if (value <= -10) {
+      return "negative"
+    }
+
+    if (value <= -6) {
+      return "warning"
+    }
+
+    return "mild-negative"
   }
 
   function buildTagsByDate(entries: typeof tagEntries) {
@@ -293,7 +315,7 @@
         <img class="logo" src={logoUrl} alt="" />
         <p class="eyebrow">Phibo</p>
       </div>
-      <h1>Oura Patterns</h1>
+      <h1><span class="oura-o">O</span>ura Patterns</h1>
     </div>
     <button type="button" class="sync-button" on:click={syncData} disabled={isSyncing}>
       {isSyncing ? "Syncing" : "Sync data"}
@@ -362,7 +384,10 @@
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatInsightDelta(item)}</strong>
+                <strong class="score-impact {impactTone(item.delta)}">
+                  <span>{metricLabel(item.metric)}</span>
+                  <b>{formatDelta(item.delta)}</b>
+                </strong>
               </button>
             {:else}
               <p class="empty-state">No supported positive pattern yet.</p>
@@ -384,7 +409,10 @@
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatInsightDelta(item)}</strong>
+                <strong class="score-impact {impactTone(item.delta)}">
+                  <span>{metricLabel(item.metric)}</span>
+                  <b>{formatDelta(item.delta)}</b>
+                </strong>
               </button>
             {:else}
               <p class="empty-state">No supported concerning pattern yet.</p>
@@ -406,7 +434,10 @@
                   <h4>{item.tag}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
-                <strong>{formatInsightDelta(item)}</strong>
+                <strong class="score-impact {impactTone(item.delta)}">
+                  <span>{metricLabel(item.metric)}</span>
+                  <b>{formatDelta(item.delta)}</b>
+                </strong>
               </button>
             {:else}
               <p class="empty-state">No extra notable sleep pattern yet.</p>
@@ -435,7 +466,21 @@
                 </div>
               </div>
               <div class="discovery-meta">
-                <strong>{formatDiscoveryImpact(item.tag)}</strong>
+                {#if discoveryImpact(item.tag)}
+                  <strong
+                    class="score-impact {impactTone(
+                      discoveryImpact(item.tag)?.delta ?? null
+                    )}"
+                  >
+                    <span>{metricLabel(discoveryImpact(item.tag)?.metric ?? "sleepScore")}</span>
+                    <b>{formatDelta(discoveryImpact(item.tag)?.delta ?? 0)}</b>
+                  </strong>
+                {:else}
+                  <strong class="score-impact neutral">
+                    <span>Impact</span>
+                    <b>n/a</b>
+                  </strong>
+                {/if}
                 <span>{item.daysWithTag} {item.daysWithTag === 1 ? "night" : "nights"}</span>
               </div>
             </article>
@@ -464,7 +509,10 @@
           <h2>{selectedInsight ? selectedInsight.tag : "Select an insight"}</h2>
         </div>
         {#if selectedInsight}
-          <span>{formatInsightDelta(selectedInsight)}</span>
+          <span class="score-impact {impactTone(selectedInsight.delta)}">
+            <span>{metricLabel(selectedInsight.metric)}</span>
+            <b>{formatDelta(selectedInsight.delta)}</b>
+          </span>
         {/if}
       </div>
 
@@ -643,6 +691,21 @@
   h1 {
     font-size: clamp(2rem, 4vw, 3.4rem);
     line-height: 0.98;
+  }
+
+  .oura-o {
+    display: inline-block;
+    position: relative;
+  }
+
+  .oura-o::before {
+    content: "";
+    position: absolute;
+    top: -0.14em;
+    left: 0.04em;
+    width: 0.72em;
+    border-top: 0.08em solid currentColor;
+    border-radius: 999px;
   }
 
   h2 {
@@ -921,9 +984,60 @@
   }
 
   .correlation-card > strong {
-    font-size: 1.9rem;
     line-height: 1;
     white-space: nowrap;
+  }
+
+  .score-impact {
+    align-items: baseline;
+    display: inline-flex;
+    gap: 0.38rem;
+    justify-content: flex-end;
+    white-space: nowrap;
+  }
+
+  .score-impact span {
+    color: #6f786f;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .score-impact b {
+    font-size: 1.9rem;
+    line-height: 1;
+  }
+
+  .score-impact.excellent b {
+    color: #3d6f94;
+    text-shadow:
+      0 1px 0 #d9bc6c,
+      0 -1px 0 rgba(217, 188, 108, 0.5);
+  }
+
+  .score-impact.positive b {
+    color: #3f7b54;
+  }
+
+  .score-impact.mild-positive b {
+    color: #7aa05d;
+  }
+
+  .score-impact.neutral b {
+    color: #17201b;
+  }
+
+  .score-impact.mild-negative b {
+    color: #c98375;
+  }
+
+  .score-impact.warning b {
+    color: #b46b3f;
+  }
+
+  .score-impact.negative b {
+    color: #a8423e;
   }
 
   .panel-heading.compact {
@@ -1002,10 +1116,12 @@
     white-space: nowrap;
   }
 
-  .discovery-meta strong {
-    color: #17201b;
+  .discovery-meta .score-impact b {
     font-size: 1.15rem;
-    line-height: 1;
+  }
+
+  .discovery-meta .score-impact span {
+    font-size: 0.68rem;
   }
 
   .comparison-chart {
