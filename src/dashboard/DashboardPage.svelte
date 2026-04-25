@@ -54,14 +54,19 @@
     y: number
   }
 
+  interface ChartTick {
+    label: string
+    position: number
+  }
+
   const chartWidth = 640
   const chartHeight = 320
-  const chartModes: ChartMode[] = ["scatter", "impact", "timeline"]
-  const chartPadding = 36
+  const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
+  const chartPadding = 56
 
   let accessToken = ""
   let activeView: DashboardView = "insights"
-  let exploreChartMode: ChartMode = "scatter"
+  let exploreChartMode: ChartMode = "impact"
   let exploreTagsInitialized = false
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
@@ -110,12 +115,40 @@
   $: otherExploreDays = exploreDays.filter((day) => !day.matches)
   $: selectedXDefinition = getExploreMetric(selectedXMetric)
   $: selectedYDefinition = getExploreMetric(selectedYMetric)
+  $: scatterXExtent = metricExtent(exploreDays, selectedXMetric)
+  $: scatterYExtent = metricExtent(exploreDays, selectedYMetric)
+  $: timelineYExtent = metricExtent(exploreDays, selectedYMetric)
+  $: scatterXTicks = createMetricTicks(
+    scatterXExtent,
+    selectedXDefinition,
+    chartPadding,
+    chartWidth - chartPadding
+  )
+  $: scatterYTicks = createMetricTicks(
+    scatterYExtent,
+    selectedYDefinition,
+    chartHeight - chartPadding,
+    chartPadding
+  )
+  $: timelineYTicks = createMetricTicks(
+    timelineYExtent,
+    selectedYDefinition,
+    chartHeight - chartPadding,
+    chartPadding
+  )
   $: scatterPoints = createScatterPoints(
     exploreDays,
     selectedXMetric,
-    selectedYMetric
+    selectedYMetric,
+    scatterXExtent,
+    scatterYExtent
   )
-  $: timelinePoints = createTimelinePoints(exploreDays, selectedYMetric)
+  $: timelinePoints = createTimelinePoints(
+    exploreDays,
+    selectedYMetric,
+    timelineYExtent
+  )
+  $: timelineDateTicks = createTimelineDateTicks(timelinePoints)
   $: activeExploreDay =
     exploreDays.find((day) => day.date === (hoveredExploreDate || selectedExploreDate)) ??
     matchingExploreDays[0] ??
@@ -286,14 +319,13 @@
   function createScatterPoints(
     days: ExploreDay[],
     xMetric: ExploreMetricKey,
-    yMetric: ExploreMetricKey
+    yMetric: ExploreMetricKey,
+    xExtent: readonly [number, number],
+    yExtent: readonly [number, number]
   ): ChartPoint[] {
-    const xExtent = metricExtent(days, xMetric)
-    const yExtent = metricExtent(days, yMetric)
-
     return days
       .filter(
-        (day) => day.metric[xMetric] !== null && day.metric[yMetric] !== null
+        (day) => day.metric[xMetric] != null && day.metric[yMetric] != null
       )
       .map((day) => ({
         day,
@@ -314,10 +346,10 @@
 
   function createTimelinePoints(
     days: ExploreDay[],
-    metric: ExploreMetricKey
+    metric: ExploreMetricKey,
+    yExtent: readonly [number, number]
   ): ChartPoint[] {
-    const yExtent = metricExtent(days, metric)
-    const usableDays = days.filter((day) => day.metric[metric] !== null)
+    const usableDays = days.filter((day) => day.metric[metric] != null)
     const xStep =
       usableDays.length <= 1
         ? 0
@@ -333,6 +365,51 @@
         chartPadding
       )
     }))
+  }
+
+  function createMetricTicks(
+    extent: readonly [number, number],
+    metric: ExploreMetricDefinition,
+    outputMin: number,
+    outputMax: number
+  ): ChartTick[] {
+    const [min, max] = extent
+
+    return [min, (min + max) / 2, max].map((value) => ({
+      label: formatAxisValue(value, metric),
+      position: scaleNumber(value, extent, outputMin, outputMax)
+    }))
+  }
+
+  function createTimelineDateTicks(points: ChartPoint[]): ChartTick[] {
+    if (points.length === 0) {
+      return []
+    }
+
+    const indexes = Array.from(
+      new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])
+    )
+
+    return indexes.map((index) => ({
+      label: formatDate(points[index].day.date),
+      position: points[index].x
+    }))
+  }
+
+  function metricAxisLabel(metric: ExploreMetricDefinition) {
+    return metric.unit === "pts" ? metric.label : `${metric.label} (${metric.unit})`
+  }
+
+  function formatAxisValue(value: number, metric: ExploreMetricDefinition) {
+    if (Math.abs(value) >= 1000) {
+      return `${Math.round(value / 100) / 10}k`
+    }
+
+    if (metric.unit === "MET" || metric.unit === "br/min") {
+      return value.toFixed(1)
+    }
+
+    return `${Math.round(value)}`
   }
 
   function formatAverage(
@@ -370,8 +447,8 @@
     return metric.unit === "pts" ? rounded : `${rounded} ${metric.unit}`
   }
 
-  function average(values: Array<number | null>) {
-    const usableValues = values.filter((value): value is number => value !== null)
+  function average(values: Array<number | null | undefined>) {
+    const usableValues = values.filter((value): value is number => value != null)
 
     if (usableValues.length === 0) {
       return null
@@ -987,6 +1064,34 @@
         {:else if exploreChartMode === "scatter"}
           <div class="svg-chart">
             <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
+              {#each scatterYTicks as tick}
+                <line
+                  class="tick-line"
+                  x1={chartPadding}
+                  x2={chartWidth - chartPadding}
+                  y1={tick.position}
+                  y2={tick.position}
+                />
+                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
+                  {tick.label}
+                </text>
+              {/each}
+              {#each scatterXTicks as tick}
+                <line
+                  class="tick-line"
+                  x1={tick.position}
+                  x2={tick.position}
+                  y1={chartPadding}
+                  y2={chartHeight - chartPadding}
+                />
+                <text
+                  class="axis-tick x"
+                  x={tick.position}
+                  y={chartHeight - chartPadding + 20}
+                >
+                  {tick.label}
+                </text>
+              {/each}
               <line
                 class="axis-line"
                 x1={chartPadding}
@@ -1013,11 +1118,16 @@
                   on:click={() => selectExploreDay(point.day)}
                 />
               {/each}
+              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
+                {metricAxisLabel(selectedXDefinition)}
+              </text>
+              <text
+                class="axis-title y"
+                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
+              >
+                {metricAxisLabel(selectedYDefinition)}
+              </text>
             </svg>
-            <div class="chart-axis-labels">
-              <span>{selectedYDefinition.label}</span>
-              <span>{selectedXDefinition.label}</span>
-            </div>
           </div>
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
@@ -1045,6 +1155,34 @@
         {:else}
           <div class="svg-chart">
             <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
+              {#each timelineYTicks as tick}
+                <line
+                  class="tick-line"
+                  x1={chartPadding}
+                  x2={chartWidth - chartPadding}
+                  y1={tick.position}
+                  y2={tick.position}
+                />
+                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
+                  {tick.label}
+                </text>
+              {/each}
+              {#each timelineDateTicks as tick}
+                <line
+                  class="tick-line"
+                  x1={tick.position}
+                  x2={tick.position}
+                  y1={chartPadding}
+                  y2={chartHeight - chartPadding}
+                />
+                <text
+                  class="axis-tick x"
+                  x={tick.position}
+                  y={chartHeight - chartPadding + 20}
+                >
+                  {tick.label}
+                </text>
+              {/each}
               <line
                 class="axis-line"
                 x1={chartPadding}
@@ -1072,11 +1210,16 @@
                   on:click={() => selectExploreDay(point.day)}
                 />
               {/each}
+              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
+                Date
+              </text>
+              <text
+                class="axis-title y"
+                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
+              >
+                {metricAxisLabel(selectedYDefinition)}
+              </text>
             </svg>
-            <div class="chart-axis-labels">
-              <span>{selectedYDefinition.label}</span>
-              <span>Timeline</span>
-            </div>
           </div>
         {/if}
 
@@ -1521,6 +1664,32 @@
     stroke-width: 2;
   }
 
+  .tick-line {
+    stroke: rgba(207, 210, 196, 0.56);
+    stroke-width: 1;
+  }
+
+  .axis-tick,
+  .axis-title {
+    fill: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+  }
+
+  .axis-tick.x,
+  .axis-title.x {
+    text-anchor: middle;
+  }
+
+  .axis-tick.y {
+    dominant-baseline: middle;
+    text-anchor: end;
+  }
+
+  .axis-title.y {
+    text-anchor: middle;
+  }
+
   .scatter-point {
     cursor: pointer;
     fill: #9ca69a;
@@ -1540,16 +1709,6 @@
     stroke-linecap: round;
     stroke-linejoin: round;
     stroke-width: 3;
-  }
-
-  .chart-axis-labels {
-    color: #6f786f;
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.78rem;
-    font-weight: 800;
-    margin-top: 0.4rem;
-    text-transform: uppercase;
   }
 
   .impact-list {
