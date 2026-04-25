@@ -223,11 +223,12 @@
     tag: string,
     metric: PrimaryInsightMetric
   ): MetricComparison {
+    const currentTagsByDate = buildTagsByDate(tagEntries)
     const taggedDays = dailyMetrics.filter((day) =>
-      (tagsByDate[day.date] ?? []).includes(tag)
+      (currentTagsByDate[day.date] ?? []).includes(tag)
     )
     const untaggedDays = dailyMetrics.filter(
-      (day) => !(tagsByDate[day.date] ?? []).includes(tag)
+      (day) => !(currentTagsByDate[day.date] ?? []).includes(tag)
     )
     const taggedAverage = average(taggedDays.map((day) => day[metric]))
     const baselineAverage = average(untaggedDays.map((day) => day[metric]))
@@ -244,6 +245,17 @@
 
   function insightKey(item: TagInsight) {
     return `${item.tag}-${item.metric}`
+  }
+
+  function buildTagsByDate(entries: typeof tagEntries) {
+    return entries.reduce(
+      (groups, tag) => {
+        groups[tag.date] = [...(groups[tag.date] ?? []), tag.tag]
+
+        return groups
+      },
+      {} as Record<string, string[]>
+    )
   }
 
   function metricLabel(metric: PrimaryInsightMetric) {
