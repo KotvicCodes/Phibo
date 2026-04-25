@@ -300,31 +300,23 @@
   }
 
   function impactTone(value: number | null) {
-    if (value === null || Math.abs(value) < 1.5) {
+    if (value === null || Math.abs(value) <= 0.5) {
       return "neutral"
     }
 
-    if (value >= 10) {
+    if (value >= 2) {
       return "excellent"
     }
 
-    if (value >= 6) {
+    if (value > 0.5) {
       return "positive"
     }
 
-    if (value >= 1.5) {
-      return "mild-positive"
-    }
-
-    if (value <= -10) {
+    if (value <= -2) {
       return "negative"
     }
 
-    if (value <= -6) {
-      return "warning"
-    }
-
-    return "mild-negative"
+    return "warning"
   }
 
   function buildTagsByDate(entries: typeof tagEntries) {
@@ -1065,16 +1057,8 @@
     color: #3f7b54;
   }
 
-  .score-impact.mild-positive b {
-    color: #7aa05d;
-  }
-
   .score-impact.neutral b {
     color: #17201b;
-  }
-
-  .score-impact.mild-negative b {
-    color: #c98375;
   }
 
   .score-impact.warning b {
