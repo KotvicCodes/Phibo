@@ -256,7 +256,10 @@ function parseImportRows(file: ImportFileRecord) {
 }
 
 function parseCsvRows(file: ImportFileRecord) {
-  const result = Papa.parse<Record<string, unknown>>(prepareCsvText(file.text), {
+  const csvText = prepareCsvText(file.text)
+  const delimiter = detectCsvDelimiter(csvText)
+  const result = Papa.parse<Record<string, unknown>>(csvText, {
+    delimiter,
     header: true,
     skipEmptyLines: "greedy",
     transformHeader: (header) => header.trim().replace(/^\uFEFF/, "")
@@ -268,6 +271,24 @@ function parseCsvRows(file: ImportFileRecord) {
   }
 
   return result.data.map(removePapaExtraFields).filter(isImportRow)
+}
+
+function detectCsvDelimiter(text: string) {
+  const firstDataLine =
+    text
+      .split(/\r?\n/)
+      .find((line) => line.trim() !== "") ?? ""
+  const delimiterCounts = [
+    { delimiter: ";", count: countOccurrences(firstDataLine, ";") },
+    { delimiter: "\t", count: countOccurrences(firstDataLine, "\t") },
+    { delimiter: ",", count: countOccurrences(firstDataLine, ",") }
+  ].sort((left, right) => right.count - left.count)
+
+  return delimiterCounts[0].count > 0 ? delimiterCounts[0].delimiter : ""
+}
+
+function countOccurrences(value: string, needle: string) {
+  return value.split(needle).length - 1
 }
 
 function prepareCsvText(text: string) {
