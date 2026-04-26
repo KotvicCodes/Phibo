@@ -63,7 +63,7 @@ export async function importOuraFiles(files: File[]) {
 
     if (expandedFiles.supported.length === 0) {
       throw new OuraImportError(
-        "No supported Oura personal export files found. Import the export ZIP or files beginning with OuraDailySleep, OuraDailyReadiness, OuraDailyActivity, OuraSleep, or OuraEnhancedTag."
+        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, sleep.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
       )
     }
 
@@ -184,24 +184,42 @@ async function expandImportFiles(files: File[]) {
 function classifyOuraFile(name: string): ImportKind | null {
   const fileName = name.split(/[\\/]/).pop() ?? name
   const normalizedName = fileName.toLowerCase()
+  const baseName = normalizedName.replace(/\.(csv|json)$/i, "")
+  const compactName = baseName.replace(/[^a-z0-9]/g, "")
 
-  if (normalizedName.startsWith("ouradailysleep")) {
+  if (
+    compactName === "dailysleep" ||
+    compactName.startsWith("ouradailysleep")
+  ) {
     return "dailySleep"
   }
 
-  if (normalizedName.startsWith("ouradailyreadiness")) {
+  if (
+    compactName === "dailyreadiness" ||
+    compactName.startsWith("ouradailyreadiness")
+  ) {
     return "dailyReadiness"
   }
 
-  if (normalizedName.startsWith("ouradailyactivity")) {
+  if (
+    compactName === "dailyactivity" ||
+    compactName.startsWith("ouradailyactivity")
+  ) {
     return "dailyActivity"
   }
 
-  if (normalizedName.startsWith("ourasleep")) {
+  if (
+    compactName === "sleep" ||
+    compactName.startsWith("ourasleep")
+  ) {
     return "sleepSessions"
   }
 
-  if (normalizedName.startsWith("ouraenhancedtag")) {
+  if (
+    compactName === "enhancedtag" ||
+    compactName === "tags" ||
+    compactName.startsWith("ouraenhancedtag")
+  ) {
     return "tags"
   }
 
