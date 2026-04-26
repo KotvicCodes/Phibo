@@ -19,7 +19,7 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
   const rowsByDate = new Map<string, DailyMetricRow>()
 
   input.dailySleep.forEach((record) => {
-    const day = getString(record, "day", "Day")
+    const day = getRecordDay(record)
 
     if (!day) {
       return
@@ -45,7 +45,7 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
   })
 
   input.dailyReadiness.forEach((record) => {
-    const day = getString(record, "day", "Day")
+    const day = getRecordDay(record)
 
     if (!day) {
       return
@@ -74,7 +74,7 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
   })
 
   input.dailyActivity.forEach((record) => {
-    const day = getString(record, "day", "Day")
+    const day = getRecordDay(record)
 
     if (!day) {
       return
@@ -140,7 +140,7 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
   })
 
   input.sleepSessions.forEach((record) => {
-    const day = getString(record, "day", "Day")
+    const day = getRecordDay(record)
 
     if (!day) {
       return
@@ -209,9 +209,7 @@ export function mapTagEntries(tags: OuraTag[]) {
   const syncedAt = new Date().toISOString()
 
   return tags.flatMap((tag): TagEntryRow[] => {
-    const date =
-      getString(tag, "day", "Day", "StartDay") ??
-      getString(tag, "start_datetime", "StartTime")?.slice(0, 10)
+    const date = getRecordDay(tag)
     const label = normalizeTagLabel(
       getString(tag, "text", "CustomName", "Comment") ??
         getString(tag, "tag_type_code", "TagTypeCode")
@@ -362,7 +360,62 @@ function getValue(record: OuraRecord, keys: string[]) {
     }
   }
 
+  for (const key of keys) {
+    const normalizedKey = normalizeRecordKey(key)
+
+    for (const [recordKey, value] of Object.entries(record)) {
+      if (
+        normalizeRecordKey(recordKey) === normalizedKey &&
+        value != null &&
+        value !== ""
+      ) {
+        return value
+      }
+    }
+  }
+
   return null
+}
+
+function getRecordDay(record: OuraRecord) {
+  const directDate = getString(
+    record,
+    "day",
+    "Day",
+    "date",
+    "Date",
+    "calendar_date",
+    "CalendarDate",
+    "summary_date",
+    "SummaryDate",
+    "start_day",
+    "StartDay",
+    "sleep_day",
+    "SleepDay"
+  )
+
+  if (directDate) {
+    return directDate.slice(0, 10)
+  }
+
+  return (
+    getString(
+      record,
+      "timestamp",
+      "Timestamp",
+      "start_datetime",
+      "StartTime",
+      "bedtime_start",
+      "BedtimeStart"
+    )?.slice(0, 10) ?? null
+  )
+}
+
+function normalizeRecordKey(key: string) {
+  return key
+    .replace(/^\uFEFF/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
 }
 
 function isRecord(value: unknown): value is OuraRecord {
