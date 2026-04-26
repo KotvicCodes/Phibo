@@ -24,6 +24,12 @@ interface ImportFileRecord {
   text: string
 }
 
+interface ParsedFileSummary {
+  headers: string[]
+  name: string
+  rows: number
+}
+
 export interface OuraImportResult {
   dailyMetrics: ReturnType<typeof mergeDailyMetrics>
   filesImported: number
@@ -79,9 +85,11 @@ export async function importOuraFiles(files: File[]) {
       sleepSessions: []
     }
     const tags: OuraTag[] = []
+    const parsedFileSummaries: ParsedFileSummary[] = []
 
     for (const file of expandedFiles.supported) {
       const rows = parseImportRows(file)
+      parsedFileSummaries.push(summarizeParsedFile(file.name, rows))
 
       if (file.kind === "tags") {
         tags.push(...rows)
@@ -95,7 +103,7 @@ export async function importOuraFiles(files: File[]) {
 
     if (dailyMetrics.length === 0) {
       throw new OuraImportError(
-        "The selected Oura files did not include usable daily metric rows."
+        `The selected Oura files did not include usable daily metric rows. ${formatParsedFileSummaries(parsedFileSummaries)}`
       )
     }
 
@@ -280,6 +288,48 @@ function removePapaExtraFields(row: Record<string, unknown>) {
   const { __parsed_extra: _extraFields, ...cleanRow } = row
 
   return cleanRow
+}
+
+function summarizeParsedFile(
+  name: string,
+  rows: Record<string, unknown>[]
+): ParsedFileSummary {
+  return {
+    headers: getRowHeaders(rows),
+    name,
+    rows: rows.length
+  }
+}
+
+function getRowHeaders(rows: Record<string, unknown>[]) {
+  const headers = new Set<string>()
+
+  rows.slice(0, 3).forEach((row) => {
+    Object.keys(row)
+      .filter((key) => key.trim() !== "")
+      .forEach((key) => headers.add(key))
+  })
+
+  return Array.from(headers).slice(0, 10)
+}
+
+function formatParsedFileSummaries(summaries: ParsedFileSummary[]) {
+  if (summaries.length === 0) {
+    return "No supported files were parsed."
+  }
+
+  const formattedSummaries = summaries.slice(0, 6).map((summary) => {
+    const headers =
+      summary.headers.length > 0 ? summary.headers.join(", ") : "none"
+
+    return `${summary.name}: ${summary.rows} rows; headers: ${headers}`
+  })
+
+  const remainingCount = summaries.length - formattedSummaries.length
+  const remainingText =
+    remainingCount > 0 ? `; plus ${remainingCount} more supported files` : ""
+
+  return `Parsed ${summaries.length} supported files (${formattedSummaries.join(" | ")}${remainingText}).`
 }
 
 function parseJsonRows(file: ImportFileRecord) {
