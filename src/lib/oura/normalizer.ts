@@ -318,7 +318,9 @@ function getContributor(
   snakeCaseName: string,
   pascalCaseName: string
 ) {
-  const contributors = record.contributors ?? record.Contributors
+  const contributors = parseRecordValue(
+    record.contributors ?? record.Contributors
+  )
 
   if (isRecord(contributors)) {
     return getNumber(contributors, snakeCaseName, pascalCaseName)
@@ -353,7 +355,7 @@ function getString(record: OuraRecord, ...keys: string[]) {
 
 function getValue(record: OuraRecord, keys: string[]) {
   for (const key of keys) {
-    const value = record[key]
+    const value = parseRecordValue(record[key])
 
     if (value != null && value !== "") {
       return value
@@ -364,12 +366,14 @@ function getValue(record: OuraRecord, keys: string[]) {
     const normalizedKey = normalizeRecordKey(key)
 
     for (const [recordKey, value] of Object.entries(record)) {
+      const parsedValue = parseRecordValue(value)
+
       if (
         normalizeRecordKey(recordKey) === normalizedKey &&
-        value != null &&
-        value !== ""
+        parsedValue != null &&
+        parsedValue !== ""
       ) {
-        return value
+        return parsedValue
       }
     }
   }
@@ -420,6 +424,24 @@ function normalizeRecordKey(key: string) {
 
 function isRecord(value: unknown): value is OuraRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function parseRecordValue(value: unknown) {
+  if (typeof value !== "string") {
+    return value
+  }
+
+  const trimmedValue = value.trim()
+
+  if (!trimmedValue.startsWith("{") || !trimmedValue.endsWith("}")) {
+    return value
+  }
+
+  try {
+    return JSON.parse(trimmedValue)
+  } catch {
+    return value
+  }
 }
 
 function normalizeTagLabel(value: string | null) {
