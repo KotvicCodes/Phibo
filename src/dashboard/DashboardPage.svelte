@@ -969,7 +969,7 @@
             />
             <div>
               <strong>{isImporting ? "Importing Oura export" : "Drop Oura export here"}</strong>
-              <span>Supports personal export ZIPs and Oura JSON or CSV files.</span>
+              <span>Supports the Oura ZIP or CSVs like dailysleep, dailyreadiness, dailyactivity, sleep, and enhancedtag.</span>
             </div>
             <button type="button" on:click={() => importFileInput?.click()} disabled={isImporting}>
               {isImporting ? "Reading files" : "Choose files"}
