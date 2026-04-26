@@ -31,6 +31,11 @@ export interface OuraImportResult {
   unsupportedFiles: number
 }
 
+interface CsvParseError {
+  code?: string
+  type?: string
+}
+
 export class OuraImportError extends Error {
   constructor(message: string) {
     super(message)
@@ -243,16 +248,38 @@ function parseImportRows(file: ImportFileRecord) {
 }
 
 function parseCsvRows(file: ImportFileRecord) {
-  const result = Papa.parse<Record<string, string>>(file.text, {
+  const result = Papa.parse<Record<string, unknown>>(prepareCsvText(file.text), {
     header: true,
-    skipEmptyLines: true
+    skipEmptyLines: "greedy",
+    transformHeader: (header) => header.trim().replace(/^\uFEFF/, "")
   })
+  const fatalErrors = result.errors.filter(isFatalCsvError)
 
-  if (result.errors.length > 0) {
+  if (fatalErrors.length > 0) {
     throw new OuraImportError(`Could not read ${file.name} as CSV.`)
   }
 
-  return result.data.filter(isImportRow)
+  return result.data.map(removePapaExtraFields).filter(isImportRow)
+}
+
+function prepareCsvText(text: string) {
+  const normalizedText = text.replace(/^\uFEFF/, "")
+
+  return normalizedText.replace(/^sep=.\r?\n/i, "")
+}
+
+function isFatalCsvError(error: CsvParseError) {
+  return !(
+    error.type === "FieldMismatch" ||
+    error.code === "TooFewFields" ||
+    error.code === "TooManyFields"
+  )
+}
+
+function removePapaExtraFields(row: Record<string, unknown>) {
+  const { __parsed_extra: _extraFields, ...cleanRow } = row
+
+  return cleanRow
 }
 
 function parseJsonRows(file: ImportFileRecord) {
