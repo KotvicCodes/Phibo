@@ -707,9 +707,19 @@ function metricWeight(metric: MetricKey) {
 }
 
 function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
+  const seenTags = new Set<string>()
+
   return insights
     .filter((insight) => insight.kind === kind)
     .sort((left, right) => right.weightedImpact - left.weightedImpact)
+    .filter((insight) => {
+      if (seenTags.has(insight.tag)) {
+        return false
+      }
+
+      seenTags.add(insight.tag)
+      return true
+    })
     .slice(0, 4)
 }
 
