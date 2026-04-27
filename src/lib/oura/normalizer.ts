@@ -2,6 +2,24 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 type OuraRecord = Record<string, unknown>
 
+const sleepPrefixedUniversalTags = new Set([
+  "alcohol",
+  "blackout curtains",
+  "blue light blockers",
+  "dreams",
+  "full moon",
+  "late coffee",
+  "late screen time",
+  "late mean",
+  "late work",
+  "new bed",
+  "nightmares",
+  "noisy",
+  "stress",
+  "temp high",
+  "temp low"
+])
+
 export type OuraDailySummary = OuraRecord
 export type OuraDailyActivity = OuraRecord
 export type OuraSleepSession = OuraRecord
@@ -467,8 +485,10 @@ function normalizeTagLabel(value: string | null) {
     .replace(/^tag_/, "")
     .replace(/_/g, " ")
     .trim()
+  const genericLabel = label.replace(/^generic\s+(?=\S)/, "").trim()
+  const sleepLabel = genericLabel.replace(/^sleep\s+(?=\S)/, "").trim()
 
-  return label.replace(/^generic\s+(?=\S)/, "").trim()
+  return sleepPrefixedUniversalTags.has(sleepLabel) ? sleepLabel : genericLabel
 }
 
 function secondsToMinutes(value: number | null) {
