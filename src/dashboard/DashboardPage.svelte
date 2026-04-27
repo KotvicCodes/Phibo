@@ -532,13 +532,13 @@
 
     return [
       {
-        helper: `nights with ${item.tag}`,
+        helper: `nights with ${formatTagLabel(item.tag)}`,
         label: "Tagged",
         unit: item.daysWithTag === 1 ? "night" : "nights",
         value: `${item.daysWithTag}`
       },
       {
-        helper: `nights without ${item.tag}`,
+        helper: `nights without ${formatTagLabel(item.tag)}`,
         label: "Other",
         unit: daysWithoutTag === 1 ? "night" : "nights",
         value: `${daysWithoutTag}`
@@ -670,6 +670,20 @@
     return `${formatDelta(row.delta)} ${row.metric.unit}`
   }
 
+  function formatTagLabel(tag: string) {
+    const trimmedTag = tag.trim()
+
+    if (trimmedTag.length === 0) {
+      return tag
+    }
+
+    return `${trimmedTag[0].toLocaleUpperCase()}${trimmedTag.slice(1)}`
+  }
+
+  function formatTagList(tags: string[], separator = ", ") {
+    return tags.map(formatTagLabel).join(separator)
+  }
+
   function formatMetricDelta(value: number | null) {
     return value === null ? "n/a" : formatDelta(value)
   }
@@ -712,7 +726,7 @@
       return "No day selected"
     }
 
-    return day.tags.length > 0 ? day.tags.join(", ") : "No tags"
+    return day.tags.length > 0 ? formatTagList(day.tags) : "No tags"
   }
 
   function discoveryImpact(tag: string) {
@@ -1140,7 +1154,7 @@
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
-                  <h4>{item.tag}</h4>
+                  <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
@@ -1165,7 +1179,7 @@
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
-                  <h4>{item.tag}</h4>
+                  <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
@@ -1190,7 +1204,7 @@
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
-                  <h4>{item.tag}</h4>
+                  <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
@@ -1220,7 +1234,7 @@
                   {item.reason === "new" ? "New" : "Neglected"}
                 </span>
                 <div>
-                  <strong>{item.tag}</strong>
+                  <strong>{formatTagLabel(item.tag)}</strong>
                   <span>{discoveryAction(item.tag, item.reason)}</span>
                 </div>
               </div>
@@ -1265,7 +1279,7 @@
       <div class="panel-heading">
         <div>
           <p class="section-kicker">Insight detail</p>
-          <h2>{selectedInsight ? selectedInsight.tag : "Select an insight"}</h2>
+          <h2>{selectedInsight ? formatTagLabel(selectedInsight.tag) : "Select an insight"}</h2>
         </div>
         {#if selectedInsight}
           <span class="score-impact {impactTone(selectedInsight.delta)}">
@@ -1346,7 +1360,7 @@
                   class:active={selectedExploreTags.includes(tag)}
                   on:click={() => toggleExploreTag(tag)}
                 >
-                  {tag}
+                  {formatTagLabel(tag)}
                 </button>
               {:else}
                 <p class="empty-state">Sync or add tags to explore patterns.</p>
@@ -1408,7 +1422,7 @@
             </p>
             <h2>
               {selectedExploreTags.length > 0
-                ? selectedExploreTags.join(" + ")
+                ? formatTagList(selectedExploreTags, " + ")
                 : "Choose a tag combination"}
             </h2>
           </div>
@@ -1589,7 +1603,7 @@
             <div class="log-heading">
               <div>
                 <p class="section-kicker">Matching nights</p>
-                <h3>{selectedExploreTags.join(" + ")}</h3>
+                <h3>{formatTagList(selectedExploreTags, " + ")}</h3>
               </div>
               <span>{matchingExploreDays.length} nights</span>
             </div>
