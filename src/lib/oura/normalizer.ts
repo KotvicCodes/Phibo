@@ -440,7 +440,21 @@ function parseRecordValue(value: unknown) {
   try {
     return JSON.parse(trimmedValue)
   } catch {
-    return value
+    return parseOuraObjectLiteral(trimmedValue) ?? value
+  }
+}
+
+function parseOuraObjectLiteral(value: string) {
+  const jsonLikeValue = value
+    .replace(/'/g, '"')
+    .replace(/\bNone\b/g, "null")
+    .replace(/\bTrue\b/g, "true")
+    .replace(/\bFalse\b/g, "false")
+
+  try {
+    return JSON.parse(jsonLikeValue)
+  } catch {
+    return null
   }
 }
 
