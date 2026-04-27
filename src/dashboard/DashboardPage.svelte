@@ -2817,9 +2817,9 @@
   }
 
   .discovery-main {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.7rem;
+    display: grid;
+    gap: 0.38rem;
+    justify-items: start;
     min-width: 0;
   }
 
@@ -2846,7 +2846,6 @@
     border: 1px solid #cbd3c3;
     border-radius: 999px;
     color: #4f5f53;
-    flex: 0 0 auto;
     font-size: 0.72rem;
     font-weight: 800;
     padding: 0.24rem 0.48rem;
