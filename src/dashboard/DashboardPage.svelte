@@ -489,6 +489,14 @@
     }).format(new Date(`${date}T12:00:00`))
   }
 
+  function formatFullDate(date: string) {
+    return new Intl.DateTimeFormat("en", {
+      day: "numeric",
+      month: "short",
+      year: "numeric"
+    }).format(new Date(`${date}T12:00:00`))
+  }
+
   function createSummary(
     label: string,
     key: keyof Pick<
@@ -1696,7 +1704,7 @@
                   on:mouseleave={() => (hoveredExploreDate = "")}
                   on:click={() => selectExploreDay(day)}
                 >
-                  <strong>{formatDate(day.date)}</strong>
+                  <strong>{formatFullDate(day.date)}</strong>
                   <strong>
                     {formatMetricValue(day.metric[selectedXMetric] ?? null, selectedXDefinition)}
                   </strong>
