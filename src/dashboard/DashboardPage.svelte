@@ -77,6 +77,7 @@
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
   const scoreWeekDays = 7
+  const displayTagLabels = new Map([["slept alone", "Sleep Solo"]])
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
@@ -110,7 +111,7 @@
 
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
   $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
-  $: availableTags = getAvailableTags(tagEntries)
+  $: availableTags = sortTagsForDisplay(getAvailableTags(tagEntries))
   $: if (!exploreTagsInitialized && availableTags.length > 0) {
     const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
       availableTags.includes(tag)
@@ -723,11 +724,29 @@
       return tag
     }
 
+    const displayLabel = displayTagLabels.get(trimmedTag.toLocaleLowerCase())
+
+    if (displayLabel) {
+      return displayLabel
+    }
+
     return `${trimmedTag[0].toLocaleUpperCase()}${trimmedTag.slice(1)}`
   }
 
   function formatTagList(tags: string[], separator = ", ") {
-    return tags.map(formatTagLabel).join(separator)
+    return sortTagsForDisplay(tags).map(formatTagLabel).join(separator)
+  }
+
+  function sortTagsForDisplay(tags: string[]) {
+    return [...tags].sort((left, right) => {
+      const displayComparison = formatTagLabel(left).localeCompare(
+        formatTagLabel(right),
+        undefined,
+        { sensitivity: "base" }
+      )
+
+      return displayComparison || left.localeCompare(right)
+    })
   }
 
   function formatMetricDelta(value: number | null) {
