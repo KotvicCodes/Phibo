@@ -55,7 +55,7 @@
   }
 
   type ChartMode = "impact" | "scatter" | "timeline"
-  type DashboardView = "explore" | "insights"
+  type DashboardView = "explore" | "insights" | "settings"
   type InsightComparisonMetric = keyof Pick<
     DailyMetricRow,
     "activityScore" | "readinessScore" | "sleepScore"
@@ -76,6 +76,7 @@
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
+  const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const scoreWeekDays = 7
   const displayTagLabels = new Map([["slept alone", "Sleep Solo"]])
   const insightComparisonMetrics: Array<
@@ -90,6 +91,7 @@
   let activeView: DashboardView = "insights"
   let exploreChartMode: ChartMode = "impact"
   let exploreTagsInitialized = false
+  let excludeUntaggedDays = true
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
@@ -110,7 +112,12 @@
   let tagEntries = sampleTagEntries
 
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
-  $: correlations = calculateTagCorrelations(dailyMetrics, tagEntries)
+  $: taggedMetricDates = getTaggedMetricDates(tagEntries)
+  $: analysisDailyMetrics = excludeUntaggedDays
+    ? dailyMetrics.filter((day) => taggedMetricDates.has(day.date))
+    : dailyMetrics
+  $: excludedUntaggedDayCount = dailyMetrics.length - analysisDailyMetrics.length
+  $: correlations = calculateTagCorrelations(analysisDailyMetrics, tagEntries)
   $: availableTags = sortTagsForDisplay(getAvailableTags(tagEntries))
   $: if (!exploreTagsInitialized && availableTags.length > 0) {
     const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
@@ -130,12 +137,12 @@
     }
   }
   $: exploreDays = buildExploreDays(
-    dailyMetrics,
+    analysisDailyMetrics,
     tagEntries,
     selectedExploreTags
   )
   $: exploreImpacts = calculateExploreMetricImpacts(
-    dailyMetrics,
+    analysisDailyMetrics,
     tagEntries,
     selectedExploreTags
   ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
@@ -198,7 +205,8 @@
   $: selectedInsight =
     allInsights.find((insight) => insightKey(insight) === selectedInsightKey) ??
     allInsights[0]
-  $: latestMetricDate = dailyMetrics.at(-1)?.date ?? endDate
+  $: latestMetricDate =
+    analysisDailyMetrics.at(-1)?.date ?? dailyMetrics.at(-1)?.date ?? endDate
   $: discoveries = getTagDiscoveries(tagEntries, latestMetricDate)
   $: selectedComparisons = selectedInsight
     ? insightComparisonMetrics.map(
@@ -217,6 +225,9 @@
     createSummary("Activity", "activityScore")
   ]
   onMount(async () => {
+    excludeUntaggedDays =
+      localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
+
     const savedToken = await db.authTokens.get("oura")
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
     const savedTags = await db.tagEntries.orderBy("date").toArray()
@@ -394,6 +405,17 @@
       : "Sample data is showing until your first sync."
   }
 
+  function updateExcludeUntaggedDays(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    excludeUntaggedDays = input.checked
+    localStorage.setItem(excludeUntaggedDaysSettingKey, `${excludeUntaggedDays}`)
+  }
+
   function validateDateRange() {
     if (!startDate || !endDate) {
       syncMessage = "Choose both a start and end date."
@@ -512,7 +534,7 @@
       "activityScore" | "readinessScore" | "sleepScore"
     >
   ): MetricSummary {
-    const summaryMetrics = dailyMetrics.slice(-scoreWeekDays)
+    const summaryMetrics = analysisDailyMetrics.slice(-scoreWeekDays)
     const value = average(summaryMetrics.map((day) => day[key]))
     const trend = calculateScoreTrend(key)
     const daysWithValue = summaryMetrics.filter((day) => day[key] != null).length
@@ -535,8 +557,11 @@
       "activityScore" | "readinessScore" | "sleepScore"
     >
   ) {
-    const currentDays = dailyMetrics.slice(-scoreWeekDays)
-    const previousDays = dailyMetrics.slice(-scoreWeekDays * 2, -scoreWeekDays)
+    const currentDays = analysisDailyMetrics.slice(-scoreWeekDays)
+    const previousDays = analysisDailyMetrics.slice(
+      -scoreWeekDays * 2,
+      -scoreWeekDays
+    )
     const currentAverage = average(currentDays.map((day) => day[key]))
     const previousAverage = average(previousDays.map((day) => day[key]))
 
@@ -570,7 +595,8 @@
   function createInsightStats(item: TagInsight): InsightStat[] {
     const correlation = correlations.find((correlation) => correlation.tag === item.tag)
     const daysWithoutTag =
-      correlation?.daysWithoutTag ?? Math.max(dailyMetrics.length - item.daysWithTag, 0)
+      correlation?.daysWithoutTag ??
+      Math.max(analysisDailyMetrics.length - item.daysWithTag, 0)
     const metricStats = correlation
       ? ([
           {
@@ -870,10 +896,10 @@
     metric: InsightComparisonMetric
   ): MetricComparison {
     const currentTagsByDate = buildTagsByDate(tagEntries)
-    const taggedDays = dailyMetrics.filter((day) =>
+    const taggedDays = analysisDailyMetrics.filter((day) =>
       (currentTagsByDate[day.date] ?? []).includes(tag)
     )
-    const untaggedDays = dailyMetrics.filter(
+    const untaggedDays = analysisDailyMetrics.filter(
       (day) => !(currentTagsByDate[day.date] ?? []).includes(tag)
     )
     const taggedAverage = average(taggedDays.map((day) => day[metric]))
@@ -1013,6 +1039,10 @@
     )
   }
 
+  function getTaggedMetricDates(entries: typeof tagEntries) {
+    return new Set(entries.map((tag) => tag.date))
+  }
+
   function metricLabel(metric: PrimaryInsightMetric) {
     return metric === "sleepScore" ? "Sleep" : "Readiness"
   }
@@ -1077,6 +1107,13 @@
       on:click={() => (activeView = "explore")}
     >
       Explore
+    </button>
+    <button
+      type="button"
+      class:active={activeView === "settings"}
+      on:click={() => (activeView = "settings")}
+    >
+      Settings
     </button>
   </nav>
 
@@ -1448,7 +1485,7 @@
       </div>
     </div>
   </section>
-  {:else}
+  {:else if activeView === "explore"}
     <section class="explore-workspace">
       <div class="explore-panel">
         <div class="panel-heading">
@@ -1806,6 +1843,41 @@
               {/each}
             </div>
           </section>
+        </div>
+      </div>
+    </section>
+  {:else}
+    <section class="settings-workspace">
+      <div class="settings-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Settings</p>
+            <h2>Analysis sample</h2>
+          </div>
+        </div>
+
+        <label class="setting-row">
+          <div>
+            <strong>Ignore days without tags</strong>
+            <p>
+              Exclude days that have no Oura tags from Insights and Explore comparisons.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={excludeUntaggedDays}
+            on:change={updateExcludeUntaggedDays}
+          />
+        </label>
+
+        <div class="setting-summary">
+          <span>Current sample</span>
+          <strong>{analysisDailyMetrics.length} of {dailyMetrics.length} days</strong>
+          <p>
+            {excludeUntaggedDays
+              ? `${excludedUntaggedDayCount} untagged days excluded.`
+              : "All imported days included."}
+          </p>
         </div>
       </div>
     </section>
@@ -2299,6 +2371,7 @@
   .metric-card,
   .analysis-panel,
   .explore-panel,
+  .settings-panel,
   .trend-panel {
     border: 1px solid #d3d5c8;
     border-radius: 8px;
@@ -2360,6 +2433,7 @@
 
   .analysis-panel,
   .explore-panel,
+  .settings-panel,
   .trend-panel {
     padding: 1rem;
   }
@@ -2367,6 +2441,52 @@
   .explore-workspace {
     display: grid;
     gap: 0.8rem;
+  }
+
+  .settings-workspace {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .setting-row {
+    align-items: center;
+    border-block: 1px solid #d8d8cc;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    padding-block: 0.9rem;
+  }
+
+  .setting-row strong {
+    display: block;
+    font-size: 1rem;
+  }
+
+  .setting-row p,
+  .setting-summary p {
+    color: #6f786f;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin-top: 0.25rem;
+  }
+
+  .setting-row input {
+    accent-color: #1d2a22;
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+
+  .setting-summary {
+    display: grid;
+    gap: 0.15rem;
+    padding-top: 0.9rem;
+  }
+
+  .setting-summary span {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 
   .explore-builder {
