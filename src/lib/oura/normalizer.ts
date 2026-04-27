@@ -463,10 +463,12 @@ function normalizeTagLabel(value: string | null) {
     return null
   }
 
-  return value
+  const label = value
     .replace(/^tag_/, "")
     .replace(/_/g, " ")
     .trim()
+
+  return label.replace(/^generic\s+(?=\S)/, "").trim()
 }
 
 function secondsToMinutes(value: number | null) {
