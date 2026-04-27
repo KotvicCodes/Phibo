@@ -2,7 +2,32 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 type OuraRecord = Record<string, unknown>
 
-const sleepPrefixedUniversalTags = new Set([
+const canonicalOuraTagLabels = new Map(
+  [
+    "alcohol",
+    "blackout curtains",
+    "blue light blockers",
+    "dreams",
+    "full moon",
+    "high altitude",
+    "home office",
+    "late coffee",
+    "late meal",
+    "late screen time",
+    "late work",
+    "light therapy",
+    "new bed",
+    "nightmares",
+    "no caffeine",
+    "noisy",
+    "social gathering",
+    "stress",
+    "temp high",
+    "temp low"
+  ].map((label) => [getTagKey(label), label])
+)
+
+const sleepPrefixedUniversalTagKeys = new Set([
   "alcohol",
   "blackout curtains",
   "blue light blockers",
@@ -10,7 +35,7 @@ const sleepPrefixedUniversalTags = new Set([
   "full moon",
   "late coffee",
   "late screen time",
-  "late mean",
+  "late meal",
   "late work",
   "new bed",
   "nightmares",
@@ -18,7 +43,7 @@ const sleepPrefixedUniversalTags = new Set([
   "stress",
   "temp high",
   "temp low"
-])
+].map(getTagKey))
 
 export type OuraDailySummary = OuraRecord
 export type OuraDailyActivity = OuraRecord
@@ -485,10 +510,25 @@ function normalizeTagLabel(value: string | null) {
     .replace(/^tag_/, "")
     .replace(/_/g, " ")
     .trim()
-  const genericLabel = label.replace(/^generic\s+(?=\S)/, "").trim()
-  const sleepLabel = genericLabel.replace(/^sleep\s+(?=\S)/, "").trim()
+  const genericLabel = label.replace(/^generic\s+(?=\S)/i, "").trim()
+  const sleepLabel = genericLabel.replace(/^sleep\s+(?=\S)/i, "").trim()
 
-  return sleepPrefixedUniversalTags.has(sleepLabel) ? sleepLabel : genericLabel
+  if (
+    sleepLabel !== genericLabel &&
+    sleepPrefixedUniversalTagKeys.has(getTagKey(sleepLabel))
+  ) {
+    return getCanonicalOuraTagLabel(sleepLabel)
+  }
+
+  return getCanonicalOuraTagLabel(genericLabel)
+}
+
+function getCanonicalOuraTagLabel(label: string) {
+  return canonicalOuraTagLabels.get(getTagKey(label)) ?? label
+}
+
+function getTagKey(label: string) {
+  return label.toLowerCase().replace(/[^a-z0-9]/g, "")
 }
 
 function secondsToMinutes(value: number | null) {
