@@ -28,10 +28,11 @@
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
+    detail: string
     label: string
-    value: string
     delta: string
     tone: "good" | "steady" | "watch"
+    value: string
   }
 
   interface MetricComparison {
@@ -75,6 +76,8 @@
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
+  const scoreSummaryDays = 30
+  const scoreTrendDays = 7
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
@@ -201,9 +204,9 @@
   $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
   $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
   $: summaries = [
-    createSummary("Sleep", "sleepScore", "vs sample baseline"),
-    createSummary("Readiness", "readinessScore", "this week"),
-    createSummary("Activity", "activityScore", "this week")
+    createSummary("Sleep", "sleepScore"),
+    createSummary("Readiness", "readinessScore"),
+    createSummary("Activity", "activityScore")
   ]
   onMount(async () => {
     const savedToken = await db.authTokens.get("oura")
@@ -491,17 +494,61 @@
     key: keyof Pick<
       DailyMetricRow,
       "activityScore" | "readinessScore" | "sleepScore"
-    >,
-    deltaLabel: string
+    >
   ): MetricSummary {
-    const value = average(dailyMetrics.map((day) => day[key]))
+    const summaryMetrics = dailyMetrics.slice(-scoreSummaryDays)
+    const value = average(summaryMetrics.map((day) => day[key]))
+    const trend = calculateScoreTrend(key)
+    const daysWithValue = summaryMetrics.filter((day) => day[key] != null).length
 
     return {
+      detail:
+        daysWithValue === 0
+          ? "Oura score, 0-100"
+          : `${daysWithValue}d avg Oura score`,
       label,
       value: value === null ? "n/a" : `${Math.round(value)}`,
-      delta: `${label === "Sleep" ? "+4" : "+2"} ${deltaLabel}`,
-      tone: label === "Readiness" ? "steady" : "good"
+      delta: formatScoreTrend(trend),
+      tone: trendTone(trend)
     }
+  }
+
+  function calculateScoreTrend(
+    key: keyof Pick<
+      DailyMetricRow,
+      "activityScore" | "readinessScore" | "sleepScore"
+    >
+  ) {
+    const currentDays = dailyMetrics.slice(-scoreTrendDays)
+    const previousDays = dailyMetrics.slice(-scoreTrendDays * 2, -scoreTrendDays)
+    const currentAverage = average(currentDays.map((day) => day[key]))
+    const previousAverage = average(previousDays.map((day) => day[key]))
+
+    if (currentAverage === null || previousAverage === null) {
+      return null
+    }
+
+    return Math.round((currentAverage - previousAverage) * 10) / 10
+  }
+
+  function formatScoreTrend(value: number | null) {
+    if (value === null) {
+      return "trend needs more days"
+    }
+
+    if (Math.abs(value) < 0.1) {
+      return "no change vs previous 7d"
+    }
+
+    return `${formatDelta(value)} vs previous 7d`
+  }
+
+  function trendTone(value: number | null): MetricSummary["tone"] {
+    if (value === null || Math.abs(value) < 1) {
+      return "steady"
+    }
+
+    return value > 0 ? "good" : "watch"
   }
 
   function createInsightStats(item: TagInsight): InsightStat[] {
@@ -1127,6 +1174,7 @@
       <article class="metric-card {summary.tone}">
         <p>{summary.label}</p>
         <strong>{summary.value}</strong>
+        <small>{summary.detail}</small>
         <span>{summary.delta}</span>
       </article>
     {/each}
@@ -2155,9 +2203,19 @@
     line-height: 1;
   }
 
+  .metric-card small {
+    color: #6f786f;
+    display: block;
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
   .metric-card span {
     color: #5d685e;
+    display: block;
     font-size: 0.9rem;
+    margin-top: 0.45rem;
   }
 
   .metric-card.good {
