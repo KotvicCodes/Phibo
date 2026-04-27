@@ -1354,27 +1354,34 @@
             </div>
           </section>
 
-          <section class="explore-control">
-            <h3>Outcomes</h3>
-            <div class="metric-selectors">
-              <label>
-                <span>X axis</span>
-                <select bind:value={selectedXMetric}>
-                  {#each exploreMetricDefinitions as metric}
-                    <option value={metric.key}>{metric.label}</option>
-                  {/each}
-                </select>
-              </label>
-              <label>
-                <span>Y axis</span>
-                <select bind:value={selectedYMetric}>
-                  {#each exploreMetricDefinitions as metric}
-                    <option value={metric.key}>{metric.label}</option>
-                  {/each}
-                </select>
-              </label>
-            </div>
-          </section>
+          {#if exploreChartMode !== "impact"}
+            <section class="explore-control">
+              <h3>Outcomes</h3>
+              <div
+                class:single={exploreChartMode === "timeline"}
+                class="metric-selectors"
+              >
+                {#if exploreChartMode === "scatter"}
+                  <label>
+                    <span>X axis</span>
+                    <select bind:value={selectedXMetric}>
+                      {#each exploreMetricDefinitions as metric}
+                        <option value={metric.key}>{metric.label}</option>
+                      {/each}
+                    </select>
+                  </label>
+                {/if}
+                <label>
+                  <span>{exploreChartMode === "timeline" ? "Metric" : "Y axis"}</span>
+                  <select bind:value={selectedYMetric}>
+                    {#each exploreMetricDefinitions as metric}
+                      <option value={metric.key}>{metric.label}</option>
+                    {/each}
+                  </select>
+                </label>
+              </div>
+            </section>
+          {/if}
 
           <section class="explore-control">
             <h3>View</h3>
@@ -2220,6 +2227,10 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.55rem;
+  }
+
+  .metric-selectors.single {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .metric-selectors label {
