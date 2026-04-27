@@ -212,17 +212,23 @@
     ? insightComparisonMetrics.map(
         (item): InsightComparison => ({
           ...item,
-          comparison: getMetricComparison(selectedInsight.tag, item.metric)
+          comparison: getMetricComparison(
+            selectedInsight.tag,
+            item.metric,
+            analysisDailyMetrics
+          )
         })
       )
     : []
-  $: selectedStats = selectedInsight ? createInsightStats(selectedInsight) : []
+  $: selectedStats = selectedInsight
+    ? createInsightStats(selectedInsight, analysisDailyMetrics)
+    : []
   $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
   $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
   $: summaries = [
-    createSummary("Sleep", "sleepScore"),
-    createSummary("Readiness", "readinessScore"),
-    createSummary("Activity", "activityScore")
+    createSummary("Sleep", "sleepScore", analysisDailyMetrics),
+    createSummary("Readiness", "readinessScore", analysisDailyMetrics),
+    createSummary("Activity", "activityScore", analysisDailyMetrics)
   ]
   onMount(async () => {
     excludeUntaggedDays =
@@ -532,11 +538,12 @@
     key: keyof Pick<
       DailyMetricRow,
       "activityScore" | "readinessScore" | "sleepScore"
-    >
+    >,
+    metrics: DailyMetricRow[]
   ): MetricSummary {
-    const summaryMetrics = analysisDailyMetrics.slice(-scoreWeekDays)
+    const summaryMetrics = metrics.slice(-scoreWeekDays)
     const value = average(summaryMetrics.map((day) => day[key]))
-    const trend = calculateScoreTrend(key)
+    const trend = calculateScoreTrend(key, metrics)
     const daysWithValue = summaryMetrics.filter((day) => day[key] != null).length
 
     return {
@@ -555,10 +562,11 @@
     key: keyof Pick<
       DailyMetricRow,
       "activityScore" | "readinessScore" | "sleepScore"
-    >
+    >,
+    metrics: DailyMetricRow[]
   ) {
-    const currentDays = analysisDailyMetrics.slice(-scoreWeekDays)
-    const previousDays = analysisDailyMetrics.slice(
+    const currentDays = metrics.slice(-scoreWeekDays)
+    const previousDays = metrics.slice(
       -scoreWeekDays * 2,
       -scoreWeekDays
     )
@@ -592,11 +600,14 @@
     return value > 0 ? "good" : "watch"
   }
 
-  function createInsightStats(item: TagInsight): InsightStat[] {
+  function createInsightStats(
+    item: TagInsight,
+    metrics: DailyMetricRow[]
+  ): InsightStat[] {
     const correlation = correlations.find((correlation) => correlation.tag === item.tag)
     const daysWithoutTag =
       correlation?.daysWithoutTag ??
-      Math.max(analysisDailyMetrics.length - item.daysWithTag, 0)
+      Math.max(metrics.length - item.daysWithTag, 0)
     const metricStats = correlation
       ? ([
           {
@@ -893,13 +904,14 @@
 
   function getMetricComparison(
     tag: string,
-    metric: InsightComparisonMetric
+    metric: InsightComparisonMetric,
+    metrics: DailyMetricRow[]
   ): MetricComparison {
     const currentTagsByDate = buildTagsByDate(tagEntries)
-    const taggedDays = analysisDailyMetrics.filter((day) =>
+    const taggedDays = metrics.filter((day) =>
       (currentTagsByDate[day.date] ?? []).includes(tag)
     )
-    const untaggedDays = analysisDailyMetrics.filter(
+    const untaggedDays = metrics.filter(
       (day) => !(currentTagsByDate[day.date] ?? []).includes(tag)
     )
     const taggedAverage = average(taggedDays.map((day) => day[metric]))
