@@ -1415,6 +1415,21 @@
             </div>
           </section>
 
+          <section class="explore-control">
+            <h3>View</h3>
+            <div class="segmented-control" aria-label="Explore chart mode">
+              {#each chartModes as mode}
+                <button
+                  type="button"
+                  class:active={exploreChartMode === mode}
+                  on:click={() => (exploreChartMode = mode)}
+                >
+                  {mode}
+                </button>
+              {/each}
+            </div>
+          </section>
+
           {#if exploreChartMode !== "impact"}
             <section class="explore-control">
               <h3>Outcomes</h3>
@@ -1443,21 +1458,6 @@
               </div>
             </section>
           {/if}
-
-          <section class="explore-control">
-            <h3>View</h3>
-            <div class="segmented-control" aria-label="Explore chart mode">
-              {#each chartModes as mode}
-                <button
-                  type="button"
-                  class:active={exploreChartMode === mode}
-                  on:click={() => (exploreChartMode = mode)}
-                >
-                  {mode}
-                </button>
-              {/each}
-            </div>
-          </section>
         </div>
       </div>
 
@@ -2327,9 +2327,15 @@
   }
 
   .segmented-control {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.45rem;
+    max-width: 22rem;
+  }
+
+  .segmented-control button {
+    min-width: 0;
+    text-align: center;
   }
 
   .chart-panel {
