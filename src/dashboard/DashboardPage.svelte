@@ -599,19 +599,34 @@
         value: `${daysWithoutTag}`
       },
       {
-        helper: "sample confidence",
-        label: "Support",
-        unit: "%",
-        value: `${Math.round(item.supportScore * 100)}`
+        helper: `${item.daysWithTag} of ${item.daysWithTag + daysWithoutTag} nights tagged`,
+        label: "Confidence",
+        unit: "",
+        value: insightConfidenceLabel(item.daysWithTag, daysWithoutTag)
       },
       {
-        helper: "effect after support weighting",
-        label: "Signal",
+        helper: `${metricLabel(item.metric)} difference on tagged nights`,
+        label: "Effect",
         unit: "pts",
-        value: item.weightedImpact.toFixed(1)
+        value: formatDelta(item.delta)
       },
       ...metricStats
     ]
+  }
+
+  function insightConfidenceLabel(daysWithTag: number, daysWithoutTag: number) {
+    const totalDays = daysWithTag + daysWithoutTag
+    const coverage = totalDays === 0 ? 0 : daysWithTag / totalDays
+
+    if (daysWithTag >= 10 && daysWithoutTag >= 20 && coverage >= 0.05) {
+      return "High"
+    }
+
+    if (daysWithTag >= 5 && daysWithoutTag >= 10 && coverage >= 0.02) {
+      return "Medium"
+    }
+
+    return "Low"
   }
 
   function createScatterPoints(
@@ -1411,7 +1426,12 @@
           <div>
             <span>{stat.label}</span>
             <p>{stat.helper}</p>
-            <strong>{stat.value} <small>{stat.unit}</small></strong>
+            <strong>
+              {stat.value}
+              {#if stat.unit}
+                <small>{stat.unit}</small>
+              {/if}
+            </strong>
           </div>
         {/each}
       </div>
