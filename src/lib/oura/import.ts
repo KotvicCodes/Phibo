@@ -7,7 +7,6 @@ import {
   type OuraDailyActivity,
   type OuraDailySummary,
   type OuraMetricInput,
-  type OuraSleepSession,
   type OuraTag
 } from "./normalizer"
 
@@ -15,7 +14,6 @@ type ImportKind =
   | "dailyActivity"
   | "dailyReadiness"
   | "dailySleep"
-  | "sleepSessions"
   | "tags"
 
 interface ImportFileRecord {
@@ -75,7 +73,7 @@ export async function importOuraFiles(files: File[]) {
 
     if (expandedFiles.supported.length === 0) {
       throw new OuraImportError(
-        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, sleep.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
+        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
       )
     }
 
@@ -237,13 +235,6 @@ function classifyOuraFile(name: string): ImportKind | null {
     compactName.startsWith("ouradailyactivity")
   ) {
     return "dailyActivity"
-  }
-
-  if (
-    compactName === "sleep" ||
-    compactName.startsWith("ourasleep")
-  ) {
-    return "sleepSessions"
   }
 
   if (
