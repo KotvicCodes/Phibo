@@ -76,8 +76,7 @@
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
-  const scoreSummaryDays = 30
-  const scoreTrendDays = 7
+  const scoreWeekDays = 7
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
@@ -496,7 +495,7 @@
       "activityScore" | "readinessScore" | "sleepScore"
     >
   ): MetricSummary {
-    const summaryMetrics = dailyMetrics.slice(-scoreSummaryDays)
+    const summaryMetrics = dailyMetrics.slice(-scoreWeekDays)
     const value = average(summaryMetrics.map((day) => day[key]))
     const trend = calculateScoreTrend(key)
     const daysWithValue = summaryMetrics.filter((day) => day[key] != null).length
@@ -505,7 +504,7 @@
       detail:
         daysWithValue === 0
           ? "Oura score, 0-100"
-          : `${daysWithValue}d avg Oura score`,
+          : "current week Oura score",
       label,
       value: value === null ? "n/a" : `${Math.round(value)}`,
       delta: formatScoreTrend(trend),
@@ -519,8 +518,8 @@
       "activityScore" | "readinessScore" | "sleepScore"
     >
   ) {
-    const currentDays = dailyMetrics.slice(-scoreTrendDays)
-    const previousDays = dailyMetrics.slice(-scoreTrendDays * 2, -scoreTrendDays)
+    const currentDays = dailyMetrics.slice(-scoreWeekDays)
+    const previousDays = dailyMetrics.slice(-scoreWeekDays * 2, -scoreWeekDays)
     const currentAverage = average(currentDays.map((day) => day[key]))
     const previousAverage = average(previousDays.map((day) => day[key]))
 
@@ -533,14 +532,14 @@
 
   function formatScoreTrend(value: number | null) {
     if (value === null) {
-      return "trend needs more days"
+      return "needs last week"
     }
 
     if (Math.abs(value) < 0.1) {
-      return "no change vs previous 7d"
+      return "same as last week"
     }
 
-    return `${formatDelta(value)} vs previous 7d`
+    return `${Math.abs(value).toFixed(1)} ${value > 0 ? "higher" : "lower"} than last week`
   }
 
   function trendTone(value: number | null): MetricSummary["tone"] {
