@@ -80,7 +80,7 @@ export interface TagMetricCorrelation {
   weightedImpact: number
 }
 
-export type InsightKind = "concerning" | "notable" | "rewarding"
+export type InsightKind = "concerning" | "rewarding"
 
 export interface TagInsight {
   kind: InsightKind
@@ -519,19 +519,9 @@ export function getRankedTagInsights(correlations: TagMetricCorrelation[]) {
     })
   )
 
-  const rewarding = takeTopInsights(insights, "rewarding")
-  const concerning = takeTopInsights(insights, "concerning")
-  const usedInsightIds = new Set(
-    [...rewarding, ...concerning].map((insight) => insightId(insight))
-  )
-
   return {
-    rewarding,
-    concerning,
-    notable: takeTopInsights(
-      insights.filter((insight) => !usedInsightIds.has(insightId(insight))),
-      "notable"
-    )
+    rewarding: takeTopInsights(insights, "rewarding"),
+    concerning: takeTopInsights(insights, "concerning")
   }
 }
 
@@ -717,18 +707,10 @@ function metricWeight(metric: MetricKey) {
 }
 
 function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
-  const matchingInsights =
-    kind === "notable"
-      ? insights
-      : insights.filter((insight) => insight.kind === kind)
-
-  return matchingInsights
+  return insights
+    .filter((insight) => insight.kind === kind)
     .sort((left, right) => right.weightedImpact - left.weightedImpact)
-    .slice(0, 3)
-}
-
-function insightId(insight: TagInsight) {
-  return `${insight.tag}-${insight.metric}`
+    .slice(0, 4)
 }
 
 function average(values: Array<number | null | undefined>) {

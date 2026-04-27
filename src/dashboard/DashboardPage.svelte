@@ -184,8 +184,7 @@
   $: insights = getRankedTagInsights(correlations)
   $: allInsights = [
     ...insights.rewarding,
-    ...insights.concerning,
-    ...insights.notable
+    ...insights.concerning
   ]
   $: selectedInsight =
     allInsights.find((insight) => insightKey(insight) === selectedInsightKey) ??
@@ -1282,31 +1281,6 @@
               </button>
             {:else}
               <p class="empty-state">No supported concerning pattern yet.</p>
-            {/each}
-          </div>
-        </section>
-
-        <section class="insight-column">
-          <h3>Notable</h3>
-          <div class="insight-stack">
-            {#each insights.notable as item}
-              <button
-                type="button"
-                class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
-                class="correlation-card notable"
-                on:click={() => selectInsight(item)}
-              >
-                <div class="correlation-title">
-                  <h4>{formatTagLabel(item.tag)}</h4>
-                  <span>{item.daysWithTag} nights</span>
-                </div>
-                <strong class="score-impact {impactTone(item.delta)}">
-                  <span>{metricLabel(item.metric)}</span>
-                  <b>{formatDelta(item.delta)}</b>
-                </strong>
-              </button>
-            {:else}
-              <p class="empty-state">No extra notable sleep pattern yet.</p>
             {/each}
           </div>
         </section>
@@ -2740,10 +2714,6 @@
 
   .correlation-card.concerning {
     border-left: 4px solid #a96745;
-  }
-
-  .correlation-card.notable {
-    border-left: 4px solid #587a96;
   }
 
   .correlation-title {
