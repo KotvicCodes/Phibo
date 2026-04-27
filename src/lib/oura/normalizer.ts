@@ -254,8 +254,8 @@ export function mapTagEntries(tags: OuraTag[]) {
   return tags.flatMap((tag): TagEntryRow[] => {
     const date = getRecordDay(tag)
     const label = normalizeTagLabel(
-      getString(tag, "text", "CustomName", "Comment") ??
-        getString(tag, "tag_type_code", "TagTypeCode")
+      getString(tag, "custom_tag_name", "CustomTagName", "CustomName") ??
+        getString(tag, "tag_type_code", "TagTypeCode", "text")
     )
 
     if (!date || !label) {
