@@ -1449,34 +1449,40 @@
             </div>
           </section>
 
-          {#if exploreChartMode !== "impact"}
-            <section class="explore-control">
-              <h3>Outcomes</h3>
-              <div
-                class:single={exploreChartMode === "timeline"}
-                class="metric-selectors"
-              >
-                {#if exploreChartMode === "scatter"}
-                  <label>
-                    <span>X axis</span>
-                    <select bind:value={selectedXMetric}>
-                      {#each exploreMetricDefinitions as metric}
-                        <option value={metric.key}>{metric.label}</option>
-                      {/each}
-                    </select>
-                  </label>
-                {/if}
+          <section
+            aria-hidden={exploreChartMode === "impact"}
+            class:hidden={exploreChartMode === "impact"}
+            class="explore-control"
+          >
+            <h3>Outcomes</h3>
+            <div
+              class:single={exploreChartMode !== "scatter"}
+              class="metric-selectors"
+            >
+              {#if exploreChartMode === "scatter"}
                 <label>
-                  <span>{exploreChartMode === "timeline" ? "Metric" : "Y axis"}</span>
-                  <select bind:value={selectedYMetric}>
+                  <span>X axis</span>
+                  <select bind:value={selectedXMetric}>
                     {#each exploreMetricDefinitions as metric}
                       <option value={metric.key}>{metric.label}</option>
                     {/each}
                   </select>
                 </label>
-              </div>
-            </section>
-          {/if}
+              {/if}
+              <label>
+                <span>{exploreChartMode === "timeline" ? "Metric" : "Y axis"}</span>
+                <select
+                  bind:value={selectedYMetric}
+                  disabled={exploreChartMode === "impact"}
+                  tabindex={exploreChartMode === "impact" ? -1 : 0}
+                >
+                  {#each exploreMetricDefinitions as metric}
+                    <option value={metric.key}>{metric.label}</option>
+                  {/each}
+                </select>
+              </label>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -2266,15 +2272,22 @@
   }
 
   .explore-builder {
+    align-items: start;
     display: grid;
     grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.8fr);
     gap: 0.9rem;
   }
 
   .explore-control {
+    align-content: start;
     display: grid;
     gap: 0.55rem;
     min-width: 0;
+  }
+
+  .explore-control.hidden {
+    pointer-events: none;
+    visibility: hidden;
   }
 
   .explore-control h3 {
@@ -2353,7 +2366,9 @@
   }
 
   .segmented-control button {
+    min-height: 3rem;
     min-width: 0;
+    padding-block: 0.78rem;
     text-align: center;
   }
 
