@@ -970,6 +970,10 @@
     return metric === "sleepScore" ? "sleep score" : "readiness"
   }
 
+  function matchingLogMetricLabel(metric: ExploreMetricDefinition) {
+    return metric.key === "sleepScore" ? "Sleep" : metric.label
+  }
+
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
@@ -1691,8 +1695,8 @@
             <div class="log-table">
               <div class="log-row header">
                 <span>Date</span>
-                <span>{selectedXDefinition.label}</span>
-                <span>{selectedYDefinition.label}</span>
+                <span>{matchingLogMetricLabel(selectedXDefinition)}</span>
+                <span>{matchingLogMetricLabel(selectedYDefinition)}</span>
                 <span>Tags</span>
               </div>
               {#each matchingExploreDays as day}
@@ -2612,6 +2616,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .log-row strong:nth-child(2),
+  .log-row strong:nth-child(3),
+  .log-row span:nth-child(2),
+  .log-row span:nth-child(3) {
+    justify-self: center;
+    text-align: center;
   }
 
   .panel-heading {
