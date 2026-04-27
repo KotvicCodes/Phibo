@@ -2185,10 +2185,7 @@
 
   .explore-builder {
     display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(260px, 0.9fr) minmax(
-        220px,
-        0.7fr
-      );
+    grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.8fr);
     gap: 0.9rem;
   }
 
@@ -2203,6 +2200,12 @@
     font-size: 0.8rem;
     font-weight: 800;
     text-transform: uppercase;
+  }
+
+  .explore-control:first-child {
+    border-bottom: 1px solid #d8d8cc;
+    grid-column: 1 / -1;
+    padding-bottom: 0.9rem;
   }
 
   .tag-picker {
