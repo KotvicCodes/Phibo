@@ -40,6 +40,12 @@
     taggedAverage: number | null
   }
 
+  interface InsightComparison {
+    comparison: MetricComparison
+    label: string
+    metric: InsightComparisonMetric
+  }
+
   interface InsightStat {
     helper: string
     label: string
@@ -49,6 +55,10 @@
 
   type ChartMode = "impact" | "scatter" | "timeline"
   type DashboardView = "explore" | "insights"
+  type InsightComparisonMetric = keyof Pick<
+    DailyMetricRow,
+    "activityScore" | "readinessScore" | "sleepScore"
+  >
 
   interface ChartPoint {
     day: ExploreDay
@@ -65,6 +75,13 @@
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
+  const insightComparisonMetrics: Array<
+    Pick<InsightComparison, "label" | "metric">
+  > = [
+    { label: "Sleep score", metric: "sleepScore" },
+    { label: "Readiness", metric: "readinessScore" },
+    { label: "Activity", metric: "activityScore" }
+  ]
 
   let accessToken = ""
   let activeView: DashboardView = "insights"
@@ -172,15 +189,14 @@
     allInsights[0]
   $: latestMetricDate = dailyMetrics.at(-1)?.date ?? endDate
   $: discoveries = getTagDiscoveries(tagEntries, latestMetricDate)
-  $: selectedComparison = selectedInsight
-    ? {
-        readinessScore: getMetricComparison(
-          selectedInsight.tag,
-          "readinessScore"
-        ),
-        sleepScore: getMetricComparison(selectedInsight.tag, "sleepScore")
-      }
-    : null
+  $: selectedComparisons = selectedInsight
+    ? insightComparisonMetrics.map(
+        (item): InsightComparison => ({
+          ...item,
+          comparison: getMetricComparison(selectedInsight.tag, item.metric)
+        })
+      )
+    : []
   $: selectedStats = selectedInsight ? createInsightStats(selectedInsight) : []
   $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
   $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
@@ -457,6 +473,10 @@
 
   function formatNullableDelta(value: number | null, suffix = "") {
     return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
+  }
+
+  function formatComparisonAverage(value: number | null) {
+    return value === null ? "n/a" : `${Math.round(value)}`
   }
 
   function formatDate(date: string) {
@@ -737,7 +757,7 @@
 
   function getMetricComparison(
     tag: string,
-    metric: PrimaryInsightMetric
+    metric: InsightComparisonMetric
   ): MetricComparison {
     const currentTagsByDate = buildTagsByDate(tagEntries)
     const taggedDays = dailyMetrics.filter((day) =>
@@ -1255,75 +1275,40 @@
         {/if}
       </div>
 
-      {#if selectedInsight && selectedComparison}
+      {#if selectedInsight && selectedComparisons.length > 0}
         <div class="comparison-chart" aria-label="Selected insight comparison">
-          <article>
-            <div class="comparison-heading">
-              <strong>Sleep score</strong>
-              <span
-                >{formatNullableDelta(selectedComparison.sleepScore.delta)}</span
-              >
-            </div>
-            <div class="bar-row">
-              <span>Tagged</span>
-              <div class="bar-track">
-                <span
-                  class="bar-fill tagged"
-                  style={`width: ${comparisonWidth(
-                    selectedComparison.sleepScore.taggedAverage
-                  )}`}
-                />
+          {#each selectedComparisons as item}
+            <article>
+              <div class="comparison-heading">
+                <strong>{item.label}</strong>
+                <span>{formatNullableDelta(item.comparison.delta)}</span>
               </div>
-              <strong>{Math.round(selectedComparison.sleepScore.taggedAverage ?? 0)}</strong>
-            </div>
-            <div class="bar-row">
-              <span>Other</span>
-              <div class="bar-track">
-                <span
-                  class="bar-fill baseline"
-                  style={`width: ${comparisonWidth(
-                    selectedComparison.sleepScore.baselineAverage
-                  )}`}
-                />
+              <div class="bar-row">
+                <span>Tagged</span>
+                <div class="bar-track">
+                  <span
+                    class="bar-fill tagged"
+                    style={`width: ${comparisonWidth(
+                      item.comparison.taggedAverage
+                    )}`}
+                  />
+                </div>
+                <strong>{formatComparisonAverage(item.comparison.taggedAverage)}</strong>
               </div>
-              <strong>{Math.round(selectedComparison.sleepScore.baselineAverage ?? 0)}</strong>
-            </div>
-          </article>
-
-          <article>
-            <div class="comparison-heading">
-              <strong>Readiness</strong>
-              <span
-                >{formatNullableDelta(
-                  selectedComparison.readinessScore.delta
-                )}</span
-              >
-            </div>
-            <div class="bar-row">
-              <span>Tagged</span>
-              <div class="bar-track">
-                <span
-                  class="bar-fill tagged"
-                  style={`width: ${comparisonWidth(
-                    selectedComparison.readinessScore.taggedAverage
-                  )}`}
-                />
+              <div class="bar-row">
+                <span>Other</span>
+                <div class="bar-track">
+                  <span
+                    class="bar-fill baseline"
+                    style={`width: ${comparisonWidth(
+                      item.comparison.baselineAverage
+                    )}`}
+                  />
+                </div>
+                <strong>{formatComparisonAverage(item.comparison.baselineAverage)}</strong>
               </div>
-              <strong>{Math.round(selectedComparison.readinessScore.taggedAverage ?? 0)}</strong>
-            </div>
-            <div class="bar-row">
-              <span>Other</span>
-              <div class="bar-track">
-                <span
-                  class="bar-fill baseline"
-                  style={`width: ${comparisonWidth(
-                    selectedComparison.readinessScore.baselineAverage
-                  )}`}
-                />
-              </div>
-              <strong>{Math.round(selectedComparison.readinessScore.baselineAverage ?? 0)}</strong>
-            </div>
-          </article>
+            </article>
+          {/each}
         </div>
       {:else}
         <p class="empty-state">Select an insight to compare tagged nights.</p>
