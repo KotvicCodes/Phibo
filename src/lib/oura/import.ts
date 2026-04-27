@@ -33,6 +33,7 @@ interface ParsedFileSummary {
 export interface OuraImportResult {
   dailyMetrics: ReturnType<typeof mergeDailyMetrics>
   filesImported: number
+  skippedFiles: number
   tagEntries: ReturnType<typeof mapTagEntries>
   unsupportedFiles: number
 }
@@ -86,9 +87,15 @@ export async function importOuraFiles(files: File[]) {
     }
     const tags: OuraTag[] = []
     const parsedFileSummaries: ParsedFileSummary[] = []
+    const parseFailures: string[] = []
 
     for (const file of expandedFiles.supported) {
-      const rows = parseImportRows(file)
+      const rows = tryParseImportRows(file, parseFailures)
+
+      if (!rows) {
+        continue
+      }
+
       parsedFileSummaries.push(summarizeParsedFile(file.name, rows))
 
       if (file.kind === "tags") {
@@ -103,7 +110,7 @@ export async function importOuraFiles(files: File[]) {
 
     if (dailyMetrics.length === 0) {
       throw new OuraImportError(
-        `The selected Oura files did not include usable daily metric rows. ${formatParsedFileSummaries(parsedFileSummaries)}`
+        `The selected Oura files did not include usable daily metric rows. ${formatParsedFileSummaries(parsedFileSummaries)}${formatParseFailures(parseFailures)}${formatUnsupportedFiles(expandedFiles.unsupported)}`
       )
     }
 
@@ -127,7 +134,8 @@ export async function importOuraFiles(files: File[]) {
 
     return {
       dailyMetrics,
-      filesImported: expandedFiles.supported.length,
+      filesImported: parsedFileSummaries.length,
+      skippedFiles: parseFailures.length,
       tagEntries,
       unsupportedFiles: expandedFiles.unsupported
     } satisfies OuraImportResult
@@ -140,6 +148,16 @@ export async function importOuraFiles(files: File[]) {
     })
 
     throw error
+  }
+}
+
+function tryParseImportRows(file: ImportFileRecord, failures: string[]) {
+  try {
+    return parseImportRows(file)
+  } catch (error) {
+    failures.push(formatParseFailure(file.name, error))
+
+    return null
   }
 }
 
@@ -267,10 +285,19 @@ function parseCsvRows(file: ImportFileRecord) {
   const fatalErrors = result.errors.filter(isFatalCsvError)
 
   if (fatalErrors.length > 0) {
-    throw new OuraImportError(`Could not read ${file.name} as CSV.`)
+    throw new OuraImportError(
+      `Could not read ${file.name} as CSV (${formatCsvErrors(fatalErrors)}).`
+    )
   }
 
   return result.data.map(removePapaExtraFields).filter(isImportRow)
+}
+
+function formatCsvErrors(errors: CsvParseError[]) {
+  return errors
+    .slice(0, 3)
+    .map((error) => error.code ?? error.type ?? "parse error")
+    .join(", ")
 }
 
 function detectCsvDelimiter(text: string) {
@@ -351,6 +378,32 @@ function formatParsedFileSummaries(summaries: ParsedFileSummary[]) {
     remainingCount > 0 ? `; plus ${remainingCount} more supported files` : ""
 
   return `Parsed ${summaries.length} supported files (${formattedSummaries.join(" | ")}${remainingText}).`
+}
+
+function formatParseFailure(name: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "Unknown parse error"
+
+  return `${name}: ${message}`
+}
+
+function formatParseFailures(failures: string[]) {
+  if (failures.length === 0) {
+    return ""
+  }
+
+  const formattedFailures = failures.slice(0, 4).join(" | ")
+  const remainingCount = failures.length - Math.min(failures.length, 4)
+  const remainingText =
+    remainingCount > 0 ? `; plus ${remainingCount} more parse failures` : ""
+
+  return ` Skipped unreadable supported files (${formattedFailures}${remainingText}).`
+}
+
+function formatUnsupportedFiles(count: number) {
+  return count > 0
+    ? ` Ignored ${count} Oura export files Phibo does not import yet.`
+    : ""
 }
 
 function parseJsonRows(file: ImportFileRecord) {

@@ -243,10 +243,14 @@
 
       await loadLocalOuraData()
       exploreTagsInitialized = false
+      const skippedText =
+        result.skippedFiles > 0 || result.unsupportedFiles > 0
+          ? ` Skipped ${result.skippedFiles + result.unsupportedFiles} files Phibo could not import.`
+          : ""
       importMessage =
         result.tagEntries.length > 0
-          ? `Imported ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags from ${result.filesImported} Oura files.`
-          : `Imported ${result.dailyMetrics.length} days. No tags were found in this export; existing local tags remain available.`
+          ? `Imported ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags from ${result.filesImported} Oura files.${skippedText}`
+          : `Imported ${result.dailyMetrics.length} days. No tags were found in this export; existing local tags remain available.${skippedText}`
     } catch (error) {
       importMessage = formatOuraImportError(error)
     } finally {
