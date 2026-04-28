@@ -78,7 +78,11 @@
   const chartPadding = 56
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const scoreWeekDays = 7
-  const displayTagLabels = new Map([["slept alone", "Sleep Solo"]])
+  const displayTagLabels = new Map([
+    ["slept alone", "Sleep Solo"],
+    ["sunrise exposure", "Morning Sunlight"],
+    ["sunset exposure", "Evening Sunlight"]
+  ])
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
