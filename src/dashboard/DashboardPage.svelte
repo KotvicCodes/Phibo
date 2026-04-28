@@ -553,8 +553,8 @@
     return {
       detail:
         daysWithValue === 0
-          ? "Oura score, 0-100"
-          : "current week Oura score",
+          ? "0-100 scale"
+          : "current week",
       label,
       value: value === null ? "n/a" : `${Math.round(value)}`,
       delta: formatScoreTrend(trend),
