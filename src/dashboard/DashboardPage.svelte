@@ -1321,7 +1321,6 @@
           <p class="section-kicker">Insights</p>
           <h2>What deserves attention</h2>
         </div>
-        <span>Last 30 days</span>
       </div>
 
       <div class="insight-layout">
