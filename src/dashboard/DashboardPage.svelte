@@ -179,6 +179,8 @@
           })
         )
       : []
+  $: sleepLogDefinition = getExploreMetric("sleepScore")
+  $: readinessLogDefinition = getExploreMetric("readinessScore")
   $: activityLogDefinition = getExploreMetric("activityScore")
   $: selectedXDefinition = getExploreMetric(selectedXMetric)
   $: selectedYDefinition = getExploreMetric(selectedYMetric)
@@ -1947,8 +1949,8 @@
             <div class="log-table">
               <div class="log-row header">
                 <span>Date</span>
-                <span>{matchingLogMetricLabel(selectedXDefinition)}</span>
-                <span>{matchingLogMetricLabel(selectedYDefinition)}</span>
+                <span>{matchingLogMetricLabel(sleepLogDefinition)}</span>
+                <span>{matchingLogMetricLabel(readinessLogDefinition)}</span>
                 <span>{matchingLogMetricLabel(activityLogDefinition)}</span>
                 <span>Tags</span>
               </div>
@@ -1963,10 +1965,10 @@
                 >
                   <strong>{formatFullDate(day.date)}</strong>
                   <strong>
-                    {formatMetricValue(day.metric[selectedXMetric] ?? null, selectedXDefinition)}
+                    {formatMetricValue(day.metric.sleepScore ?? null, sleepLogDefinition)}
                   </strong>
                   <strong>
-                    {formatMetricValue(day.metric[selectedYMetric] ?? null, selectedYDefinition)}
+                    {formatMetricValue(day.metric.readinessScore ?? null, readinessLogDefinition)}
                   </strong>
                   <strong>
                     {formatMetricValue(day.metric.activityScore ?? null, activityLogDefinition)}
@@ -3022,8 +3024,8 @@
     color: inherit;
     display: grid;
     font: inherit;
-    grid-template-columns: 86px 108px 108px 96px minmax(0, 1fr);
-    gap: 0.55rem;
+    grid-template-columns: 84px 96px 96px 90px minmax(0, 1fr);
+    gap: 0.45rem;
     min-height: 44px;
     padding: 0.5rem 0;
     text-align: left;
@@ -3450,7 +3452,7 @@
     }
 
     .log-row {
-      grid-template-columns: 78px repeat(3, minmax(82px, 0.5fr)) minmax(150px, 1fr);
+      grid-template-columns: 70px repeat(3, minmax(70px, 0.5fr)) minmax(140px, 1fr);
       overflow-x: auto;
     }
 
