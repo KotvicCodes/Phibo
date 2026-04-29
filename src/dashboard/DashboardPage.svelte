@@ -179,6 +179,7 @@
           })
         )
       : []
+  $: activityLogDefinition = getExploreMetric("activityScore")
   $: selectedXDefinition = getExploreMetric(selectedXMetric)
   $: selectedYDefinition = getExploreMetric(selectedYMetric)
   $: scatterXExtent = metricExtent(exploreDays, selectedXMetric)
@@ -1948,6 +1949,7 @@
                 <span>Date</span>
                 <span>{matchingLogMetricLabel(selectedXDefinition)}</span>
                 <span>{matchingLogMetricLabel(selectedYDefinition)}</span>
+                <span>{matchingLogMetricLabel(activityLogDefinition)}</span>
                 <span>Tags</span>
               </div>
               {#each matchingExploreDays as day}
@@ -1965,6 +1967,9 @@
                   </strong>
                   <strong>
                     {formatMetricValue(day.metric[selectedYMetric] ?? null, selectedYDefinition)}
+                  </strong>
+                  <strong>
+                    {formatMetricValue(day.metric.activityScore ?? null, activityLogDefinition)}
                   </strong>
                   <span>{detailTags(day)}</span>
                 </button>
@@ -3017,10 +3022,10 @@
     color: inherit;
     display: grid;
     font: inherit;
-    grid-template-columns: 90px 120px 120px minmax(0, 1fr);
-    gap: 0.7rem;
+    grid-template-columns: 86px 108px 108px 96px minmax(0, 1fr);
+    gap: 0.55rem;
     min-height: 44px;
-    padding: 0.55rem 0;
+    padding: 0.5rem 0;
     text-align: left;
   }
 
@@ -3044,8 +3049,10 @@
 
   .log-row strong:nth-child(2),
   .log-row strong:nth-child(3),
+  .log-row strong:nth-child(4),
   .log-row span:nth-child(2),
-  .log-row span:nth-child(3) {
+  .log-row span:nth-child(3),
+  .log-row span:nth-child(4) {
     justify-self: center;
     text-align: center;
   }
@@ -3443,7 +3450,7 @@
     }
 
     .log-row {
-      grid-template-columns: 80px repeat(2, minmax(90px, 0.5fr)) minmax(160px, 1fr);
+      grid-template-columns: 78px repeat(3, minmax(82px, 0.5fr)) minmax(150px, 1fr);
       overflow-x: auto;
     }
 
