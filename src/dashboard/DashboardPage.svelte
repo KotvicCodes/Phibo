@@ -2821,7 +2821,7 @@
     color: inherit;
     cursor: pointer;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto 2rem;
+    grid-template-columns: minmax(0, 1fr) auto 2.25rem;
     gap: 0.8rem;
     min-height: 60px;
     padding: 0.7rem 0.85rem;
@@ -2872,14 +2872,17 @@
     align-items: center;
     border: 1px solid #cbd3c3;
     border-radius: 999px;
+    box-sizing: border-box;
     color: #4f5f53;
     display: flex;
+    flex: 0 0 2.25rem;
     font-size: 1rem;
     font-weight: 900;
-    height: 2rem;
+    height: 2.25rem;
     justify-content: center;
+    justify-self: end;
     line-height: 1;
-    width: 2rem;
+    width: 2.25rem;
   }
 
   .impact-group-toggle::before {
@@ -3434,14 +3437,22 @@
       overflow-x: auto;
     }
 
-    .impact-group-heading,
     .impact-metric-heading {
       grid-template-columns: minmax(0, 1fr) auto;
     }
 
+    .impact-group-heading {
+      grid-template-columns: minmax(0, 1fr) 2.25rem;
+    }
+
+    .impact-group-heading .score-impact {
+      grid-column: 1;
+      justify-content: start;
+    }
+
     .impact-group-toggle {
-      grid-column: 1 / -1;
-      justify-self: start;
+      grid-column: 2;
+      grid-row: 1 / span 2;
     }
 
     .impact-grid {
