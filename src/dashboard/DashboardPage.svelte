@@ -1402,7 +1402,7 @@
     <div class="analysis-panel">
       <div class="panel-heading">
         <div>
-          <p class="section-kicker">Insights</p>
+          <p class="section-kicker">Most Impactful</p>
           <h2>What deserves attention</h2>
         </div>
       </div>
@@ -1669,7 +1669,9 @@
         <div class="explore-panel score-comparison-panel">
           <div class="panel-heading compact">
             <div>
-              <p class="section-kicker">Score comparison</p>
+              <p class="section-kicker">
+                {selectedExploreTags.length === 1 ? "Tag Effects" : "Tags Effects"}
+              </p>
               <h2>
                 {selectedExploreTags.length > 0
                   ? formatTagList(selectedExploreTags, " + ")
@@ -1725,9 +1727,7 @@
       <div class="explore-panel chart-panel">
         <div class="chart-heading">
           <div>
-            <p class="section-kicker">
-              {selectedExploreTags.length > 0 ? "All selected tags" : "No tag selected"}
-            </p>
+            <p class="section-kicker">Health metrics</p>
             <h2>
               {selectedExploreTags.length > 0
                 ? formatTagList(selectedExploreTags, " + ")
