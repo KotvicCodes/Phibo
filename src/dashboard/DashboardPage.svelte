@@ -2894,7 +2894,7 @@
     background: #fbf7ef;
     display: grid;
     gap: 0.65rem;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     padding: 0.75rem;
   }
 
