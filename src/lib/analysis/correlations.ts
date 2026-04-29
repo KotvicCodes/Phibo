@@ -64,7 +64,10 @@ export type ExploreMetricKey =
   | "totalCalories"
   | "totalSleepMinutes"
 
+export type ExploreMetricCategory = "Activity" | "Readiness" | "Sleep"
+
 export interface ExploreMetricDefinition {
+  category: ExploreMetricCategory
   higherIsBetter: boolean
   key: ExploreMetricKey
   label: string
@@ -125,318 +128,371 @@ const metricKeys: MetricKey[] = [
 ]
 export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepScore",
     label: "Sleep score",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessScore",
     label: "Readiness",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityScore",
     label: "Activity",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activeCalories",
     label: "Active calories",
     unit: "cal"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "totalCalories",
     label: "Total calories",
     unit: "cal"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "targetCalories",
     label: "Target calories",
     unit: "cal"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "steps",
     label: "Steps",
     unit: "steps"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "equivalentWalkingDistance",
     label: "Walking distance",
     unit: "m"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "averageMetMinutes",
     label: "Avg MET",
     unit: "MET"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "highActivityMetMinutes",
     label: "High MET min",
     unit: "MET min"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "mediumActivityMetMinutes",
     label: "Medium MET min",
     unit: "MET min"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "highActivityMinutes",
     label: "High activity",
     unit: "min"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "mediumActivityMinutes",
     label: "Medium activity",
     unit: "min"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "lowActivityMinutes",
     label: "Low activity",
     unit: "min"
   },
   {
+    category: "Activity",
     higherIsBetter: false,
     key: "sedentaryMinutes",
     label: "Sedentary",
     unit: "min"
   },
   {
+    category: "Activity",
     higherIsBetter: false,
     key: "nonWearMinutes",
     label: "Non-wear",
     unit: "min"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "restingMinutes",
     label: "Resting",
     unit: "min"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "averageHrv",
     label: "HRV",
     unit: "ms"
   },
   {
+    category: "Readiness",
     higherIsBetter: false,
     key: "averageHeartRate",
     label: "Avg sleep HR",
     unit: "bpm"
   },
   {
+    category: "Readiness",
     higherIsBetter: false,
     key: "restingHeartRate",
     label: "Resting HR",
     unit: "bpm"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "averageBreath",
     label: "Breathing rate",
     unit: "br/min"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepEfficiency",
     label: "Sleep efficiency",
     unit: "%"
   },
   {
+    category: "Sleep",
     higherIsBetter: false,
     key: "sleepLatencyMinutes",
     label: "Latency",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "deepSleepMinutes",
     label: "Deep sleep",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "lightSleepMinutes",
     label: "Light sleep",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "remSleepMinutes",
     label: "REM sleep",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "totalSleepMinutes",
     label: "Total sleep",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: false,
     key: "awakeMinutes",
     label: "Awake time",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: false,
     key: "timeInBedMinutes",
     label: "Time in bed",
     unit: "min"
   },
   {
+    category: "Sleep",
     higherIsBetter: false,
     key: "restlessPeriods",
     label: "Restless periods",
     unit: "periods"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepScoreDelta",
     label: "Sleep score delta",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessScoreDelta",
     label: "Readiness delta",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorDeepSleep",
     label: "Deep contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorEfficiency",
     label: "Efficiency contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorLatency",
     label: "Latency contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorRemSleep",
     label: "REM contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorRestfulness",
     label: "Restfulness contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorTiming",
     label: "Timing contributor",
     unit: "pts"
   },
   {
+    category: "Sleep",
     higherIsBetter: true,
     key: "sleepContributorTotalSleep",
     label: "Total sleep contributor",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorActivityBalance",
     label: "Activity balance",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorBodyTemperature",
     label: "Body temp contributor",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorHrvBalance",
     label: "HRV balance",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorPreviousDayActivity",
     label: "Prev day activity",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorPreviousNight",
     label: "Previous night",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorRecoveryIndex",
     label: "Recovery index",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorRestingHeartRate",
     label: "RHR contributor",
     unit: "pts"
   },
   {
+    category: "Readiness",
     higherIsBetter: true,
     key: "readinessContributorSleepBalance",
     label: "Sleep balance",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorMeetDailyTargets",
     label: "Meet targets",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorMoveEveryHour",
     label: "Move hourly",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorRecoveryTime",
     label: "Recovery time",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorStayActive",
     label: "Stay active",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorTrainingFrequency",
     label: "Training frequency",
     unit: "pts"
   },
   {
+    category: "Activity",
     higherIsBetter: true,
     key: "activityContributorTrainingVolume",
     label: "Training volume",

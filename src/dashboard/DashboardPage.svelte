@@ -10,6 +10,7 @@
     getRankedTagInsights,
     getTagDiscoveries,
     type ExploreDay,
+    type ExploreMetricCategory,
     type ExploreMetricDefinition,
     type ExploreMetricImpact,
     type ExploreMetricKey,
@@ -72,11 +73,22 @@
     position: number
   }
 
+  interface ExploreImpactGroup {
+    category: ExploreMetricCategory
+    rows: ExploreMetricImpact[]
+    strongest: ExploreMetricImpact | null
+  }
+
   const chartWidth = 640
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
+  const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
+    "Sleep",
+    "Readiness",
+    "Activity"
+  ]
   const scoreWeekDays = 7
   const displayTagLabels = new Map([
     ["slept alone", "Sleep Solo"],
@@ -96,6 +108,7 @@
   let exploreChartMode: ChartMode = "impact"
   let exploreTagsInitialized = false
   let excludeUntaggedDays = true
+  let collapsedExploreImpactCategories: ExploreMetricCategory[] = ["Activity"]
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
@@ -150,6 +163,7 @@
     tagEntries,
     selectedExploreTags
   ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
+  $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
   $: matchingExploreDays = exploreDays.filter((day) => day.matches)
   $: otherExploreDays = exploreDays.filter((day) => !day.matches)
   $: exploreScoreComparisons =
@@ -992,6 +1006,63 @@
     return `${Math.min((Math.abs(row.delta ?? 0) / maxDelta) * 100, 100)}%`
   }
 
+  function groupExploreImpacts(rows: ExploreMetricImpact[]): ExploreImpactGroup[] {
+    return exploreImpactCategoryOrder
+      .map((category) => {
+        const categoryRows = rows.filter((row) => row.metric.category === category)
+
+        return {
+          category,
+          rows: categoryRows,
+          strongest: strongestExploreImpact(categoryRows)
+        }
+      })
+      .filter((group) => group.rows.length > 0)
+  }
+
+  function strongestExploreImpact(rows: ExploreMetricImpact[]) {
+    return rows.reduce<ExploreMetricImpact | null>((strongest, row) => {
+      if (row.delta === null) {
+        return strongest
+      }
+
+      if (strongest === null) {
+        return row
+      }
+
+      const rowImpact = Math.abs(row.toneDelta ?? row.delta)
+      const strongestImpact = Math.abs(strongest.toneDelta ?? strongest.delta ?? 0)
+
+      return rowImpact > strongestImpact ? row : strongest
+    }, null)
+  }
+
+  function impactGroupTone(group: ExploreImpactGroup) {
+    return impactTone(group.strongest?.toneDelta ?? null)
+  }
+
+  function impactGroupDelta(group: ExploreImpactGroup) {
+    return group.strongest ? formatExploreDelta(group.strongest) : "n/a"
+  }
+
+  function impactGroupDeltaLabel(group: ExploreImpactGroup) {
+    return group.strongest?.metric.label ?? "Strongest"
+  }
+
+  function impactGroupMetricCount(group: ExploreImpactGroup) {
+    return `${group.rows.length} ${group.rows.length === 1 ? "metric" : "metrics"}`
+  }
+
+  function isExploreImpactGroupCollapsed(category: ExploreMetricCategory) {
+    return collapsedExploreImpactCategories.includes(category)
+  }
+
+  function toggleExploreImpactGroup(category: ExploreMetricCategory) {
+    collapsedExploreImpactCategories = isExploreImpactGroupCollapsed(category)
+      ? collapsedExploreImpactCategories.filter((item) => item !== category)
+      : [...collapsedExploreImpactCategories, category]
+  }
+
   function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
     const values = days
       .map((day) => day.metric[metric])
@@ -1730,25 +1801,54 @@
           </div>
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
-            {#each exploreImpacts as row}
-              <article>
-                <div>
-                  <strong>{row.metric.label}</strong>
-                  <span>
-                    {formatAverage(row.taggedAverage, row.metric)} tagged vs
-                    {formatAverage(row.otherAverage, row.metric)} other
+            {#each groupedExploreImpacts as group}
+              <section class="impact-group" aria-label={`${group.category} impact metrics`}>
+                <button
+                  type="button"
+                  class="impact-group-heading"
+                  aria-expanded={!isExploreImpactGroupCollapsed(group.category)}
+                  on:click={() => toggleExploreImpactGroup(group.category)}
+                >
+                  <span class="impact-group-title">
+                    <strong>{group.category}</strong>
+                    <span>{impactGroupMetricCount(group)}</span>
                   </span>
-                </div>
-                <div class="impact-bar">
-                  <span
-                    class="impact-fill {impactTone(row.toneDelta)}"
-                    style={`width: ${impactWidth(row)}`}
-                  />
-                </div>
-                <strong class="score-impact {impactTone(row.toneDelta)}">
-                  <b>{formatExploreDelta(row)}</b>
-                </strong>
-              </article>
+                  <span class="score-impact {impactGroupTone(group)}">
+                    <span>{impactGroupDeltaLabel(group)}</span>
+                    <b>{impactGroupDelta(group)}</b>
+                  </span>
+                  <span class="impact-group-toggle" aria-hidden="true">
+                    {isExploreImpactGroupCollapsed(group.category) ? "+" : "-"}
+                  </span>
+                </button>
+
+                {#if !isExploreImpactGroupCollapsed(group.category)}
+                  <div class="impact-grid">
+                    {#each group.rows as row}
+                      <article class="impact-metric">
+                        <div class="impact-metric-heading">
+                          <div>
+                            <strong>{row.metric.label}</strong>
+                            <span>
+                              {formatAverage(row.taggedAverage, row.metric)} tagged vs
+                              {formatAverage(row.otherAverage, row.metric)} other
+                            </span>
+                          </div>
+                          <strong class="score-impact {impactTone(row.toneDelta)}">
+                            <b>{formatExploreDelta(row)}</b>
+                          </strong>
+                        </div>
+                        <div class="impact-bar">
+                          <span
+                            class="impact-fill {impactTone(row.toneDelta)}"
+                            style={`width: ${impactWidth(row)}`}
+                          />
+                        </div>
+                      </article>
+                    {/each}
+                  </div>
+                {/if}
+              </section>
             {/each}
           </div>
         {:else}
@@ -2695,44 +2795,110 @@
 
   .impact-list {
     display: grid;
-    gap: 0;
-    border-top: 1px solid #d8d8cc;
+    gap: 0.85rem;
   }
 
-  .impact-list article {
+  .impact-group {
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .impact-group-heading {
     align-items: center;
-    border-bottom: 1px solid #d8d8cc;
+    background: #f4efe5;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
     display: grid;
-    grid-template-columns: minmax(190px, 0.9fr) minmax(200px, 1fr) 118px;
+    grid-template-columns: minmax(0, 1fr) auto 2rem;
     gap: 0.8rem;
-    min-height: 58px;
-    padding: 0.65rem 0.4rem 0.65rem 0;
+    min-height: 60px;
+    padding: 0.7rem 0.85rem;
+    text-align: left;
+    width: 100%;
   }
 
-  .impact-list article > div:first-child {
+  .impact-group-title {
+    display: grid;
+    gap: 0.12rem;
     min-width: 0;
   }
 
-  .impact-list strong,
-  .impact-list span {
+  .impact-group-title strong,
+  .impact-metric-heading strong,
+  .impact-metric-heading span {
     display: block;
+    min-width: 0;
   }
 
-  .impact-list article > div:first-child span {
+  .impact-group-title strong {
+    font-size: 1rem;
+  }
+
+  .impact-group-title span,
+  .impact-metric-heading span {
     color: #6f786f;
     font-size: 0.82rem;
-    margin-top: 0.15rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .impact-list .score-impact b {
+  .impact-group-heading .score-impact {
+    justify-content: end;
+  }
+
+  .impact-group-heading .score-impact b,
+  .impact-metric .score-impact b {
     font-size: 1rem;
   }
 
-  .impact-list > article > .score-impact {
-    justify-content: flex-end;
+  .impact-group-toggle {
+    align-items: center;
+    border: 1px solid #cbd3c3;
+    border-radius: 999px;
+    color: #4f5f53;
+    display: flex;
+    font-size: 1rem;
+    font-weight: 900;
+    height: 2rem;
+    justify-content: center;
+    line-height: 1;
+    width: 2rem;
+  }
+
+  .impact-grid {
+    background: #fbf7ef;
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    padding: 0.75rem;
+  }
+
+  .impact-metric {
+    background: #fffcf5;
+    border: 1px solid #e1ded2;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.65rem;
+    min-height: 96px;
+    padding: 0.75rem;
+  }
+
+  .impact-metric-heading {
+    align-items: start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+  }
+
+  .impact-metric-heading > div {
+    min-width: 0;
+  }
+
+  .impact-metric .score-impact {
+    justify-content: end;
   }
 
   .impact-bar {
@@ -3246,8 +3412,18 @@
       overflow-x: auto;
     }
 
-    .impact-list article {
-      grid-template-columns: minmax(0, 1fr);
+    .impact-group-heading,
+    .impact-metric-heading {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .impact-group-toggle {
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+
+    .impact-grid {
+      grid-template-columns: 1fr;
     }
   }
 
