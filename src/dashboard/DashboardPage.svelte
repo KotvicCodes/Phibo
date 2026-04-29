@@ -86,7 +86,7 @@
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
-    { label: "Sleep score", metric: "sleepScore" },
+    { label: "Sleep", metric: "sleepScore" },
     { label: "Readiness", metric: "readinessScore" },
     { label: "Activity", metric: "activityScore" }
   ]
@@ -1581,60 +1581,62 @@
         </div>
       </div>
 
-      <div class="explore-panel score-comparison-panel">
-        <div class="panel-heading compact">
-          <div>
-            <p class="section-kicker">Score comparison</p>
-            <h2>
-              {selectedExploreTags.length > 0
-                ? formatTagList(selectedExploreTags, " + ")
-                : "Choose a tag combination"}
-            </h2>
+      {#if exploreChartMode === "impact"}
+        <div class="explore-panel score-comparison-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="section-kicker">Score comparison</p>
+              <h2>
+                {selectedExploreTags.length > 0
+                  ? formatTagList(selectedExploreTags, " + ")
+                  : "Choose a tag combination"}
+              </h2>
+            </div>
           </div>
-        </div>
 
-        {#if exploreScoreComparisons.length > 0}
-          <div
-            class="comparison-chart explore-score-comparison"
-            aria-label="Explore score comparison"
-          >
-            {#each exploreScoreComparisons as item}
-              <article>
-                <div class="comparison-heading">
-                  <strong>{item.label}</strong>
-                  <span>{formatNullableDelta(item.comparison.delta)}</span>
-                </div>
-                <div class="bar-row">
-                  <span>Tagged</span>
-                  <div class="bar-track">
-                    <span
-                      class="bar-fill tagged"
-                      style={`width: ${comparisonWidth(
-                        item.comparison.taggedAverage
-                      )}`}
-                    />
+          {#if exploreScoreComparisons.length > 0}
+            <div
+              class="comparison-chart explore-score-comparison"
+              aria-label="Explore score comparison"
+            >
+              {#each exploreScoreComparisons as item}
+                <article>
+                  <div class="comparison-heading">
+                    <strong>{item.label}</strong>
+                    <span>{formatNullableDelta(item.comparison.delta)}</span>
                   </div>
-                  <strong>{formatComparisonAverage(item.comparison.taggedAverage)}</strong>
-                </div>
-                <div class="bar-row">
-                  <span>Other</span>
-                  <div class="bar-track">
-                    <span
-                      class="bar-fill baseline"
-                      style={`width: ${comparisonWidth(
-                        item.comparison.baselineAverage
-                      )}`}
-                    />
+                  <div class="bar-row">
+                    <span>Tagged</span>
+                    <div class="bar-track">
+                      <span
+                        class="bar-fill tagged"
+                        style={`width: ${comparisonWidth(
+                          item.comparison.taggedAverage
+                        )}`}
+                      />
+                    </div>
+                    <strong>{formatComparisonAverage(item.comparison.taggedAverage)}</strong>
                   </div>
-                  <strong>{formatComparisonAverage(item.comparison.baselineAverage)}</strong>
-                </div>
-              </article>
-            {/each}
-          </div>
-        {:else}
-          <p class="empty-state">Select tags with matching nights to compare scores.</p>
-        {/if}
-      </div>
+                  <div class="bar-row">
+                    <span>Other</span>
+                    <div class="bar-track">
+                      <span
+                        class="bar-fill baseline"
+                        style={`width: ${comparisonWidth(
+                          item.comparison.baselineAverage
+                        )}`}
+                      />
+                    </div>
+                    <strong>{formatComparisonAverage(item.comparison.baselineAverage)}</strong>
+                  </div>
+                </article>
+              {/each}
+            </div>
+          {:else}
+            <p class="empty-state">Select tags with matching nights to compare scores.</p>
+          {/if}
+        </div>
+      {/if}
 
       <div class="explore-panel chart-panel">
         <div class="chart-heading">
