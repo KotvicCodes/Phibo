@@ -2823,7 +2823,7 @@
     color: inherit;
     cursor: pointer;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto 2.75rem;
+    grid-template-columns: minmax(0, 1fr) auto 2.25rem;
     gap: 0.8rem;
     list-style: none;
     min-height: 60px;
@@ -2883,15 +2883,15 @@
     box-sizing: border-box;
     color: #4f5f53;
     display: flex;
-    flex: 0 0 2.75rem;
-    font-size: 1.15rem;
+    flex: 0 0 2.25rem;
+    font-size: 1rem;
     font-weight: 900;
-    height: 2.75rem;
+    height: 2.25rem;
     justify-content: center;
     justify-self: center;
     line-height: 1;
-    min-width: 2.75rem;
-    width: 2.75rem;
+    min-width: 2.25rem;
+    width: 2.25rem;
   }
 
   .impact-group-toggle::before {
@@ -3451,7 +3451,7 @@
     }
 
     .impact-group-heading {
-      grid-template-columns: minmax(0, 1fr) 2.75rem;
+      grid-template-columns: minmax(0, 1fr) 2.25rem;
     }
 
     .impact-group-heading .score-impact {
