@@ -108,7 +108,10 @@
   let exploreChartMode: ChartMode = "impact"
   let exploreTagsInitialized = false
   let excludeUntaggedDays = true
-  let collapsedExploreImpactCategories: ExploreMetricCategory[] = ["Activity"]
+  let openExploreImpactCategories: ExploreMetricCategory[] = [
+    "Sleep",
+    "Readiness"
+  ]
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
@@ -1053,14 +1056,23 @@
     return `${group.rows.length} ${group.rows.length === 1 ? "metric" : "metrics"}`
   }
 
-  function isExploreImpactGroupCollapsed(category: ExploreMetricCategory) {
-    return collapsedExploreImpactCategories.includes(category)
+  function isExploreImpactGroupOpen(category: ExploreMetricCategory) {
+    return openExploreImpactCategories.includes(category)
   }
 
-  function toggleExploreImpactGroup(category: ExploreMetricCategory) {
-    collapsedExploreImpactCategories = isExploreImpactGroupCollapsed(category)
-      ? collapsedExploreImpactCategories.filter((item) => item !== category)
-      : [...collapsedExploreImpactCategories, category]
+  function updateExploreImpactGroup(
+    category: ExploreMetricCategory,
+    event: Event
+  ) {
+    const details = event.currentTarget
+
+    if (!(details instanceof HTMLDetailsElement)) {
+      return
+    }
+
+    openExploreImpactCategories = details.open
+      ? Array.from(new Set([...openExploreImpactCategories, category]))
+      : openExploreImpactCategories.filter((item) => item !== category)
   }
 
   function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
@@ -1802,12 +1814,14 @@
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
             {#each groupedExploreImpacts as group}
-              <section class="impact-group" aria-label={`${group.category} impact metrics`}>
-                <button
-                  type="button"
+              <details
+                class="impact-group"
+                open={isExploreImpactGroupOpen(group.category)}
+                on:toggle={(event) => updateExploreImpactGroup(group.category, event)}
+              >
+                <summary
                   class="impact-group-heading"
-                  aria-expanded={!isExploreImpactGroupCollapsed(group.category)}
-                  on:click={() => toggleExploreImpactGroup(group.category)}
+                  aria-label={`${group.category} impact metrics`}
                 >
                   <span class="impact-group-title">
                     <strong>{group.category}</strong>
@@ -1817,38 +1831,34 @@
                     <span>{impactGroupDeltaLabel(group)}</span>
                     <b>{impactGroupDelta(group)}</b>
                   </span>
-                  <span class="impact-group-toggle" aria-hidden="true">
-                    {isExploreImpactGroupCollapsed(group.category) ? "+" : "-"}
-                  </span>
-                </button>
+                  <span class="impact-group-toggle" aria-hidden="true" />
+                </summary>
 
-                {#if !isExploreImpactGroupCollapsed(group.category)}
-                  <div class="impact-grid">
-                    {#each group.rows as row}
-                      <article class="impact-metric">
-                        <div class="impact-metric-heading">
-                          <div>
-                            <strong>{row.metric.label}</strong>
-                            <span>
-                              {formatAverage(row.taggedAverage, row.metric)} tagged vs
-                              {formatAverage(row.otherAverage, row.metric)} other
-                            </span>
-                          </div>
-                          <strong class="score-impact {impactTone(row.toneDelta)}">
-                            <b>{formatExploreDelta(row)}</b>
-                          </strong>
+                <div class="impact-grid">
+                  {#each group.rows as row}
+                    <article class="impact-metric">
+                      <div class="impact-metric-heading">
+                        <div>
+                          <strong>{row.metric.label}</strong>
+                          <span>
+                            {formatAverage(row.taggedAverage, row.metric)} tagged vs
+                            {formatAverage(row.otherAverage, row.metric)} other
+                          </span>
                         </div>
-                        <div class="impact-bar">
-                          <span
-                            class="impact-fill {impactTone(row.toneDelta)}"
-                            style={`width: ${impactWidth(row)}`}
-                          />
-                        </div>
-                      </article>
-                    {/each}
-                  </div>
-                {/if}
-              </section>
+                        <strong class="score-impact {impactTone(row.toneDelta)}">
+                          <b>{formatExploreDelta(row)}</b>
+                        </strong>
+                      </div>
+                      <div class="impact-bar">
+                        <span
+                          class="impact-fill {impactTone(row.toneDelta)}"
+                          style={`width: ${impactWidth(row)}`}
+                        />
+                      </div>
+                    </article>
+                  {/each}
+                </div>
+              </details>
             {/each}
           </div>
         {:else}
@@ -2796,6 +2806,8 @@
   .impact-list {
     display: grid;
     gap: 0.85rem;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    align-items: start;
   }
 
   .impact-group {
@@ -2807,7 +2819,6 @@
   .impact-group-heading {
     align-items: center;
     background: #f4efe5;
-    border: 0;
     color: inherit;
     cursor: pointer;
     display: grid;
@@ -2817,6 +2828,10 @@
     padding: 0.7rem 0.85rem;
     text-align: left;
     width: 100%;
+  }
+
+  .impact-group-heading::-webkit-details-marker {
+    display: none;
   }
 
   .impact-group-title {
@@ -2866,6 +2881,14 @@
     justify-content: center;
     line-height: 1;
     width: 2rem;
+  }
+
+  .impact-group-toggle::before {
+    content: "+";
+  }
+
+  .impact-group[open] .impact-group-toggle::before {
+    content: "-";
   }
 
   .impact-grid {
