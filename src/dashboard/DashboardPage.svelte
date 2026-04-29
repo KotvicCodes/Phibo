@@ -2822,12 +2822,18 @@
     color: inherit;
     cursor: pointer;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto 2.25rem;
+    grid-template-columns: minmax(0, 1fr) auto 2.75rem;
     gap: 0.8rem;
+    list-style: none;
     min-height: 60px;
     padding: 0.7rem 0.85rem;
     text-align: left;
     width: 100%;
+  }
+
+  .impact-group-heading::marker {
+    content: "";
+    display: none;
   }
 
   .impact-group-heading::-webkit-details-marker {
@@ -2876,14 +2882,15 @@
     box-sizing: border-box;
     color: #4f5f53;
     display: flex;
-    flex: 0 0 2.25rem;
-    font-size: 1rem;
+    flex: 0 0 2.75rem;
+    font-size: 1.15rem;
     font-weight: 900;
-    height: 2.25rem;
+    height: 2.75rem;
     justify-content: center;
     justify-self: end;
     line-height: 1;
-    width: 2.25rem;
+    min-width: 2.75rem;
+    width: 2.75rem;
   }
 
   .impact-group-toggle::before {
@@ -3443,7 +3450,7 @@
     }
 
     .impact-group-heading {
-      grid-template-columns: minmax(0, 1fr) 2.25rem;
+      grid-template-columns: minmax(0, 1fr) 2.75rem;
     }
 
     .impact-group-heading .score-impact {
