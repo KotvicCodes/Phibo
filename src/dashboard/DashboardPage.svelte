@@ -2742,7 +2742,7 @@
   }
 
   .svg-chart {
-    border-block: 1px solid #d8d8cc;
+    border-top: 1px solid #d8d8cc;
     padding-block: 0.65rem;
   }
 
@@ -2969,9 +2969,10 @@
   }
 
   .explore-log {
-    border-top: 1px solid #d8d8cc;
+    border-top: 10px solid rgba(231, 233, 223, 0.9);
     display: grid;
-    padding-top: 0.75rem;
+    margin-inline: -1rem;
+    padding: 1rem 1rem 0;
   }
 
   .log-row.header span,
