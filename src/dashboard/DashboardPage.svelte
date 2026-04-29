@@ -2819,6 +2819,7 @@
   .impact-group-heading {
     align-items: center;
     background: #f4efe5;
+    box-sizing: border-box;
     color: inherit;
     cursor: pointer;
     display: grid;
@@ -2887,7 +2888,7 @@
     font-weight: 900;
     height: 2.75rem;
     justify-content: center;
-    justify-self: end;
+    justify-self: center;
     line-height: 1;
     min-width: 2.75rem;
     width: 2.75rem;
