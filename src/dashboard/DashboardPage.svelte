@@ -110,7 +110,8 @@
   let excludeUntaggedDays = true
   let openExploreImpactCategories: ExploreMetricCategory[] = [
     "Sleep",
-    "Readiness"
+    "Readiness",
+    "Activity"
   ]
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
