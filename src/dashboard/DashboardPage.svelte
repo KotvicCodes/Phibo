@@ -2806,7 +2806,6 @@
   .impact-list {
     display: grid;
     gap: 0.85rem;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     align-items: start;
   }
 
