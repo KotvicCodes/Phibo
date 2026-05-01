@@ -85,6 +85,7 @@
   }
 
   interface ExploreTagCalendar {
+    monthLabels: string[]
     rows: ExploreTagCalendarWeekdayRow[]
     taggedDayCount: number
   }
@@ -941,6 +942,7 @@
     )
 
     return {
+      monthLabels: weeks.map((week) => calendarWeekMonthLabel(week)),
       rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
         cells: weeks.map((week) => week[weekdayIndex]),
         label
@@ -951,6 +953,18 @@
 
   function calendarWeekdayIndex(date: string) {
     return (new Date(`${date}T12:00:00`).getDay() + 6) % 7
+  }
+
+  function calendarWeekMonthLabel(week: ExploreTagCalendarCell[]) {
+    const firstMonthDay = week.find((cell) => cell.day?.date.endsWith("-01"))
+
+    return firstMonthDay?.day ? formatMonth(firstMonthDay.day.date) : ""
+  }
+
+  function formatMonth(date: string) {
+    return new Intl.DateTimeFormat("en", {
+      month: "short"
+    }).format(new Date(`${date}T12:00:00`))
   }
 
   function tagCalendarCellLabel(cell: ExploreTagCalendarCell) {
@@ -2028,6 +2042,15 @@
             <p class="empty-state">Select tags to see their daily activity.</p>
           {:else}
             <div class="tag-calendar" aria-label="Selected tag activity by day">
+              <span aria-hidden="true" />
+              <div
+                class="tag-calendar-months"
+                style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, 0.62rem);`}
+              >
+                {#each exploreTagCalendar.monthLabels as month}
+                  <span>{month}</span>
+                {/each}
+              </div>
               {#each exploreTagCalendar.rows as row}
                 <span class="tag-calendar-weekday">{row.label}</span>
                 <div
@@ -3124,6 +3147,24 @@
     font-size: 0.68rem;
     font-weight: 800;
     text-transform: uppercase;
+  }
+
+  .tag-calendar-months {
+    color: #6f786f;
+    display: grid;
+    font-size: 0.68rem;
+    font-weight: 800;
+    gap: 0.18rem;
+    line-height: 1;
+    min-height: 0.85rem;
+    overflow-x: auto;
+    text-transform: uppercase;
+  }
+
+  .tag-calendar-months span {
+    min-width: 0;
+    overflow: visible;
+    white-space: nowrap;
   }
 
   .tag-calendar-days {
