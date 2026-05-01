@@ -79,15 +79,19 @@
     strongest: ExploreMetricImpact | null
   }
 
-  interface ExploreTagCalendarDay {
-    day: ExploreDay
-    tagged: boolean
+  interface ExploreTagCalendarCell {
+    day: ExploreDay | null
+    taggedTags: string[]
   }
 
-  interface ExploreTagCalendarRow {
-    days: ExploreTagCalendarDay[]
-    tag: string
-    taggedCount: number
+  interface ExploreTagCalendar {
+    rows: ExploreTagCalendarWeekdayRow[]
+    taggedDayCount: number
+  }
+
+  interface ExploreTagCalendarWeekdayRow {
+    cells: ExploreTagCalendarCell[]
+    label: string
   }
 
   const chartWidth = 640
@@ -100,6 +104,7 @@
     "Readiness",
     "Activity"
   ]
+  const calendarWeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
   const scoreWeekDays = 7
   const displayTagLabels = new Map([
     ["slept alone", "Sleep Solo"],
@@ -173,7 +178,7 @@
     tagEntries,
     selectedExploreTags
   )
-  $: exploreTagCalendarRows = buildExploreTagCalendarRows(
+  $: exploreTagCalendar = buildExploreTagCalendar(
     exploreDays,
     selectedExploreTags
   )
@@ -899,22 +904,66 @@
     return day.tags.length > 0 ? formatTagList(day.tags) : "No tags"
   }
 
-  function buildExploreTagCalendarRows(
+  function buildExploreTagCalendar(
     days: ExploreDay[],
     selectedTags: string[]
-  ): ExploreTagCalendarRow[] {
-    return sortTagsForDisplay(selectedTags).map((tag) => {
-      const calendarDays = days.map((day) => ({
-        day,
-        tagged: day.tags.includes(tag)
-      }))
+  ): ExploreTagCalendar {
+    const sortedTags = sortTagsForDisplay(selectedTags)
+    const sortedDays = [...days].sort((left, right) =>
+      left.date.localeCompare(right.date)
+    )
+    const cells: ExploreTagCalendarCell[] = sortedDays.map((day) => ({
+      day,
+      taggedTags: sortedTags.filter((tag) => day.tags.includes(tag))
+    }))
+    const firstDay = sortedDays[0]
+    const leadingEmptyDays = firstDay ? calendarWeekdayIndex(firstDay.date) : 0
+    const paddedCells = [
+      ...Array.from({ length: leadingEmptyDays }, (): ExploreTagCalendarCell => ({
+        day: null,
+        taggedTags: []
+      })),
+      ...cells
+    ]
+    const trailingEmptyDays =
+      paddedCells.length === 0 ? 0 : (7 - (paddedCells.length % 7)) % 7
 
-      return {
-        days: calendarDays,
-        tag,
-        taggedCount: calendarDays.filter((item) => item.tagged).length
-      }
-    })
+    paddedCells.push(
+      ...Array.from({ length: trailingEmptyDays }, (): ExploreTagCalendarCell => ({
+        day: null,
+        taggedTags: []
+      }))
+    )
+
+    const weeks = Array.from(
+      { length: Math.ceil(paddedCells.length / 7) },
+      (_, index) => paddedCells.slice(index * 7, index * 7 + 7)
+    )
+
+    return {
+      rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
+        cells: weeks.map((week) => week[weekdayIndex]),
+        label
+      })),
+      taggedDayCount: cells.filter((cell) => cell.taggedTags.length > 0).length
+    }
+  }
+
+  function calendarWeekdayIndex(date: string) {
+    return (new Date(`${date}T12:00:00`).getDay() + 6) % 7
+  }
+
+  function tagCalendarCellLabel(cell: ExploreTagCalendarCell) {
+    if (!cell.day) {
+      return "No date"
+    }
+
+    const tagText =
+      cell.taggedTags.length > 0
+        ? formatTagList(cell.taggedTags)
+        : "No selected tags"
+
+    return `${formatFullDate(cell.day.date)} - ${tagText}`
   }
 
   function discoveryImpact(tag: string) {
@@ -1972,37 +2021,36 @@
                   : "Choose tags"}
               </h3>
             </div>
-            <span>{exploreDays.length} nights</span>
+            <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
           </div>
 
           {#if selectedExploreTags.length === 0}
             <p class="empty-state">Select tags to see their daily activity.</p>
           {:else}
             <div class="tag-calendar" aria-label="Selected tag activity by day">
-              {#each exploreTagCalendarRows as row}
-                <div class="tag-calendar-row">
-                  <div class="tag-calendar-label">
-                    <strong>{formatTagLabel(row.tag)}</strong>
-                    <span>{row.taggedCount} nights</span>
-                  </div>
-                  <div
-                    class="tag-calendar-days"
-                    style={`grid-template-columns: repeat(${row.days.length}, 0.72rem);`}
-                  >
-                    {#each row.days as item}
+              {#each exploreTagCalendar.rows as row}
+                <span class="tag-calendar-weekday">{row.label}</span>
+                <div
+                  class="tag-calendar-days"
+                  style={`grid-template-columns: repeat(${row.cells.length}, 0.62rem);`}
+                >
+                  {#each row.cells as cell}
+                    {#if cell.day}
                       <button
                         type="button"
-                        class:tagged={item.tagged}
-                        class:selected={activeExploreDay?.date === item.day.date}
+                        class:tagged={cell.taggedTags.length > 0}
+                        class:selected={activeExploreDay?.date === cell.day.date}
                         class="tag-calendar-day"
-                        aria-label={`${formatTagLabel(row.tag)} ${item.tagged ? "tagged" : "not tagged"} on ${formatFullDate(item.day.date)}`}
-                        title={`${formatFullDate(item.day.date)} - ${item.tagged ? formatTagLabel(row.tag) : "No selected tag"}`}
-                        on:mouseenter={() => (hoveredExploreDate = item.day.date)}
+                        aria-label={tagCalendarCellLabel(cell)}
+                        title={tagCalendarCellLabel(cell)}
+                        on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
                         on:mouseleave={() => (hoveredExploreDate = "")}
-                        on:click={() => selectExploreDay(item.day)}
+                        on:click={() => selectExploreDay(cell.day)}
                       />
-                    {/each}
-                  </div>
+                    {:else}
+                      <span class="tag-calendar-day empty" aria-hidden="true" />
+                    {/if}
+                  {/each}
                 </div>
               {/each}
             </div>
@@ -3066,52 +3114,39 @@
 
   .tag-calendar {
     display: grid;
-    gap: 0.5rem;
-  }
-
-  .tag-calendar-row {
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    display: grid;
-    grid-template-columns: minmax(120px, 0.26fr) minmax(0, 1fr);
-    gap: 0.8rem;
+    gap: 0.18rem 0.48rem;
   }
 
-  .tag-calendar-label {
-    display: grid;
-    gap: 0.1rem;
-    min-width: 0;
-  }
-
-  .tag-calendar-label strong,
-  .tag-calendar-label span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .tag-calendar-label span {
+  .tag-calendar-weekday {
     color: #6f786f;
-    font-size: 0.78rem;
-    font-weight: 700;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 
   .tag-calendar-days {
     display: grid;
-    gap: 0.24rem;
+    gap: 0.18rem;
     overflow-x: auto;
-    padding-block: 0.12rem;
+    padding-block: 0.06rem;
   }
 
   .tag-calendar-day {
     appearance: none;
     background: #ebe7dd;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: 2px;
     cursor: pointer;
-    height: 0.72rem;
+    height: 0.62rem;
     padding: 0;
-    width: 0.72rem;
+    width: 0.62rem;
+  }
+
+  .tag-calendar-day.empty {
+    background: transparent;
+    cursor: default;
   }
 
   .tag-calendar-day.tagged {
@@ -3646,11 +3681,6 @@
 
     .tag-calendar-heading > span {
       white-space: normal;
-    }
-
-    .tag-calendar-row {
-      grid-template-columns: 1fr;
-      gap: 0.35rem;
     }
 
     .log-row.header {
