@@ -3394,15 +3394,17 @@
     background: #ebe7dd;
     border: 1px solid transparent;
     border-radius: 2px;
+    box-sizing: border-box;
     cursor: pointer;
+    display: block;
     height: var(--tag-calendar-day-size);
+    line-height: 0;
     padding: 0;
     width: var(--tag-calendar-day-size);
   }
 
   .tag-calendar-day.no-data {
     cursor: default;
-    display: block;
   }
 
   .tag-calendar-day.empty {
@@ -3416,7 +3418,7 @@
   }
 
   .tag-calendar-day.selected {
-    box-shadow: 0 0 0 2px #fbf7ef, 0 0 0 4px #6f786f;
+    box-shadow: inset 0 0 0 2px #fbf7ef, inset 0 0 0 3px #6f786f;
   }
 
   .explore-log {
