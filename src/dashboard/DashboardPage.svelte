@@ -80,12 +80,14 @@
   }
 
   interface ExploreTagCalendarCell {
+    date: string | null
     day: ExploreDay | null
     taggedTags: string[]
   }
 
   interface ExploreTagCalendar {
     monthLabels: string[]
+    rangeLabel: string
     rows: ExploreTagCalendarWeekdayRow[]
     taggedDayCount: number
   }
@@ -106,6 +108,8 @@
     "Activity"
   ]
   const calendarWeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+  const tagCalendarDays = 365
+  const tagCalendarSquareSize = "0.72rem"
   const scoreWeekDays = 7
   const displayTagLabels = new Map([
     ["slept alone", "Sleep Solo"],
@@ -913,14 +917,47 @@
     const sortedDays = [...days].sort((left, right) =>
       left.date.localeCompare(right.date)
     )
-    const cells: ExploreTagCalendarCell[] = sortedDays.map((day) => ({
-      day,
-      taggedTags: sortedTags.filter((tag) => day.tags.includes(tag))
-    }))
-    const firstDay = sortedDays[0]
-    const leadingEmptyDays = firstDay ? calendarWeekdayIndex(firstDay.date) : 0
+    const latestDay = sortedDays[sortedDays.length - 1]
+
+    if (!latestDay) {
+      return {
+        monthLabels: [],
+        rangeLabel: "Last 365 days",
+        rows: calendarWeekdayLabels.map((label) => ({
+          cells: [],
+          label
+        })),
+        taggedDayCount: 0
+      }
+    }
+
+    const daysByDate = new Map(sortedDays.map((day) => [day.date, day]))
+    const latestDate = calendarDateAtNoon(latestDay.date)
+    const firstDate = new Date(latestDate)
+    firstDate.setDate(latestDate.getDate() - tagCalendarDays + 1)
+
+    const cells: ExploreTagCalendarCell[] = Array.from(
+      { length: tagCalendarDays },
+      (_, index) => {
+        const date = new Date(firstDate)
+        date.setDate(firstDate.getDate() + index)
+
+        const formattedDate = formatInputDate(date)
+        const day = daysByDate.get(formattedDate) ?? null
+
+        return {
+          date: formattedDate,
+          day,
+          taggedTags: day
+            ? sortedTags.filter((tag) => day.tags.includes(tag))
+            : []
+        }
+      }
+    )
+    const leadingEmptyDays = calendarWeekdayIndex(cells[0].date)
     const paddedCells = [
       ...Array.from({ length: leadingEmptyDays }, (): ExploreTagCalendarCell => ({
+        date: null,
         day: null,
         taggedTags: []
       })),
@@ -931,6 +968,7 @@
 
     paddedCells.push(
       ...Array.from({ length: trailingEmptyDays }, (): ExploreTagCalendarCell => ({
+        date: null,
         day: null,
         taggedTags: []
       }))
@@ -942,7 +980,10 @@
     )
 
     return {
-      monthLabels: weeks.map((week) => calendarWeekMonthLabel(week)),
+      monthLabels: weeks.map((week, index) =>
+        calendarWeekMonthLabel(week, index)
+      ),
+      rangeLabel: "Last 365 days",
       rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
         cells: weeks.map((week) => week[weekdayIndex]),
         label
@@ -951,14 +992,26 @@
     }
   }
 
-  function calendarWeekdayIndex(date: string) {
-    return (new Date(`${date}T12:00:00`).getDay() + 6) % 7
+  function calendarDateAtNoon(date: string) {
+    return new Date(`${date}T12:00:00`)
   }
 
-  function calendarWeekMonthLabel(week: ExploreTagCalendarCell[]) {
-    const firstMonthDay = week.find((cell) => cell.day?.date.endsWith("-01"))
+  function calendarWeekdayIndex(date: string) {
+    return (calendarDateAtNoon(date).getDay() + 6) % 7
+  }
 
-    return firstMonthDay?.day ? formatMonth(firstMonthDay.day.date) : ""
+  function calendarWeekMonthLabel(
+    week: ExploreTagCalendarCell[],
+    weekIndex: number
+  ) {
+    const firstMonthDate = week.find((cell) => cell.date?.endsWith("-01"))?.date
+    const firstVisibleDate = week.find((cell) => cell.date)?.date
+
+    if (firstMonthDate) {
+      return formatMonth(firstMonthDate)
+    }
+
+    return weekIndex === 0 && firstVisibleDate ? formatMonth(firstVisibleDate) : ""
   }
 
   function formatMonth(date: string) {
@@ -968,7 +1021,7 @@
   }
 
   function tagCalendarCellLabel(cell: ExploreTagCalendarCell) {
-    if (!cell.day) {
+    if (!cell.date) {
       return "No date"
     }
 
@@ -977,7 +1030,7 @@
         ? formatTagList(cell.taggedTags)
         : "No selected tags"
 
-    return `${formatFullDate(cell.day.date)} - ${tagText}`
+    return `${formatFullDate(cell.date)} - ${tagText}`
   }
 
   function discoveryImpact(tag: string) {
@@ -2035,7 +2088,10 @@
                   : "Choose tags"}
               </h3>
             </div>
-            <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
+            <div class="tag-calendar-range">
+              <strong>{exploreTagCalendar.rangeLabel}</strong>
+              <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
+            </div>
           </div>
 
           {#if selectedExploreTags.length === 0}
@@ -2045,7 +2101,7 @@
               <span aria-hidden="true" />
               <div
                 class="tag-calendar-months"
-                style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, 0.62rem);`}
+                style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, ${tagCalendarSquareSize});`}
               >
                 {#each exploreTagCalendar.monthLabels as month}
                   <span>{month}</span>
@@ -2055,7 +2111,7 @@
                 <span class="tag-calendar-weekday">{row.label}</span>
                 <div
                   class="tag-calendar-days"
-                  style={`grid-template-columns: repeat(${row.cells.length}, 0.62rem);`}
+                  style={`grid-template-columns: repeat(${row.cells.length}, ${tagCalendarSquareSize});`}
                 >
                   {#each row.cells as cell}
                     {#if cell.day}
@@ -2069,6 +2125,12 @@
                         on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
                         on:mouseleave={() => (hoveredExploreDate = "")}
                         on:click={() => selectExploreDay(cell.day)}
+                      />
+                    {:else if cell.date}
+                      <span
+                        class="tag-calendar-day no-data"
+                        aria-label={tagCalendarCellLabel(cell)}
+                        title={tagCalendarCellLabel(cell)}
                       />
                     {:else}
                       <span class="tag-calendar-day empty" aria-hidden="true" />
@@ -3110,9 +3172,9 @@
   .tag-calendar-section {
     border-top: 10px solid rgba(231, 233, 223, 0.9);
     display: grid;
-    gap: 0.75rem;
+    gap: 0.95rem;
     margin-inline: -1rem;
-    padding: 1rem 1rem 0;
+    padding: 1.15rem 1rem 0.15rem;
   }
 
   .tag-calendar-heading {
@@ -3127,19 +3189,31 @@
     margin-top: 0.1rem;
   }
 
-  .tag-calendar-heading > span {
+  .tag-calendar-range {
     color: #6f786f;
+    display: grid;
     font-size: 0.72rem;
     font-weight: 800;
+    gap: 0.18rem;
+    justify-items: end;
+    min-width: 11rem;
+    padding-right: 4.25rem;
     text-transform: uppercase;
     white-space: nowrap;
   }
 
+  .tag-calendar-range strong {
+    color: #1f2520;
+    font-size: 0.78rem;
+  }
+
   .tag-calendar {
+    --tag-calendar-day-size: 0.72rem;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 0.18rem 0.48rem;
+    gap: 0.26rem 0.72rem;
+    padding-top: 0.1rem;
   }
 
   .tag-calendar-weekday {
@@ -3154,10 +3228,11 @@
     display: grid;
     font-size: 0.68rem;
     font-weight: 800;
-    gap: 0.18rem;
+    gap: 0.24rem;
     line-height: 1;
-    min-height: 0.85rem;
+    min-height: 1rem;
     overflow-x: auto;
+    padding-bottom: 0.18rem;
     text-transform: uppercase;
   }
 
@@ -3169,9 +3244,9 @@
 
   .tag-calendar-days {
     display: grid;
-    gap: 0.18rem;
+    gap: 0.24rem;
     overflow-x: auto;
-    padding-block: 0.06rem;
+    padding-block: 0.09rem;
   }
 
   .tag-calendar-day {
@@ -3180,9 +3255,14 @@
     border: 1px solid transparent;
     border-radius: 2px;
     cursor: pointer;
-    height: 0.62rem;
+    height: var(--tag-calendar-day-size);
     padding: 0;
-    width: 0.62rem;
+    width: var(--tag-calendar-day-size);
+  }
+
+  .tag-calendar-day.no-data {
+    cursor: default;
+    display: block;
   }
 
   .tag-calendar-day.empty {
@@ -3720,7 +3800,10 @@
       display: grid;
     }
 
-    .tag-calendar-heading > span {
+    .tag-calendar-range {
+      justify-items: start;
+      min-width: 0;
+      padding-right: 0;
       white-space: normal;
     }
 
