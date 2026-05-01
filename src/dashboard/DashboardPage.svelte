@@ -120,7 +120,7 @@
   ]
   const calendarWeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
   const tagCalendarDays = 365
-  const tagCalendarSquareSize = "0.72rem"
+  const tagCalendarSquareSize = "0.78rem"
   const scoreWeekDays = 7
   const displayTagLabels = new Map([
     ["slept alone", "Sleep Solo"],
@@ -3342,12 +3342,11 @@
   }
 
   .tag-calendar {
-    --tag-calendar-day-size: 0.72rem;
+    --tag-calendar-day-size: 0.78rem;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    gap: 0.26rem 0.72rem;
-    margin-left: clamp(1.25rem, 3vw, 2.75rem);
+    gap: 0.3rem 0.78rem;
     padding-top: 0.1rem;
   }
 
@@ -3355,8 +3354,10 @@
     align-items: flex-end;
     display: flex;
     gap: 1.15rem;
+    justify-content: center;
     overflow-x: auto;
     padding-right: 0.35rem;
+    width: 100%;
   }
 
   .tag-calendar-weekday {
@@ -3371,7 +3372,7 @@
     display: grid;
     font-size: 0.68rem;
     font-weight: 800;
-    gap: 0.24rem;
+    gap: 0.26rem;
     line-height: 1;
     min-height: 1rem;
     overflow-x: auto;
@@ -3387,7 +3388,7 @@
 
   .tag-calendar-days {
     display: grid;
-    gap: 0.24rem;
+    gap: 0.26rem;
     overflow-x: auto;
     padding-block: 0.09rem;
   }
@@ -3966,6 +3967,7 @@
     .tag-calendar-layout {
       align-items: flex-start;
       flex-direction: column;
+      justify-content: flex-start;
     }
 
     .log-row.header {
