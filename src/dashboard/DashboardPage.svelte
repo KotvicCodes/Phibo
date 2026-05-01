@@ -61,6 +61,7 @@
     DailyMetricRow,
     "activityScore" | "readinessScore" | "sleepScore"
   >
+  type TagTimingMode = "morning" | "sameDay"
 
   interface ChartPoint {
     day: ExploreDay
@@ -113,6 +114,7 @@
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const chartPadding = 56
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
+  const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
     "Sleep",
     "Readiness",
@@ -159,16 +161,21 @@
   let selectedYMetric: ExploreMetricKey = "readinessScore"
   let startDate = formatInputDate(daysAgo(30))
   let syncMessage = "Sample data is showing until your first sync."
+  let tagTimingMode: TagTimingMode = "morning"
   let tagEntries = sampleTagEntries
 
   $: hasLocalData = dailyMetrics !== sampleDailyMetrics
-  $: taggedMetricDates = getTaggedMetricDates(tagEntries)
+  $: effectiveTagEntries = getEffectiveTagEntries(tagEntries, tagTimingMode)
+  $: taggedMetricDates = getTaggedMetricDates(effectiveTagEntries)
   $: analysisDailyMetrics = excludeUntaggedDays
     ? dailyMetrics.filter((day) => taggedMetricDates.has(day.date))
     : dailyMetrics
   $: excludedUntaggedDayCount = dailyMetrics.length - analysisDailyMetrics.length
-  $: correlations = calculateTagCorrelations(analysisDailyMetrics, tagEntries)
-  $: availableTags = sortTagsForDisplay(getAvailableTags(tagEntries))
+  $: correlations = calculateTagCorrelations(
+    analysisDailyMetrics,
+    effectiveTagEntries
+  )
+  $: availableTags = sortTagsForDisplay(getAvailableTags(effectiveTagEntries))
   $: if (!exploreTagsInitialized && availableTags.length > 0) {
     const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
       availableTags.includes(tag)
@@ -188,7 +195,7 @@
   }
   $: exploreDays = buildExploreDays(
     analysisDailyMetrics,
-    tagEntries,
+    effectiveTagEntries,
     selectedExploreTags
   )
   $: exploreTagCalendarOptions = buildExploreTagCalendarOptions(exploreDays)
@@ -208,7 +215,7 @@
   )
   $: exploreImpacts = calculateExploreMetricImpacts(
     analysisDailyMetrics,
-    tagEntries,
+    effectiveTagEntries,
     selectedExploreTags
   ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
   $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
@@ -275,7 +282,7 @@
     allInsights[0]
   $: latestMetricDate =
     analysisDailyMetrics.at(-1)?.date ?? dailyMetrics.at(-1)?.date ?? endDate
-  $: discoveries = getTagDiscoveries(tagEntries, latestMetricDate)
+  $: discoveries = getTagDiscoveries(effectiveTagEntries, latestMetricDate)
   $: selectedComparisons = selectedInsight
     ? insightComparisonMetrics.map(
         (item): InsightComparison => ({
@@ -301,6 +308,7 @@
   onMount(async () => {
     excludeUntaggedDays =
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
+    tagTimingMode = getSavedTagTimingMode()
 
     const savedToken = await db.authTokens.get("oura")
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
@@ -490,6 +498,29 @@
     localStorage.setItem(excludeUntaggedDaysSettingKey, `${excludeUntaggedDays}`)
   }
 
+  function updateTagTimingMode(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement) || !isTagTimingMode(input.value)) {
+      return
+    }
+
+    tagTimingMode = input.value
+    selectedExploreDate = ""
+    hoveredExploreDate = ""
+    localStorage.setItem(tagTimingModeSettingKey, tagTimingMode)
+  }
+
+  function getSavedTagTimingMode(): TagTimingMode {
+    const savedMode = localStorage.getItem(tagTimingModeSettingKey)
+
+    return isTagTimingMode(savedMode) ? savedMode : "morning"
+  }
+
+  function isTagTimingMode(value: string | null): value is TagTimingMode {
+    return value === "morning" || value === "sameDay"
+  }
+
   function validateDateRange() {
     if (!startDate || !endDate) {
       syncMessage = "Choose both a start and end date."
@@ -599,6 +630,17 @@
       month: "short",
       year: "numeric"
     }).format(new Date(`${date}T12:00:00`))
+  }
+
+  function formatSleepNightDate(metricDate: string) {
+    return formatDate(shiftDate(metricDate, -1))
+  }
+
+  function shiftDate(date: string, days: number) {
+    const shiftedDate = new Date(`${date}T12:00:00`)
+    shiftedDate.setDate(shiftedDate.getDate() + days)
+
+    return formatInputDate(shiftedDate)
   }
 
   function createSummary(
@@ -930,6 +972,19 @@
     return day.tags.length > 0 ? formatTagList(day.tags) : "No tags"
   }
 
+  function getEffectiveTagEntries(
+    entries: typeof tagEntries,
+    timingMode: TagTimingMode
+  ) {
+    return entries.map((entry) => ({
+      ...entry,
+      date:
+        timingMode === "sameDay"
+          ? shiftDate(entry.date, 1)
+          : entry.date
+    }))
+  }
+
   function sortExploreDaysNewestFirst(days: ExploreDay[]) {
     return [...days].sort((left, right) => right.date.localeCompare(left.date))
   }
@@ -1109,7 +1164,7 @@
         ? formatTagList(cell.taggedTags)
         : "No selected tags"
 
-    return `${formatFullDate(cell.date)} - ${tagText}`
+    return `Night of ${formatSleepNightDate(cell.date)} - ${tagText}`
   }
 
   function discoveryImpact(tag: string) {
@@ -1157,7 +1212,7 @@
     metric: InsightComparisonMetric,
     metrics: DailyMetricRow[]
   ): MetricComparison {
-    const currentTagsByDate = buildTagsByDate(tagEntries)
+    const currentTagsByDate = buildTagsByDate(effectiveTagEntries)
     const taggedDays = metrics.filter((day) =>
       (currentTagsByDate[day.date] ?? []).includes(tag)
     )
@@ -2268,7 +2323,10 @@
                   on:mouseleave={() => (hoveredExploreDate = "")}
                   on:click={() => selectExploreDay(day)}
                 >
-                  <strong>{formatFullDate(day.date)}</strong>
+                  <div class="log-date">
+                    <strong>Night of {formatSleepNightDate(day.date)}</strong>
+                    <small>Oura date {formatDate(day.date)}</small>
+                  </div>
                   <span>{detailTags(day)}</span>
                 </button>
               {/each}
@@ -2300,6 +2358,45 @@
             on:change={updateExcludeUntaggedDays}
           />
         </label>
+
+        <div class="setting-row tag-timing-setting">
+          <div>
+            <strong>Tag timing</strong>
+            <p>
+              Oura sleep dates usually refer to the morning the night ended. If
+              you tag the next morning, keep Morning tagging. If you tag during
+              the day before sleep, choose Same-day tagging.
+            </p>
+          </div>
+          <div class="setting-options" role="radiogroup" aria-label="Tag timing">
+            <label class="setting-option">
+              <input
+                type="radio"
+                name="tagTimingMode"
+                value="morning"
+                checked={tagTimingMode === "morning"}
+                on:change={updateTagTimingMode}
+              />
+              <span>
+                <strong>Morning tagging</strong>
+                <small>I add tags the next morning. Tags stay on the same Oura date.</small>
+              </span>
+            </label>
+            <label class="setting-option">
+              <input
+                type="radio"
+                name="tagTimingMode"
+                value="sameDay"
+                checked={tagTimingMode === "sameDay"}
+                on:change={updateTagTimingMode}
+              />
+              <span>
+                <strong>Same-day tagging</strong>
+                <small>I add tags during the day. Tags apply to the following Oura sleep date.</small>
+              </span>
+            </label>
+          </div>
+        </div>
 
         <div class="setting-summary">
           <span>Current sample</span>
@@ -2888,6 +2985,10 @@
     padding-block: 0.9rem;
   }
 
+  .setting-row.tag-timing-setting {
+    align-items: start;
+  }
+
   .setting-row strong {
     display: block;
     font-size: 1rem;
@@ -2905,6 +3006,36 @@
     accent-color: #1d2a22;
     height: 1.25rem;
     width: 1.25rem;
+  }
+
+  .setting-options {
+    display: grid;
+    gap: 0.55rem;
+    min-width: min(22rem, 100%);
+  }
+
+  .setting-option {
+    align-items: flex-start;
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    cursor: pointer;
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0.7rem;
+  }
+
+  .setting-option span {
+    display: grid;
+    gap: 0.18rem;
+    min-width: 0;
+  }
+
+  .setting-option small {
+    color: #6f786f;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.35;
   }
 
   .setting-summary {
@@ -3476,7 +3607,7 @@
     color: inherit;
     display: grid;
     font: inherit;
-    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-columns: 150px minmax(0, 1fr);
     gap: 0.85rem;
     min-height: 44px;
     padding: 0.5rem 0;
@@ -3499,6 +3630,28 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .log-date {
+    align-self: center;
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+
+  .log-date strong,
+  .log-date small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .log-date small {
+    color: #6f786f;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 
   .panel-heading {
@@ -3894,7 +4047,7 @@
     }
 
     .log-row {
-      grid-template-columns: 70px minmax(0, 1fr);
+      grid-template-columns: 136px minmax(0, 1fr);
       overflow-x: auto;
     }
 
@@ -3940,8 +4093,13 @@
     }
 
     .log-row {
-      grid-template-columns: 84px minmax(0, 1fr);
+      grid-template-columns: 124px minmax(0, 1fr);
       gap: 0.35rem 0.85rem;
+    }
+
+    .setting-row,
+    .setting-row.tag-timing-setting {
+      grid-template-columns: 1fr;
     }
 
     .tag-calendar-heading {
