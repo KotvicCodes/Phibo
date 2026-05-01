@@ -179,9 +179,6 @@
           })
         )
       : []
-  $: sleepLogDefinition = getExploreMetric("sleepScore")
-  $: readinessLogDefinition = getExploreMetric("readinessScore")
-  $: activityLogDefinition = getExploreMetric("activityScore")
   $: selectedXDefinition = getExploreMetric(selectedXMetric)
   $: selectedYDefinition = getExploreMetric(selectedYMetric)
   $: scatterXExtent = metricExtent(exploreDays, selectedXMetric)
@@ -1154,10 +1151,6 @@
     return metric === "sleepScore" ? "sleep score" : "readiness"
   }
 
-  function matchingLogMetricLabel(metric: ExploreMetricDefinition) {
-    return metric.key === "sleepScore" ? "Sleep" : metric.label
-  }
-
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
@@ -1949,9 +1942,6 @@
             <div class="log-table">
               <div class="log-row header">
                 <span>Date</span>
-                <span>{matchingLogMetricLabel(sleepLogDefinition)}</span>
-                <span>{matchingLogMetricLabel(readinessLogDefinition)}</span>
-                <span>{matchingLogMetricLabel(activityLogDefinition)}</span>
                 <span>Tags</span>
               </div>
               {#each matchingExploreDays as day}
@@ -1964,15 +1954,6 @@
                   on:click={() => selectExploreDay(day)}
                 >
                   <strong>{formatFullDate(day.date)}</strong>
-                  <strong>
-                    {formatMetricValue(day.metric.sleepScore ?? null, sleepLogDefinition)}
-                  </strong>
-                  <strong>
-                    {formatMetricValue(day.metric.readinessScore ?? null, readinessLogDefinition)}
-                  </strong>
-                  <strong>
-                    {formatMetricValue(day.metric.activityScore ?? null, activityLogDefinition)}
-                  </strong>
                   <span>{detailTags(day)}</span>
                 </button>
               {/each}
@@ -3024,8 +3005,8 @@
     color: inherit;
     display: grid;
     font: inherit;
-    grid-template-columns: 84px 96px 96px 90px minmax(0, 1fr);
-    gap: 0.45rem;
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 0.85rem;
     min-height: 44px;
     padding: 0.5rem 0;
     text-align: left;
@@ -3047,16 +3028,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .log-row strong:nth-child(2),
-  .log-row strong:nth-child(3),
-  .log-row strong:nth-child(4),
-  .log-row span:nth-child(2),
-  .log-row span:nth-child(3),
-  .log-row span:nth-child(4) {
-    justify-self: center;
-    text-align: center;
   }
 
   .panel-heading {
@@ -3452,7 +3423,7 @@
     }
 
     .log-row {
-      grid-template-columns: 70px repeat(3, minmax(70px, 0.5fr)) minmax(140px, 1fr);
+      grid-template-columns: 70px minmax(0, 1fr);
       overflow-x: auto;
     }
 
@@ -3498,16 +3469,12 @@
     }
 
     .log-row {
-      grid-template-columns: 1fr 1fr;
-      gap: 0.35rem 0.7rem;
+      grid-template-columns: 84px minmax(0, 1fr);
+      gap: 0.35rem 0.85rem;
     }
 
     .log-row.header {
       display: none;
-    }
-
-    .log-row span:last-child {
-      grid-column: 1 / -1;
     }
 
     .chart-heading {
