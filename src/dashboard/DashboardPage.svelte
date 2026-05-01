@@ -980,9 +980,7 @@
     )
 
     return {
-      monthLabels: weeks.map((week, index) =>
-        calendarWeekMonthLabel(week, index)
-      ),
+      monthLabels: weeks.map((week) => calendarWeekMonthLabel(week)),
       rangeLabel: "Last 365 days",
       rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
         cells: weeks.map((week) => week[weekdayIndex]),
@@ -1000,18 +998,10 @@
     return (calendarDateAtNoon(date).getDay() + 6) % 7
   }
 
-  function calendarWeekMonthLabel(
-    week: ExploreTagCalendarCell[],
-    weekIndex: number
-  ) {
+  function calendarWeekMonthLabel(week: ExploreTagCalendarCell[]) {
     const firstMonthDate = week.find((cell) => cell.date?.endsWith("-01"))?.date
-    const firstVisibleDate = week.find((cell) => cell.date)?.date
 
-    if (firstMonthDate) {
-      return formatMonth(firstMonthDate)
-    }
-
-    return weekIndex === 0 && firstVisibleDate ? formatMonth(firstVisibleDate) : ""
+    return firstMonthDate ? formatMonth(firstMonthDate) : ""
   }
 
   function formatMonth(date: string) {
