@@ -141,11 +141,7 @@
   let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
   let excludeUntaggedDays = true
-  let openExploreImpactCategories: ExploreMetricCategory[] = [
-    "Sleep",
-    "Readiness",
-    "Activity"
-  ]
+  let openExploreImpactCategories: ExploreMetricCategory[] = []
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
