@@ -92,6 +92,17 @@
     taggedDayCount: number
   }
 
+  interface ExploreTagCalendarOption {
+    id: string
+    label: string
+  }
+
+  interface ExploreTagCalendarRange {
+    firstDate: Date
+    lastDate: Date
+    label: string
+  }
+
   interface ExploreTagCalendarWeekdayRow {
     cells: ExploreTagCalendarCell[]
     label: string
@@ -127,6 +138,7 @@
   let accessToken = ""
   let activeView: DashboardView = "insights"
   let exploreChartMode: ChartMode = "impact"
+  let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
   let excludeUntaggedDays = true
   let openExploreImpactCategories: ExploreMetricCategory[] = [
@@ -183,9 +195,20 @@
     tagEntries,
     selectedExploreTags
   )
+  $: exploreTagCalendarOptions = buildExploreTagCalendarOptions(exploreDays)
+  $: {
+    const selectedRangeExists = exploreTagCalendarOptions.some(
+      (option) => option.id === selectedExploreTagCalendarRange
+    )
+
+    if (!selectedRangeExists) {
+      selectedExploreTagCalendarRange = "last365"
+    }
+  }
   $: exploreTagCalendar = buildExploreTagCalendar(
     exploreDays,
-    selectedExploreTags
+    selectedExploreTags,
+    selectedExploreTagCalendarRange
   )
   $: exploreImpacts = calculateExploreMetricImpacts(
     analysisDailyMetrics,
@@ -911,15 +934,19 @@
 
   function buildExploreTagCalendar(
     days: ExploreDay[],
-    selectedTags: string[]
+    selectedTags: string[],
+    selectedRangeId: string
   ): ExploreTagCalendar {
     const sortedTags = sortTagsForDisplay(selectedTags)
     const sortedDays = [...days].sort((left, right) =>
       left.date.localeCompare(right.date)
     )
-    const latestDay = sortedDays[sortedDays.length - 1]
+    const selectedRange = getExploreTagCalendarRange(
+      sortedDays,
+      selectedRangeId
+    )
 
-    if (!latestDay) {
+    if (!selectedRange) {
       return {
         monthLabels: [],
         rangeLabel: "Last 365 days",
@@ -932,28 +959,36 @@
     }
 
     const daysByDate = new Map(sortedDays.map((day) => [day.date, day]))
-    const latestDate = calendarDateAtNoon(latestDay.date)
-    const firstDate = new Date(latestDate)
-    firstDate.setDate(latestDate.getDate() - tagCalendarDays + 1)
+    const cells: ExploreTagCalendarCell[] = []
+    const date = new Date(selectedRange.firstDate)
 
-    const cells: ExploreTagCalendarCell[] = Array.from(
-      { length: tagCalendarDays },
-      (_, index) => {
-        const date = new Date(firstDate)
-        date.setDate(firstDate.getDate() + index)
+    while (date <= selectedRange.lastDate) {
+      const formattedDate = formatInputDate(date)
+      const day = daysByDate.get(formattedDate) ?? null
 
-        const formattedDate = formatInputDate(date)
-        const day = daysByDate.get(formattedDate) ?? null
+      cells.push({
+        date: formattedDate,
+        day,
+        taggedTags: day
+          ? sortedTags.filter((tag) => day.tags.includes(tag))
+          : []
+      })
 
-        return {
-          date: formattedDate,
-          day,
-          taggedTags: day
-            ? sortedTags.filter((tag) => day.tags.includes(tag))
-            : []
-        }
+      date.setDate(date.getDate() + 1)
+    }
+
+    if (cells.length === 0) {
+      return {
+        monthLabels: [],
+        rangeLabel: selectedRange.label,
+        rows: calendarWeekdayLabels.map((label) => ({
+          cells: [],
+          label
+        })),
+        taggedDayCount: 0
       }
-    )
+    }
+
     const leadingEmptyDays = calendarWeekdayIndex(cells[0].date)
     const paddedCells = [
       ...Array.from({ length: leadingEmptyDays }, (): ExploreTagCalendarCell => ({
@@ -981,12 +1016,64 @@
 
     return {
       monthLabels: weeks.map((week) => calendarWeekMonthLabel(week)),
-      rangeLabel: "Last 365 days",
+      rangeLabel: selectedRange.label,
       rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
         cells: weeks.map((week) => week[weekdayIndex]),
         label
       })),
       taggedDayCount: cells.filter((cell) => cell.taggedTags.length > 0).length
+    }
+  }
+
+  function buildExploreTagCalendarOptions(
+    days: ExploreDay[]
+  ): ExploreTagCalendarOption[] {
+    const years = Array.from(
+      new Set(days.map((day) => day.date.slice(0, 4)))
+    ).sort((left, right) => Number(right) - Number(left))
+
+    return [
+      {
+        id: "last365",
+        label: "Last 365"
+      },
+      ...years.map((year) => ({
+        id: `year:${year}`,
+        label: year
+      }))
+    ]
+  }
+
+  function getExploreTagCalendarRange(
+    sortedDays: ExploreDay[],
+    selectedRangeId: string
+  ): ExploreTagCalendarRange | null {
+    const selectedYear = selectedRangeId.startsWith("year:")
+      ? Number(selectedRangeId.slice(5))
+      : null
+
+    if (selectedYear && Number.isFinite(selectedYear)) {
+      return {
+        firstDate: calendarDateAtNoon(`${selectedYear}-01-01`),
+        lastDate: calendarDateAtNoon(`${selectedYear}-12-31`),
+        label: String(selectedYear)
+      }
+    }
+
+    const latestDay = sortedDays[sortedDays.length - 1]
+
+    if (!latestDay) {
+      return null
+    }
+
+    const lastDate = calendarDateAtNoon(latestDay.date)
+    const firstDate = new Date(lastDate)
+    firstDate.setDate(lastDate.getDate() - tagCalendarDays + 1)
+
+    return {
+      firstDate,
+      lastDate,
+      label: "Last 365 days"
     }
   }
 
@@ -2079,8 +2166,26 @@
               </h3>
             </div>
             <div class="tag-calendar-range">
-              <strong>{exploreTagCalendar.rangeLabel}</strong>
-              <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
+              <div class="tag-calendar-range-meta">
+                <strong>{exploreTagCalendar.rangeLabel}</strong>
+                <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
+              </div>
+              <div
+                class="tag-calendar-range-actions"
+                aria-label="Tag activity date range"
+              >
+                {#each exploreTagCalendarOptions as option}
+                  <button
+                    type="button"
+                    class:active={selectedExploreTagCalendarRange === option.id}
+                    aria-pressed={selectedExploreTagCalendarRange === option.id}
+                    on:click={() =>
+                      (selectedExploreTagCalendarRange = option.id)}
+                  >
+                    {option.label}
+                  </button>
+                {/each}
+              </div>
             </div>
           </div>
 
@@ -3184,17 +3289,51 @@
     display: grid;
     font-size: 0.72rem;
     font-weight: 800;
-    gap: 0.18rem;
+    gap: 0.5rem;
     justify-items: end;
-    min-width: 11rem;
-    padding-right: 4.25rem;
+    min-width: 16rem;
     text-transform: uppercase;
     white-space: nowrap;
   }
 
-  .tag-calendar-range strong {
+  .tag-calendar-range-meta {
+    display: grid;
+    gap: 0.18rem;
+    justify-items: end;
+  }
+
+  .tag-calendar-range-meta strong {
     color: #1f2520;
     font-size: 0.78rem;
+  }
+
+  .tag-calendar-range-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-end;
+    max-width: 23rem;
+  }
+
+  .tag-calendar-range-actions button {
+    appearance: none;
+    background: #f7f1e8;
+    border: 1px solid #d8d8cc;
+    border-radius: 999px;
+    color: #6f786f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    min-height: 1.65rem;
+    padding: 0.32rem 0.56rem;
+    text-transform: uppercase;
+  }
+
+  .tag-calendar-range-actions button.active {
+    background: #1e2c64;
+    border-color: #1e2c64;
+    color: #fbf7ef;
   }
 
   .tag-calendar {
@@ -3203,6 +3342,7 @@
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 0.26rem 0.72rem;
+    margin-left: clamp(1.25rem, 3vw, 2.75rem);
     padding-top: 0.1rem;
   }
 
@@ -3795,6 +3935,18 @@
       min-width: 0;
       padding-right: 0;
       white-space: normal;
+    }
+
+    .tag-calendar-range-meta {
+      justify-items: start;
+    }
+
+    .tag-calendar-range-actions {
+      justify-content: flex-start;
+    }
+
+    .tag-calendar {
+      margin-left: 0;
     }
 
     .log-row.header {
