@@ -79,6 +79,17 @@
     strongest: ExploreMetricImpact | null
   }
 
+  interface ExploreTagCalendarDay {
+    day: ExploreDay
+    tagged: boolean
+  }
+
+  interface ExploreTagCalendarRow {
+    days: ExploreTagCalendarDay[]
+    tag: string
+    taggedCount: number
+  }
+
   const chartWidth = 640
   const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
@@ -160,6 +171,10 @@
   $: exploreDays = buildExploreDays(
     analysisDailyMetrics,
     tagEntries,
+    selectedExploreTags
+  )
+  $: exploreTagCalendarRows = buildExploreTagCalendarRows(
+    exploreDays,
     selectedExploreTags
   )
   $: exploreImpacts = calculateExploreMetricImpacts(
@@ -882,6 +897,24 @@
     }
 
     return day.tags.length > 0 ? formatTagList(day.tags) : "No tags"
+  }
+
+  function buildExploreTagCalendarRows(
+    days: ExploreDay[],
+    selectedTags: string[]
+  ): ExploreTagCalendarRow[] {
+    return sortTagsForDisplay(selectedTags).map((tag) => {
+      const calendarDays = days.map((day) => ({
+        day,
+        tagged: day.tags.includes(tag)
+      }))
+
+      return {
+        days: calendarDays,
+        tag,
+        taggedCount: calendarDays.filter((item) => item.tagged).length
+      }
+    })
   }
 
   function discoveryImpact(tag: string) {
@@ -1929,6 +1962,53 @@
           </div>
         {/if}
 
+        <div class="tag-calendar-section">
+          <div class="tag-calendar-heading">
+            <div>
+              <p class="section-kicker">Tag activity</p>
+              <h3>
+                {selectedExploreTags.length > 0
+                  ? formatTagList(selectedExploreTags, " + ")
+                  : "Choose tags"}
+              </h3>
+            </div>
+            <span>{exploreDays.length} nights</span>
+          </div>
+
+          {#if selectedExploreTags.length === 0}
+            <p class="empty-state">Select tags to see their daily activity.</p>
+          {:else}
+            <div class="tag-calendar" aria-label="Selected tag activity by day">
+              {#each exploreTagCalendarRows as row}
+                <div class="tag-calendar-row">
+                  <div class="tag-calendar-label">
+                    <strong>{formatTagLabel(row.tag)}</strong>
+                    <span>{row.taggedCount} nights</span>
+                  </div>
+                  <div
+                    class="tag-calendar-days"
+                    style={`grid-template-columns: repeat(${row.days.length}, 0.72rem);`}
+                  >
+                    {#each row.days as item}
+                      <button
+                        type="button"
+                        class:tagged={item.tagged}
+                        class:selected={activeExploreDay?.date === item.day.date}
+                        class="tag-calendar-day"
+                        aria-label={`${formatTagLabel(row.tag)} ${item.tagged ? "tagged" : "not tagged"} on ${formatFullDate(item.day.date)}`}
+                        title={`${formatFullDate(item.day.date)} - ${item.tagged ? formatTagLabel(row.tag) : "No selected tag"}`}
+                        on:mouseenter={() => (hoveredExploreDate = item.day.date)}
+                        on:mouseleave={() => (hoveredExploreDate = "")}
+                        on:click={() => selectExploreDay(item.day)}
+                      />
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+
         <div class="explore-log">
           <section class="matching-log" aria-label="Matching explore nights">
             <div class="log-heading">
@@ -2956,6 +3036,93 @@
     background: #a8423e;
   }
 
+  .tag-calendar-section {
+    border-top: 10px solid rgba(231, 233, 223, 0.9);
+    display: grid;
+    gap: 0.75rem;
+    margin-inline: -1rem;
+    padding: 1rem 1rem 0;
+  }
+
+  .tag-calendar-heading {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+
+  .tag-calendar-heading h3 {
+    font-size: 1rem;
+    margin-top: 0.1rem;
+  }
+
+  .tag-calendar-heading > span {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .tag-calendar {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .tag-calendar-row {
+    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(120px, 0.26fr) minmax(0, 1fr);
+    gap: 0.8rem;
+  }
+
+  .tag-calendar-label {
+    display: grid;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .tag-calendar-label strong,
+  .tag-calendar-label span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tag-calendar-label span {
+    color: #6f786f;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .tag-calendar-days {
+    display: grid;
+    gap: 0.24rem;
+    overflow-x: auto;
+    padding-block: 0.12rem;
+  }
+
+  .tag-calendar-day {
+    appearance: none;
+    background: #ebe7dd;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    height: 0.72rem;
+    padding: 0;
+    width: 0.72rem;
+  }
+
+  .tag-calendar-day.tagged {
+    background: #1e2c64;
+    border-color: #1e2c64;
+  }
+
+  .tag-calendar-day.selected {
+    box-shadow: 0 0 0 2px #fbf7ef, 0 0 0 4px #6f786f;
+  }
+
   .explore-log {
     border-top: 10px solid rgba(231, 233, 223, 0.9);
     display: grid;
@@ -3471,6 +3638,19 @@
     .log-row {
       grid-template-columns: 84px minmax(0, 1fr);
       gap: 0.35rem 0.85rem;
+    }
+
+    .tag-calendar-heading {
+      display: grid;
+    }
+
+    .tag-calendar-heading > span {
+      white-space: normal;
+    }
+
+    .tag-calendar-row {
+      grid-template-columns: 1fr;
+      gap: 0.35rem;
     }
 
     .log-row.header {
