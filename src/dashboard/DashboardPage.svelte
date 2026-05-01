@@ -2170,6 +2170,58 @@
                 <strong>{exploreTagCalendar.rangeLabel}</strong>
                 <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
               </div>
+            </div>
+          </div>
+
+          {#if selectedExploreTags.length === 0}
+            <p class="empty-state">Select tags to see their daily activity.</p>
+          {:else}
+            <div class="tag-calendar-layout">
+              <div
+                class="tag-calendar"
+                aria-label="Selected tag activity by day"
+              >
+                <span aria-hidden="true" />
+                <div
+                  class="tag-calendar-months"
+                  style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, ${tagCalendarSquareSize});`}
+                >
+                  {#each exploreTagCalendar.monthLabels as month}
+                    <span>{month}</span>
+                  {/each}
+                </div>
+                {#each exploreTagCalendar.rows as row}
+                  <span class="tag-calendar-weekday">{row.label}</span>
+                  <div
+                    class="tag-calendar-days"
+                    style={`grid-template-columns: repeat(${row.cells.length}, ${tagCalendarSquareSize});`}
+                  >
+                    {#each row.cells as cell}
+                      {#if cell.day}
+                        <button
+                          type="button"
+                          class:tagged={cell.taggedTags.length > 0}
+                          class:selected={activeExploreDay?.date === cell.day.date}
+                          class="tag-calendar-day"
+                          aria-label={tagCalendarCellLabel(cell)}
+                          title={tagCalendarCellLabel(cell)}
+                          on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
+                          on:mouseleave={() => (hoveredExploreDate = "")}
+                          on:click={() => selectExploreDay(cell.day)}
+                        />
+                      {:else if cell.date}
+                        <span
+                          class="tag-calendar-day no-data"
+                          aria-label={tagCalendarCellLabel(cell)}
+                          title={tagCalendarCellLabel(cell)}
+                        />
+                      {:else}
+                        <span class="tag-calendar-day empty" aria-hidden="true" />
+                      {/if}
+                    {/each}
+                  </div>
+                {/each}
+              </div>
               <div
                 class="tag-calendar-range-actions"
                 aria-label="Tag activity date range"
@@ -2186,53 +2238,6 @@
                   </button>
                 {/each}
               </div>
-            </div>
-          </div>
-
-          {#if selectedExploreTags.length === 0}
-            <p class="empty-state">Select tags to see their daily activity.</p>
-          {:else}
-            <div class="tag-calendar" aria-label="Selected tag activity by day">
-              <span aria-hidden="true" />
-              <div
-                class="tag-calendar-months"
-                style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, ${tagCalendarSquareSize});`}
-              >
-                {#each exploreTagCalendar.monthLabels as month}
-                  <span>{month}</span>
-                {/each}
-              </div>
-              {#each exploreTagCalendar.rows as row}
-                <span class="tag-calendar-weekday">{row.label}</span>
-                <div
-                  class="tag-calendar-days"
-                  style={`grid-template-columns: repeat(${row.cells.length}, ${tagCalendarSquareSize});`}
-                >
-                  {#each row.cells as cell}
-                    {#if cell.day}
-                      <button
-                        type="button"
-                        class:tagged={cell.taggedTags.length > 0}
-                        class:selected={activeExploreDay?.date === cell.day.date}
-                        class="tag-calendar-day"
-                        aria-label={tagCalendarCellLabel(cell)}
-                        title={tagCalendarCellLabel(cell)}
-                        on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
-                        on:mouseleave={() => (hoveredExploreDate = "")}
-                        on:click={() => selectExploreDay(cell.day)}
-                      />
-                    {:else if cell.date}
-                      <span
-                        class="tag-calendar-day no-data"
-                        aria-label={tagCalendarCellLabel(cell)}
-                        title={tagCalendarCellLabel(cell)}
-                      />
-                    {:else}
-                      <span class="tag-calendar-day empty" aria-hidden="true" />
-                    {/if}
-                  {/each}
-                </div>
-              {/each}
             </div>
           {/if}
         </div>
@@ -3289,9 +3294,8 @@
     display: grid;
     font-size: 0.72rem;
     font-weight: 800;
-    gap: 0.5rem;
     justify-items: end;
-    min-width: 16rem;
+    min-width: 10rem;
     text-transform: uppercase;
     white-space: nowrap;
   }
@@ -3309,11 +3313,11 @@
 
   .tag-calendar-range-actions {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
+    align-items: stretch;
+    flex-direction: column;
     gap: 0.35rem;
     justify-content: flex-end;
-    max-width: 23rem;
+    min-width: 5.8rem;
   }
 
   .tag-calendar-range-actions button {
@@ -3345,6 +3349,14 @@
     gap: 0.26rem 0.72rem;
     margin-left: clamp(1.25rem, 3vw, 2.75rem);
     padding-top: 0.1rem;
+  }
+
+  .tag-calendar-layout {
+    align-items: flex-end;
+    display: flex;
+    gap: 1.15rem;
+    overflow-x: auto;
+    padding-right: 0.35rem;
   }
 
   .tag-calendar-weekday {
@@ -3943,11 +3955,17 @@
     }
 
     .tag-calendar-range-actions {
+      align-items: flex-start;
       justify-content: flex-start;
     }
 
     .tag-calendar {
       margin-left: 0;
+    }
+
+    .tag-calendar-layout {
+      align-items: flex-start;
+      flex-direction: column;
     }
 
     .log-row.header {
