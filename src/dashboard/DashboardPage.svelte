@@ -1020,11 +1020,12 @@
     const date = new Date(selectedRange.firstDate)
 
     while (date <= selectedRange.lastDate) {
-      const formattedDate = formatInputDate(date)
-      const day = daysByDate.get(formattedDate) ?? null
+      const displayDate = formatInputDate(date)
+      const metricDate = shiftDate(displayDate, 1)
+      const day = daysByDate.get(metricDate) ?? null
 
       cells.push({
-        date: formattedDate,
+        date: displayDate,
         day,
         taggedTags: day
           ? sortedTags.filter((tag) => day.tags.includes(tag))
@@ -1086,7 +1087,9 @@
     days: ExploreDay[]
   ): ExploreTagCalendarOption[] {
     const years = Array.from(
-      new Set(days.map((day) => day.date.slice(0, 4)))
+      new Set(
+        days.map((day) => getTagCalendarDisplayDate(day.date).slice(0, 4))
+      )
     ).sort((left, right) => Number(right) - Number(left))
 
     return [
@@ -1123,7 +1126,9 @@
       return null
     }
 
-    const lastDate = calendarDateAtNoon(latestDay.date)
+    const lastDate = calendarDateAtNoon(
+      getTagCalendarDisplayDate(latestDay.date)
+    )
     const firstDate = new Date(lastDate)
     firstDate.setDate(lastDate.getDate() - tagCalendarDays + 1)
 
@@ -1136,6 +1141,10 @@
 
   function calendarDateAtNoon(date: string) {
     return new Date(`${date}T12:00:00`)
+  }
+
+  function getTagCalendarDisplayDate(metricDate: string) {
+    return shiftDate(metricDate, -1)
   }
 
   function calendarWeekdayIndex(date: string) {
@@ -1164,7 +1173,7 @@
         ? formatTagList(cell.taggedTags)
         : "No selected tags"
 
-    return `Night of ${formatSleepNightDate(cell.date)} - ${tagText}`
+    return `Night of ${formatDate(cell.date)} - ${tagText}`
   }
 
   function discoveryImpact(tag: string) {
