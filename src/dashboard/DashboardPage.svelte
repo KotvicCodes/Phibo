@@ -3309,7 +3309,8 @@
 
   .tag-calendar-range-actions {
     display: flex;
-    flex-wrap: wrap;
+    align-items: flex-end;
+    flex-direction: column;
     gap: 0.35rem;
     justify-content: flex-end;
     max-width: 23rem;
@@ -3942,6 +3943,7 @@
     }
 
     .tag-calendar-range-actions {
+      align-items: flex-start;
       justify-content: flex-start;
     }
 
