@@ -212,7 +212,9 @@
     selectedExploreTags
   ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
   $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
-  $: matchingExploreDays = exploreDays.filter((day) => day.matches)
+  $: matchingExploreDays = sortExploreDaysNewestFirst(
+    exploreDays.filter((day) => day.matches)
+  )
   $: otherExploreDays = exploreDays.filter((day) => !day.matches)
   $: exploreScoreComparisons =
     selectedExploreTags.length > 0 && matchingExploreDays.length > 0
@@ -926,6 +928,10 @@
     }
 
     return day.tags.length > 0 ? formatTagList(day.tags) : "No tags"
+  }
+
+  function sortExploreDaysNewestFirst(days: ExploreDay[]) {
+    return [...days].sort((left, right) => right.date.localeCompare(left.date))
   }
 
   function buildExploreTagCalendar(
