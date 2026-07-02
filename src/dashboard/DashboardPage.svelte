@@ -66,6 +66,11 @@
     type ChartPoint,
     type ChartTick
   } from "./exploreCharts"
+  import {
+    formatTagLabel,
+    formatTagList,
+    sortTagsForDisplay
+  } from "./tagLabels"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -150,11 +155,6 @@
   const tagCalendarDays = 365
   const tagCalendarSquareSize = "0.78rem"
   const scoreWeekDays = 7
-  const displayTagLabels = new Map([
-    ["slept alone", "Sleep Solo"],
-    ["sunrise exposure", "Morning Sunlight"],
-    ["sunset exposure", "Evening Sunlight"]
-  ])
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
@@ -741,38 +741,6 @@
     }
 
     return "Low"
-  }
-
-  function formatTagLabel(tag: string) {
-    const trimmedTag = tag.trim()
-
-    if (trimmedTag.length === 0) {
-      return tag
-    }
-
-    const displayLabel = displayTagLabels.get(trimmedTag.toLocaleLowerCase())
-
-    if (displayLabel) {
-      return displayLabel
-    }
-
-    return `${trimmedTag[0].toLocaleUpperCase()}${trimmedTag.slice(1)}`
-  }
-
-  function formatTagList(tags: string[], separator = ", ") {
-    return sortTagsForDisplay(tags).map(formatTagLabel).join(separator)
-  }
-
-  function sortTagsForDisplay(tags: string[]) {
-    return [...tags].sort((left, right) => {
-      const displayComparison = formatTagLabel(left).localeCompare(
-        formatTagLabel(right),
-        undefined,
-        { sensitivity: "base" }
-      )
-
-      return displayComparison || left.localeCompare(right)
-    })
   }
 
   function detailTags(day: ExploreDay | undefined) {
