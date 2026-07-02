@@ -1,8 +1,7 @@
 import type {
   ExploreDay,
   ExploreMetricKey,
-  PrimaryInsightMetric,
-  TagInsight
+  PrimaryInsightMetric
 } from "../lib/analysis/correlations"
 
 export function formatInputDate(date: Date) {
@@ -50,14 +49,6 @@ export function formatDate(date: string) {
   return new Intl.DateTimeFormat("en", {
     day: "numeric",
     month: "short"
-  }).format(new Date(`${date}T12:00:00`))
-}
-
-export function formatFullDate(date: string) {
-  return new Intl.DateTimeFormat("en", {
-    day: "numeric",
-    month: "short",
-    year: "numeric"
   }).format(new Date(`${date}T12:00:00`))
 }
 
@@ -151,8 +142,4 @@ export function metricLabel(metric: PrimaryInsightMetric) {
 
 export function metricPlainLabel(metric: PrimaryInsightMetric) {
   return metric === "sleepScore" ? "sleep score" : "readiness"
-}
-
-export function formatInsightDelta(item: TagInsight) {
-  return `${metricLabel(item.metric)} ${formatDelta(item.delta)}`
 }
