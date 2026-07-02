@@ -26,6 +26,29 @@
     sampleTagEntries
   } from "../lib/oura/sampleData"
   import { syncOuraRange } from "../lib/oura/sync"
+  import {
+    average,
+    calendarDateAtNoon,
+    comparisonWidth,
+    daysAgo,
+    formatComparisonAverage,
+    formatConnectionDate,
+    formatDate,
+    formatDelta,
+    formatFullDate,
+    formatInputDate,
+    formatInsightDelta,
+    formatMetricDelta,
+    formatMonth,
+    formatNullableDelta,
+    formatScoreTrend,
+    formatSleepNightDate,
+    metricExtent,
+    metricLabel,
+    metricPlainLabel,
+    scaleNumber,
+    shiftDate
+  } from "./format"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -588,61 +611,6 @@
     }
   }
 
-  function formatConnectionDate(value: string | null | undefined) {
-    if (!value) {
-      return "Not yet"
-    }
-
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      month: "short"
-    }).format(new Date(value))
-  }
-
-  function formatDelta(value: number) {
-    return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
-  }
-
-  function formatInsightDelta(item: TagInsight) {
-    return `${metricLabel(item.metric)} ${formatDelta(item.delta)}`
-  }
-
-  function formatNullableDelta(value: number | null, suffix = "") {
-    return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
-  }
-
-  function formatComparisonAverage(value: number | null) {
-    return value === null ? "n/a" : `${Math.round(value)}`
-  }
-
-  function formatDate(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      month: "short"
-    }).format(new Date(`${date}T12:00:00`))
-  }
-
-  function formatFullDate(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      month: "short",
-      year: "numeric"
-    }).format(new Date(`${date}T12:00:00`))
-  }
-
-  function formatSleepNightDate(metricDate: string) {
-    return formatDate(shiftDate(metricDate, -1))
-  }
-
-  function shiftDate(date: string, days: number) {
-    const shiftedDate = new Date(`${date}T12:00:00`)
-    shiftedDate.setDate(shiftedDate.getDate() + days)
-
-    return formatInputDate(shiftedDate)
-  }
-
   function createSummary(
     label: string,
     key: keyof Pick<
@@ -688,18 +656,6 @@
     }
 
     return Math.round((currentAverage - previousAverage) * 10) / 10
-  }
-
-  function formatScoreTrend(value: number | null) {
-    if (value === null) {
-      return "needs last week"
-    }
-
-    if (Math.abs(value) < 0.1) {
-      return "same as last week"
-    }
-
-    return `${Math.abs(value).toFixed(1)} ${value > 0 ? "higher" : "lower"} than last week`
   }
 
   function trendTone(value: number | null): MetricSummary["tone"] {
@@ -927,10 +883,6 @@
     })
   }
 
-  function formatMetricDelta(value: number | null) {
-    return value === null ? "n/a" : formatDelta(value)
-  }
-
   function formatMetricValue(
     value: number | null,
     metric: ExploreMetricDefinition
@@ -945,23 +897,6 @@
         : value.toFixed(1)
 
     return metric.unit === "pts" ? rounded : `${rounded} ${metric.unit}`
-  }
-
-  function average(values: Array<number | null | undefined>) {
-    const usableValues = values.filter((value): value is number => value != null)
-
-    if (usableValues.length === 0) {
-      return null
-    }
-
-    return (
-      usableValues.reduce((total, value) => total + value, 0) /
-      usableValues.length
-    )
-  }
-
-  function comparisonWidth(value: number | null) {
-    return `${Math.max(0, Math.min(value ?? 0, 100))}%`
   }
 
   function detailTags(day: ExploreDay | undefined) {
@@ -1139,10 +1074,6 @@
     }
   }
 
-  function calendarDateAtNoon(date: string) {
-    return new Date(`${date}T12:00:00`)
-  }
-
   function getTagCalendarDisplayDate(metricDate: string) {
     return shiftDate(metricDate, -1)
   }
@@ -1155,12 +1086,6 @@
     const firstMonthDate = week.find((cell) => cell.date?.endsWith("-01"))?.date
 
     return firstMonthDate ? formatMonth(firstMonthDate) : ""
-  }
-
-  function formatMonth(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      month: "short"
-    }).format(new Date(`${date}T12:00:00`))
   }
 
   function tagCalendarCellLabel(cell: ExploreTagCalendarCell) {
@@ -1368,41 +1293,6 @@
       : openExploreImpactCategories.filter((item) => item !== category)
   }
 
-  function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
-    const values = days
-      .map((day) => day.metric[metric])
-      .filter((value): value is number => value !== null)
-
-    if (values.length === 0) {
-      return [0, 1] as const
-    }
-
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-
-    if (min === max) {
-      return [min - 1, max + 1] as const
-    }
-
-    const padding = (max - min) * 0.08
-
-    return [min - padding, max + padding] as const
-  }
-
-  function scaleNumber(
-    value: number,
-    extent: readonly [number, number],
-    outputMin: number,
-    outputMax: number
-  ) {
-    const [inputMin, inputMax] = extent
-
-    return (
-      outputMin +
-      ((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)
-    )
-  }
-
   function selectExploreDay(day: ExploreDay) {
     selectedExploreDate = day.date
   }
@@ -1435,28 +1325,10 @@
     return new Set(entries.map((tag) => tag.date))
   }
 
-  function metricLabel(metric: PrimaryInsightMetric) {
-    return metric === "sleepScore" ? "Sleep" : "Readiness"
-  }
-
-  function metricPlainLabel(metric: PrimaryInsightMetric) {
-    return metric === "sleepScore" ? "sleep score" : "readiness"
-  }
-
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
 
-  function daysAgo(days: number) {
-    const date = new Date()
-    date.setDate(date.getDate() - days)
-
-    return date
-  }
-
-  function formatInputDate(date: Date) {
-    return date.toISOString().slice(0, 10)
-  }
 </script>
 
 <svelte:head>

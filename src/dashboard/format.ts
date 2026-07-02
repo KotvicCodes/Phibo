@@ -1,0 +1,158 @@
+import type {
+  ExploreDay,
+  ExploreMetricKey,
+  PrimaryInsightMetric,
+  TagInsight
+} from "../lib/analysis/correlations"
+
+export function formatInputDate(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+export function daysAgo(days: number) {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+
+  return date
+}
+
+export function shiftDate(date: string, days: number) {
+  const shiftedDate = new Date(`${date}T12:00:00`)
+  shiftedDate.setDate(shiftedDate.getDate() + days)
+
+  return formatInputDate(shiftedDate)
+}
+
+export function calendarDateAtNoon(date: string) {
+  return new Date(`${date}T12:00:00`)
+}
+
+export function formatMonth(date: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short"
+  }).format(new Date(`${date}T12:00:00`))
+}
+
+export function formatConnectionDate(value: string | null | undefined) {
+  if (!value) {
+    return "Not yet"
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short"
+  }).format(new Date(value))
+}
+
+export function formatDate(date: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short"
+  }).format(new Date(`${date}T12:00:00`))
+}
+
+export function formatFullDate(date: string) {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(`${date}T12:00:00`))
+}
+
+export function formatSleepNightDate(metricDate: string) {
+  return formatDate(shiftDate(metricDate, -1))
+}
+
+export function average(values: Array<number | null | undefined>) {
+  const usableValues = values.filter((value): value is number => value != null)
+
+  if (usableValues.length === 0) {
+    return null
+  }
+
+  return (
+    usableValues.reduce((total, value) => total + value, 0) /
+    usableValues.length
+  )
+}
+
+export function scaleNumber(
+  value: number,
+  extent: readonly [number, number],
+  outputMin: number,
+  outputMax: number
+) {
+  const [inputMin, inputMax] = extent
+
+  return (
+    outputMin +
+    ((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)
+  )
+}
+
+export function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
+  const values = days
+    .map((day) => day.metric[metric])
+    .filter((value): value is number => value !== null)
+
+  if (values.length === 0) {
+    return [0, 1] as const
+  }
+
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+
+  if (min === max) {
+    return [min - 1, max + 1] as const
+  }
+
+  const padding = (max - min) * 0.08
+
+  return [min - padding, max + padding] as const
+}
+
+export function formatDelta(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
+}
+
+export function formatNullableDelta(value: number | null, suffix = "") {
+  return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
+}
+
+export function formatComparisonAverage(value: number | null) {
+  return value === null ? "n/a" : `${Math.round(value)}`
+}
+
+export function formatMetricDelta(value: number | null) {
+  return value === null ? "n/a" : formatDelta(value)
+}
+
+export function formatScoreTrend(value: number | null) {
+  if (value === null) {
+    return "needs last week"
+  }
+
+  if (Math.abs(value) < 0.1) {
+    return "same as last week"
+  }
+
+  return `${Math.abs(value).toFixed(1)} ${value > 0 ? "higher" : "lower"} than last week`
+}
+
+export function comparisonWidth(value: number | null) {
+  return `${Math.max(0, Math.min(value ?? 0, 100))}%`
+}
+
+export function metricLabel(metric: PrimaryInsightMetric) {
+  return metric === "sleepScore" ? "Sleep" : "Readiness"
+}
+
+export function metricPlainLabel(metric: PrimaryInsightMetric) {
+  return metric === "sleepScore" ? "sleep score" : "readiness"
+}
+
+export function formatInsightDelta(item: TagInsight) {
+  return `${metricLabel(item.metric)} ${formatDelta(item.delta)}`
+}
