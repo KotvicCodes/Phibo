@@ -49,6 +49,23 @@
     scaleNumber,
     shiftDate
   } from "./format"
+  import {
+    chartHeight,
+    chartPadding,
+    chartWidth,
+    createMetricTicks,
+    createScatterPoints,
+    createTimelineDateTicks,
+    createTimelinePoints,
+    formatAverage,
+    formatAxisValue,
+    formatExploreDelta,
+    formatMetricValue,
+    metricAxisLabel,
+    timelinePath,
+    type ChartPoint,
+    type ChartTick
+  } from "./exploreCharts"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -86,17 +103,6 @@
   >
   type TagTimingMode = "morning" | "sameDay"
 
-  interface ChartPoint {
-    day: ExploreDay
-    x: number
-    y: number
-  }
-
-  interface ChartTick {
-    label: string
-    position: number
-  }
-
   interface ExploreImpactGroup {
     category: ExploreMetricCategory
     rows: ExploreMetricImpact[]
@@ -132,10 +138,7 @@
     label: string
   }
 
-  const chartWidth = 640
-  const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
-  const chartPadding = 56
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
@@ -740,117 +743,6 @@
     return "Low"
   }
 
-  function createScatterPoints(
-    days: ExploreDay[],
-    xMetric: ExploreMetricKey,
-    yMetric: ExploreMetricKey,
-    xExtent: readonly [number, number],
-    yExtent: readonly [number, number]
-  ): ChartPoint[] {
-    return days
-      .filter(
-        (day) => day.metric[xMetric] != null && day.metric[yMetric] != null
-      )
-      .map((day) => ({
-        day,
-        x: scaleNumber(
-          day.metric[xMetric] ?? 0,
-          xExtent,
-          chartPadding,
-          chartWidth - chartPadding
-        ),
-        y: scaleNumber(
-          day.metric[yMetric] ?? 0,
-          yExtent,
-          chartHeight - chartPadding,
-          chartPadding
-        )
-      }))
-  }
-
-  function createTimelinePoints(
-    days: ExploreDay[],
-    metric: ExploreMetricKey,
-    yExtent: readonly [number, number]
-  ): ChartPoint[] {
-    const usableDays = days.filter((day) => day.metric[metric] != null)
-    const xStep =
-      usableDays.length <= 1
-        ? 0
-        : (chartWidth - chartPadding * 2) / (usableDays.length - 1)
-
-    return usableDays.map((day, index) => ({
-      day,
-      x: chartPadding + xStep * index,
-      y: scaleNumber(
-        day.metric[metric] ?? 0,
-        yExtent,
-        chartHeight - chartPadding,
-        chartPadding
-      )
-    }))
-  }
-
-  function createMetricTicks(
-    extent: readonly [number, number],
-    metric: ExploreMetricDefinition,
-    outputMin: number,
-    outputMax: number
-  ): ChartTick[] {
-    const [min, max] = extent
-
-    return [min, (min + max) / 2, max].map((value) => ({
-      label: formatAxisValue(value, metric),
-      position: scaleNumber(value, extent, outputMin, outputMax)
-    }))
-  }
-
-  function createTimelineDateTicks(points: ChartPoint[]): ChartTick[] {
-    if (points.length === 0) {
-      return []
-    }
-
-    const indexes = Array.from(
-      new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])
-    )
-
-    return indexes.map((index) => ({
-      label: formatDate(points[index].day.date),
-      position: points[index].x
-    }))
-  }
-
-  function metricAxisLabel(metric: ExploreMetricDefinition) {
-    return metric.unit === "pts" ? metric.label : `${metric.label} (${metric.unit})`
-  }
-
-  function formatAxisValue(value: number, metric: ExploreMetricDefinition) {
-    if (Math.abs(value) >= 1000) {
-      return `${Math.round(value / 100) / 10}k`
-    }
-
-    if (metric.unit === "MET" || metric.unit === "br/min") {
-      return value.toFixed(1)
-    }
-
-    return `${Math.round(value)}`
-  }
-
-  function formatAverage(
-    value: number | null,
-    metric: ExploreMetricDefinition
-  ) {
-    return value === null ? "n/a" : formatMetricValue(value, metric)
-  }
-
-  function formatExploreDelta(row: ExploreMetricImpact) {
-    if (row.delta === null) {
-      return "n/a"
-    }
-
-    return `${formatDelta(row.delta)} ${row.metric.unit}`
-  }
-
   function formatTagLabel(tag: string) {
     const trimmedTag = tag.trim()
 
@@ -881,22 +773,6 @@
 
       return displayComparison || left.localeCompare(right)
     })
-  }
-
-  function formatMetricValue(
-    value: number | null,
-    metric: ExploreMetricDefinition
-  ) {
-    if (value === null) {
-      return "n/a"
-    }
-
-    const rounded =
-      Number.isInteger(value) || Math.abs(value) >= 10
-        ? `${Math.round(value)}`
-        : value.toFixed(1)
-
-    return metric.unit === "pts" ? rounded : `${rounded} ${metric.unit}`
   }
 
   function detailTags(day: ExploreDay | undefined) {
@@ -1302,12 +1178,6 @@
     selectedExploreTags = selectedExploreTags.includes(tag)
       ? selectedExploreTags.filter((selectedTag) => selectedTag !== tag)
       : [...selectedExploreTags, tag]
-  }
-
-  function timelinePath(points: ChartPoint[]) {
-    return points
-      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-      .join(" ")
   }
 
   function buildTagsByDate(entries: typeof tagEntries) {
