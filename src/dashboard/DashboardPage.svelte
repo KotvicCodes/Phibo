@@ -54,10 +54,7 @@
     formatAxisValue,
     formatExploreDelta,
     formatMetricValue,
-    metricAxisLabel,
-    timelinePath,
-    type ChartPoint,
-    type ChartTick
+    metricAxisLabel
   } from "./exploreCharts"
   import {
     formatTagLabel,
@@ -80,6 +77,7 @@
     isPrimaryScoreMetric,
     type ExploreImpactGroup
   } from "./exploreImpacts"
+  import ExploreChart from "./ExploreChart.svelte"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -853,13 +851,6 @@
     selectedExploreDate = day.date
   }
 
-  function handleExploreDayKeydown(event: KeyboardEvent, day: ExploreDay) {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault()
-      selectExploreDay(day)
-    }
-  }
-
   function toggleExploreTag(tag: string) {
     selectedExploreDate = ""
     selectedExploreTags = selectedExploreTags.includes(tag)
@@ -1463,79 +1454,16 @@
         {:else if matchingExploreDays.length === 0}
           <p class="empty-state">No nights match every selected tag yet.</p>
         {:else if exploreChartMode === "scatter"}
-          <div class="svg-chart">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
-              {#each scatterYTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={chartPadding}
-                  x2={chartWidth - chartPadding}
-                  y1={tick.position}
-                  y2={tick.position}
-                />
-                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
-                  {tick.label}
-                </text>
-              {/each}
-              {#each scatterXTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={tick.position}
-                  x2={tick.position}
-                  y1={chartPadding}
-                  y2={chartHeight - chartPadding}
-                />
-                <text
-                  class="axis-tick x"
-                  x={tick.position}
-                  y={chartHeight - chartPadding + 20}
-                >
-                  {tick.label}
-                </text>
-              {/each}
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartPadding}
-                y1={chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartWidth - chartPadding}
-                y1={chartHeight - chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              {#each scatterPoints as point}
-                <circle
-                  class:match={point.day.matches}
-                  class="scatter-point"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`Select ${formatDate(point.day.date)}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={point.day.matches ? 8 : 5}
-                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
-                  on:mouseleave={() => (hoveredExploreDate = "")}
-                  on:focus={() => (hoveredExploreDate = point.day.date)}
-                  on:blur={() => (hoveredExploreDate = "")}
-                  on:click={() => selectExploreDay(point.day)}
-                  on:keydown={(event) => handleExploreDayKeydown(event, point.day)}
-                />
-              {/each}
-              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
-                {metricAxisLabel(selectedXDefinition)}
-              </text>
-              <text
-                class="axis-title y"
-                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
-              >
-                {metricAxisLabel(selectedYDefinition)}
-              </text>
-            </svg>
-          </div>
+          <ExploreChart
+            mode="scatter"
+            points={scatterPoints}
+            xTicks={scatterXTicks}
+            yTicks={scatterYTicks}
+            xTitle={metricAxisLabel(selectedXDefinition)}
+            yTitle={metricAxisLabel(selectedYDefinition)}
+            on:selectDay={(event) => selectExploreDay(event.detail)}
+            on:hover={(event) => (hoveredExploreDate = event.detail)}
+          />
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
             {#each groupedExploreImpacts as group}
@@ -1587,80 +1515,16 @@
             {/each}
           </div>
         {:else}
-          <div class="svg-chart">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
-              {#each timelineYTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={chartPadding}
-                  x2={chartWidth - chartPadding}
-                  y1={tick.position}
-                  y2={tick.position}
-                />
-                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
-                  {tick.label}
-                </text>
-              {/each}
-              {#each timelineDateTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={tick.position}
-                  x2={tick.position}
-                  y1={chartPadding}
-                  y2={chartHeight - chartPadding}
-                />
-                <text
-                  class="axis-tick x"
-                  x={tick.position}
-                  y={chartHeight - chartPadding + 20}
-                >
-                  {tick.label}
-                </text>
-              {/each}
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartPadding}
-                y1={chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartWidth - chartPadding}
-                y1={chartHeight - chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <path class="timeline-line" d={timelinePath(timelinePoints)} />
-              {#each timelinePoints as point}
-                <circle
-                  class:match={point.day.matches}
-                  class="scatter-point"
-                  role="button"
-                  tabindex="0"
-                  aria-label={`Select ${formatDate(point.day.date)}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r={point.day.matches ? 7 : 4}
-                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
-                  on:mouseleave={() => (hoveredExploreDate = "")}
-                  on:focus={() => (hoveredExploreDate = point.day.date)}
-                  on:blur={() => (hoveredExploreDate = "")}
-                  on:click={() => selectExploreDay(point.day)}
-                  on:keydown={(event) => handleExploreDayKeydown(event, point.day)}
-                />
-              {/each}
-              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
-                Date
-              </text>
-              <text
-                class="axis-title y"
-                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
-              >
-                {metricAxisLabel(selectedYDefinition)}
-              </text>
-            </svg>
-          </div>
+          <ExploreChart
+            mode="timeline"
+            points={timelinePoints}
+            xTicks={timelineDateTicks}
+            yTicks={timelineYTicks}
+            xTitle="Date"
+            yTitle={metricAxisLabel(selectedYDefinition)}
+            on:selectDay={(event) => selectExploreDay(event.detail)}
+            on:hover={(event) => (hoveredExploreDate = event.detail)}
+          />
         {/if}
 
         <div class="tag-calendar-section">
@@ -2625,69 +2489,6 @@
     font-weight: 800;
     justify-content: flex-end;
     white-space: nowrap;
-  }
-
-  .svg-chart {
-    border-top: 1px solid #d8d8cc;
-    padding-block: 0.65rem;
-  }
-
-  .svg-chart svg {
-    display: block;
-    height: auto;
-    width: 100%;
-  }
-
-  .axis-line {
-    stroke: #cfd2c4;
-    stroke-width: 2;
-  }
-
-  .tick-line {
-    stroke: rgba(207, 210, 196, 0.56);
-    stroke-width: 1;
-  }
-
-  .axis-tick,
-  .axis-title {
-    fill: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-  }
-
-  .axis-tick.x,
-  .axis-title.x {
-    text-anchor: middle;
-  }
-
-  .axis-tick.y {
-    dominant-baseline: middle;
-    text-anchor: end;
-  }
-
-  .axis-title.y {
-    text-anchor: middle;
-  }
-
-  .scatter-point {
-    cursor: pointer;
-    fill: #9ca69a;
-    opacity: 0.82;
-    stroke: #fbf7ef;
-    stroke-width: 2;
-  }
-
-  .scatter-point.match {
-    fill: #4f8a63;
-    opacity: 1;
-  }
-
-  .timeline-line {
-    fill: none;
-    stroke: #6f786f;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 3;
   }
 
   .impact-list {
