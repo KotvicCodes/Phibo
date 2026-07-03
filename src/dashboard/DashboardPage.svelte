@@ -11,8 +11,6 @@
     getTagDiscoveries,
     type ExploreDay,
     type ExploreMetricCategory,
-    type ExploreMetricDefinition,
-    type ExploreMetricImpact,
     type ExploreMetricKey,
     type PrimaryInsightMetric,
     type TagInsight
@@ -26,7 +24,62 @@
     sampleTagEntries
   } from "../lib/oura/sampleData"
   import { syncOuraRange } from "../lib/oura/sync"
+  import {
+    average,
+    comparisonWidth,
+    daysAgo,
+    formatComparisonAverage,
+    formatDate,
+    formatDelta,
+    formatInputDate,
+    formatMetricDelta,
+    formatNullableDelta,
+    formatScoreTrend,
+    formatSleepNightDate,
+    metricExtent,
+    metricLabel,
+    metricPlainLabel,
+    shiftDate
+  } from "./format"
+  import {
+    chartHeight,
+    chartPadding,
+    chartWidth,
+    createMetricTicks,
+    createScatterPoints,
+    createTimelineDateTicks,
+    createTimelinePoints,
+    formatAverage,
+    formatAxisValue,
+    formatExploreDelta,
+    formatMetricValue,
+    metricAxisLabel
+  } from "./exploreCharts"
+  import {
+    formatTagLabel,
+    formatTagList,
+    sortTagsForDisplay
+  } from "./tagLabels"
+  import {
+    buildExploreTagCalendar,
+    buildExploreTagCalendarOptions
+  } from "./tagCalendar"
+  import {
+    groupExploreImpacts,
+    impactGroupDelta,
+    impactGroupDeltaLabel,
+    impactGroupMetricCount,
+    impactGroupTone,
+    impactTone,
+    impactWidth,
+    isPrimaryScoreMetric,
+    type ExploreImpactGroup
+  } from "./exploreImpacts"
+  import ExploreChart from "./ExploreChart.svelte"
+  import TagCalendar from "./TagCalendarView.svelte"
+  import ImportModal from "./ImportModal.svelte"
   import logoUrl from "../../assets/phibo-mark.svg"
+  import "./shared.css"
 
   interface MetricSummary {
     detail: string
@@ -63,72 +116,10 @@
   >
   type TagTimingMode = "morning" | "sameDay"
 
-  interface ChartPoint {
-    day: ExploreDay
-    x: number
-    y: number
-  }
-
-  interface ChartTick {
-    label: string
-    position: number
-  }
-
-  interface ExploreImpactGroup {
-    category: ExploreMetricCategory
-    rows: ExploreMetricImpact[]
-    strongest: ExploreMetricImpact | null
-  }
-
-  interface ExploreTagCalendarCell {
-    date: string | null
-    day: ExploreDay | null
-    taggedTags: string[]
-  }
-
-  interface ExploreTagCalendar {
-    monthLabels: string[]
-    rangeLabel: string
-    rows: ExploreTagCalendarWeekdayRow[]
-    taggedDayCount: number
-  }
-
-  interface ExploreTagCalendarOption {
-    id: string
-    label: string
-  }
-
-  interface ExploreTagCalendarRange {
-    firstDate: Date
-    lastDate: Date
-    label: string
-  }
-
-  interface ExploreTagCalendarWeekdayRow {
-    cells: ExploreTagCalendarCell[]
-    label: string
-  }
-
-  const chartWidth = 640
-  const chartHeight = 320
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
-  const chartPadding = 56
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
-  const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
-    "Sleep",
-    "Readiness",
-    "Activity"
-  ]
-  const calendarWeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-  const tagCalendarDays = 365
-  const tagCalendarSquareSize = "0.78rem"
   const scoreWeekDays = 7
-  const displayTagLabels = new Map([
-    ["slept alone", "Sleep Solo"],
-    ["sunrise exposure", "Morning Sunlight"],
-    ["sunset exposure", "Evening Sunlight"]
-  ])
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
   > = [
@@ -147,7 +138,6 @@
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
   let endDate = formatInputDate(new Date())
-  let importFileInput: HTMLInputElement | null = null
   let importMessage = "Import your Oura personal data export to begin."
   let isImportModalOpen = false
   let isSyncing = false
@@ -326,27 +316,12 @@
     }
   })
 
-  async function handleOuraFileInput(event: Event) {
-    const input = event.currentTarget
-
-    if (!(input instanceof HTMLInputElement)) {
-      return
-    }
-
-    await importFiles(Array.from(input.files ?? []))
-    input.value = ""
-  }
-
   function openImportModal() {
     isImportModalOpen = true
   }
 
   function closeImportModal() {
     isImportModalOpen = false
-  }
-
-  async function handleImportDrop(event: DragEvent) {
-    await importFiles(Array.from(event.dataTransfer?.files ?? []))
   }
 
   async function importFiles(files: File[]) {
@@ -588,61 +563,6 @@
     }
   }
 
-  function formatConnectionDate(value: string | null | undefined) {
-    if (!value) {
-      return "Not yet"
-    }
-
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      month: "short"
-    }).format(new Date(value))
-  }
-
-  function formatDelta(value: number) {
-    return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
-  }
-
-  function formatInsightDelta(item: TagInsight) {
-    return `${metricLabel(item.metric)} ${formatDelta(item.delta)}`
-  }
-
-  function formatNullableDelta(value: number | null, suffix = "") {
-    return value === null ? "n/a" : `${formatDelta(value)}${suffix}`
-  }
-
-  function formatComparisonAverage(value: number | null) {
-    return value === null ? "n/a" : `${Math.round(value)}`
-  }
-
-  function formatDate(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      month: "short"
-    }).format(new Date(`${date}T12:00:00`))
-  }
-
-  function formatFullDate(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      day: "numeric",
-      month: "short",
-      year: "numeric"
-    }).format(new Date(`${date}T12:00:00`))
-  }
-
-  function formatSleepNightDate(metricDate: string) {
-    return formatDate(shiftDate(metricDate, -1))
-  }
-
-  function shiftDate(date: string, days: number) {
-    const shiftedDate = new Date(`${date}T12:00:00`)
-    shiftedDate.setDate(shiftedDate.getDate() + days)
-
-    return formatInputDate(shiftedDate)
-  }
-
   function createSummary(
     label: string,
     key: keyof Pick<
@@ -688,18 +608,6 @@
     }
 
     return Math.round((currentAverage - previousAverage) * 10) / 10
-  }
-
-  function formatScoreTrend(value: number | null) {
-    if (value === null) {
-      return "needs last week"
-    }
-
-    if (Math.abs(value) < 0.1) {
-      return "same as last week"
-    }
-
-    return `${Math.abs(value).toFixed(1)} ${value > 0 ? "higher" : "lower"} than last week`
   }
 
   function trendTone(value: number | null): MetricSummary["tone"] {
@@ -784,186 +692,6 @@
     return "Low"
   }
 
-  function createScatterPoints(
-    days: ExploreDay[],
-    xMetric: ExploreMetricKey,
-    yMetric: ExploreMetricKey,
-    xExtent: readonly [number, number],
-    yExtent: readonly [number, number]
-  ): ChartPoint[] {
-    return days
-      .filter(
-        (day) => day.metric[xMetric] != null && day.metric[yMetric] != null
-      )
-      .map((day) => ({
-        day,
-        x: scaleNumber(
-          day.metric[xMetric] ?? 0,
-          xExtent,
-          chartPadding,
-          chartWidth - chartPadding
-        ),
-        y: scaleNumber(
-          day.metric[yMetric] ?? 0,
-          yExtent,
-          chartHeight - chartPadding,
-          chartPadding
-        )
-      }))
-  }
-
-  function createTimelinePoints(
-    days: ExploreDay[],
-    metric: ExploreMetricKey,
-    yExtent: readonly [number, number]
-  ): ChartPoint[] {
-    const usableDays = days.filter((day) => day.metric[metric] != null)
-    const xStep =
-      usableDays.length <= 1
-        ? 0
-        : (chartWidth - chartPadding * 2) / (usableDays.length - 1)
-
-    return usableDays.map((day, index) => ({
-      day,
-      x: chartPadding + xStep * index,
-      y: scaleNumber(
-        day.metric[metric] ?? 0,
-        yExtent,
-        chartHeight - chartPadding,
-        chartPadding
-      )
-    }))
-  }
-
-  function createMetricTicks(
-    extent: readonly [number, number],
-    metric: ExploreMetricDefinition,
-    outputMin: number,
-    outputMax: number
-  ): ChartTick[] {
-    const [min, max] = extent
-
-    return [min, (min + max) / 2, max].map((value) => ({
-      label: formatAxisValue(value, metric),
-      position: scaleNumber(value, extent, outputMin, outputMax)
-    }))
-  }
-
-  function createTimelineDateTicks(points: ChartPoint[]): ChartTick[] {
-    if (points.length === 0) {
-      return []
-    }
-
-    const indexes = Array.from(
-      new Set([0, Math.floor((points.length - 1) / 2), points.length - 1])
-    )
-
-    return indexes.map((index) => ({
-      label: formatDate(points[index].day.date),
-      position: points[index].x
-    }))
-  }
-
-  function metricAxisLabel(metric: ExploreMetricDefinition) {
-    return metric.unit === "pts" ? metric.label : `${metric.label} (${metric.unit})`
-  }
-
-  function formatAxisValue(value: number, metric: ExploreMetricDefinition) {
-    if (Math.abs(value) >= 1000) {
-      return `${Math.round(value / 100) / 10}k`
-    }
-
-    if (metric.unit === "MET" || metric.unit === "br/min") {
-      return value.toFixed(1)
-    }
-
-    return `${Math.round(value)}`
-  }
-
-  function formatAverage(
-    value: number | null,
-    metric: ExploreMetricDefinition
-  ) {
-    return value === null ? "n/a" : formatMetricValue(value, metric)
-  }
-
-  function formatExploreDelta(row: ExploreMetricImpact) {
-    if (row.delta === null) {
-      return "n/a"
-    }
-
-    return `${formatDelta(row.delta)} ${row.metric.unit}`
-  }
-
-  function formatTagLabel(tag: string) {
-    const trimmedTag = tag.trim()
-
-    if (trimmedTag.length === 0) {
-      return tag
-    }
-
-    const displayLabel = displayTagLabels.get(trimmedTag.toLocaleLowerCase())
-
-    if (displayLabel) {
-      return displayLabel
-    }
-
-    return `${trimmedTag[0].toLocaleUpperCase()}${trimmedTag.slice(1)}`
-  }
-
-  function formatTagList(tags: string[], separator = ", ") {
-    return sortTagsForDisplay(tags).map(formatTagLabel).join(separator)
-  }
-
-  function sortTagsForDisplay(tags: string[]) {
-    return [...tags].sort((left, right) => {
-      const displayComparison = formatTagLabel(left).localeCompare(
-        formatTagLabel(right),
-        undefined,
-        { sensitivity: "base" }
-      )
-
-      return displayComparison || left.localeCompare(right)
-    })
-  }
-
-  function formatMetricDelta(value: number | null) {
-    return value === null ? "n/a" : formatDelta(value)
-  }
-
-  function formatMetricValue(
-    value: number | null,
-    metric: ExploreMetricDefinition
-  ) {
-    if (value === null) {
-      return "n/a"
-    }
-
-    const rounded =
-      Number.isInteger(value) || Math.abs(value) >= 10
-        ? `${Math.round(value)}`
-        : value.toFixed(1)
-
-    return metric.unit === "pts" ? rounded : `${rounded} ${metric.unit}`
-  }
-
-  function average(values: Array<number | null | undefined>) {
-    const usableValues = values.filter((value): value is number => value != null)
-
-    if (usableValues.length === 0) {
-      return null
-    }
-
-    return (
-      usableValues.reduce((total, value) => total + value, 0) /
-      usableValues.length
-    )
-  }
-
-  function comparisonWidth(value: number | null) {
-    return `${Math.max(0, Math.min(value ?? 0, 100))}%`
-  }
-
   function detailTags(day: ExploreDay | undefined) {
     if (!day) {
       return "No day selected"
@@ -987,193 +715,6 @@
 
   function sortExploreDaysNewestFirst(days: ExploreDay[]) {
     return [...days].sort((left, right) => right.date.localeCompare(left.date))
-  }
-
-  function buildExploreTagCalendar(
-    days: ExploreDay[],
-    selectedTags: string[],
-    selectedRangeId: string
-  ): ExploreTagCalendar {
-    const sortedTags = sortTagsForDisplay(selectedTags)
-    const sortedDays = [...days].sort((left, right) =>
-      left.date.localeCompare(right.date)
-    )
-    const selectedRange = getExploreTagCalendarRange(
-      sortedDays,
-      selectedRangeId
-    )
-
-    if (!selectedRange) {
-      return {
-        monthLabels: [],
-        rangeLabel: "Last 365 days",
-        rows: calendarWeekdayLabels.map((label) => ({
-          cells: [],
-          label
-        })),
-        taggedDayCount: 0
-      }
-    }
-
-    const daysByDate = new Map(sortedDays.map((day) => [day.date, day]))
-    const cells: ExploreTagCalendarCell[] = []
-    const date = new Date(selectedRange.firstDate)
-
-    while (date <= selectedRange.lastDate) {
-      const displayDate = formatInputDate(date)
-      const metricDate = shiftDate(displayDate, 1)
-      const day = daysByDate.get(metricDate) ?? null
-
-      cells.push({
-        date: displayDate,
-        day,
-        taggedTags: day
-          ? sortedTags.filter((tag) => day.tags.includes(tag))
-          : []
-      })
-
-      date.setDate(date.getDate() + 1)
-    }
-
-    if (cells.length === 0) {
-      return {
-        monthLabels: [],
-        rangeLabel: selectedRange.label,
-        rows: calendarWeekdayLabels.map((label) => ({
-          cells: [],
-          label
-        })),
-        taggedDayCount: 0
-      }
-    }
-
-    const leadingEmptyDays = calendarWeekdayIndex(cells[0].date)
-    const paddedCells = [
-      ...Array.from({ length: leadingEmptyDays }, (): ExploreTagCalendarCell => ({
-        date: null,
-        day: null,
-        taggedTags: []
-      })),
-      ...cells
-    ]
-    const trailingEmptyDays =
-      paddedCells.length === 0 ? 0 : (7 - (paddedCells.length % 7)) % 7
-
-    paddedCells.push(
-      ...Array.from({ length: trailingEmptyDays }, (): ExploreTagCalendarCell => ({
-        date: null,
-        day: null,
-        taggedTags: []
-      }))
-    )
-
-    const weeks = Array.from(
-      { length: Math.ceil(paddedCells.length / 7) },
-      (_, index) => paddedCells.slice(index * 7, index * 7 + 7)
-    )
-
-    return {
-      monthLabels: weeks.map((week) => calendarWeekMonthLabel(week)),
-      rangeLabel: selectedRange.label,
-      rows: calendarWeekdayLabels.map((label, weekdayIndex) => ({
-        cells: weeks.map((week) => week[weekdayIndex]),
-        label
-      })),
-      taggedDayCount: cells.filter((cell) => cell.taggedTags.length > 0).length
-    }
-  }
-
-  function buildExploreTagCalendarOptions(
-    days: ExploreDay[]
-  ): ExploreTagCalendarOption[] {
-    const years = Array.from(
-      new Set(
-        days.map((day) => getTagCalendarDisplayDate(day.date).slice(0, 4))
-      )
-    ).sort((left, right) => Number(right) - Number(left))
-
-    return [
-      {
-        id: "last365",
-        label: "Last 365"
-      },
-      ...years.map((year) => ({
-        id: `year:${year}`,
-        label: year
-      }))
-    ]
-  }
-
-  function getExploreTagCalendarRange(
-    sortedDays: ExploreDay[],
-    selectedRangeId: string
-  ): ExploreTagCalendarRange | null {
-    const selectedYear = selectedRangeId.startsWith("year:")
-      ? Number(selectedRangeId.slice(5))
-      : null
-
-    if (selectedYear && Number.isFinite(selectedYear)) {
-      return {
-        firstDate: calendarDateAtNoon(`${selectedYear}-01-01`),
-        lastDate: calendarDateAtNoon(`${selectedYear}-12-31`),
-        label: String(selectedYear)
-      }
-    }
-
-    const latestDay = sortedDays[sortedDays.length - 1]
-
-    if (!latestDay) {
-      return null
-    }
-
-    const lastDate = calendarDateAtNoon(
-      getTagCalendarDisplayDate(latestDay.date)
-    )
-    const firstDate = new Date(lastDate)
-    firstDate.setDate(lastDate.getDate() - tagCalendarDays + 1)
-
-    return {
-      firstDate,
-      lastDate,
-      label: "Last 365 days"
-    }
-  }
-
-  function calendarDateAtNoon(date: string) {
-    return new Date(`${date}T12:00:00`)
-  }
-
-  function getTagCalendarDisplayDate(metricDate: string) {
-    return shiftDate(metricDate, -1)
-  }
-
-  function calendarWeekdayIndex(date: string) {
-    return (calendarDateAtNoon(date).getDay() + 6) % 7
-  }
-
-  function calendarWeekMonthLabel(week: ExploreTagCalendarCell[]) {
-    const firstMonthDate = week.find((cell) => cell.date?.endsWith("-01"))?.date
-
-    return firstMonthDate ? formatMonth(firstMonthDate) : ""
-  }
-
-  function formatMonth(date: string) {
-    return new Intl.DateTimeFormat("en", {
-      month: "short"
-    }).format(new Date(`${date}T12:00:00`))
-  }
-
-  function tagCalendarCellLabel(cell: ExploreTagCalendarCell) {
-    if (!cell.date) {
-      return "No date"
-    }
-
-    const tagText =
-      cell.taggedTags.length > 0
-        ? formatTagList(cell.taggedTags)
-        : "No selected tags"
-
-    return `Night of ${formatDate(cell.date)} - ${tagText}`
   }
 
   function discoveryImpact(tag: string) {
@@ -1261,92 +802,8 @@
     }
   }
 
-  function isPrimaryScoreMetric(metric: ExploreMetricKey) {
-    return (
-      metric === "activityScore" ||
-      metric === "readinessScore" ||
-      metric === "sleepScore"
-    )
-  }
-
   function insightKey(item: TagInsight) {
     return `${item.tag}-${item.metric}`
-  }
-
-  function impactTone(value: number | null) {
-    if (value === null || Math.abs(value) <= 0.5) {
-      return "neutral"
-    }
-
-    if (value >= 2) {
-      return "excellent"
-    }
-
-    if (value > 0.5) {
-      return "positive"
-    }
-
-    if (value <= -2) {
-      return "negative"
-    }
-
-    return "warning"
-  }
-
-  function impactWidth(row: ExploreMetricImpact) {
-    const maxDelta = Math.max(
-      ...exploreImpacts.map((impact) => Math.abs(impact.delta ?? 0)),
-      1
-    )
-
-    return `${Math.min((Math.abs(row.delta ?? 0) / maxDelta) * 100, 100)}%`
-  }
-
-  function groupExploreImpacts(rows: ExploreMetricImpact[]): ExploreImpactGroup[] {
-    return exploreImpactCategoryOrder
-      .map((category) => {
-        const categoryRows = rows.filter((row) => row.metric.category === category)
-
-        return {
-          category,
-          rows: categoryRows,
-          strongest: strongestExploreImpact(categoryRows)
-        }
-      })
-      .filter((group) => group.rows.length > 0)
-  }
-
-  function strongestExploreImpact(rows: ExploreMetricImpact[]) {
-    return rows.reduce<ExploreMetricImpact | null>((strongest, row) => {
-      if (row.delta === null) {
-        return strongest
-      }
-
-      if (strongest === null) {
-        return row
-      }
-
-      const rowImpact = Math.abs(row.toneDelta ?? row.delta)
-      const strongestImpact = Math.abs(strongest.toneDelta ?? strongest.delta ?? 0)
-
-      return rowImpact > strongestImpact ? row : strongest
-    }, null)
-  }
-
-  function impactGroupTone(group: ExploreImpactGroup) {
-    return impactTone(group.strongest?.toneDelta ?? null)
-  }
-
-  function impactGroupDelta(group: ExploreImpactGroup) {
-    return group.strongest ? formatExploreDelta(group.strongest) : "n/a"
-  }
-
-  function impactGroupDeltaLabel(group: ExploreImpactGroup) {
-    return group.strongest?.metric.label ?? "Strongest"
-  }
-
-  function impactGroupMetricCount(group: ExploreImpactGroup) {
-    return `${group.rows.length} ${group.rows.length === 1 ? "metric" : "metrics"}`
   }
 
   function isExploreImpactGroupOpen(category: ExploreMetricCategory) {
@@ -1368,41 +825,6 @@
       : openExploreImpactCategories.filter((item) => item !== category)
   }
 
-  function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
-    const values = days
-      .map((day) => day.metric[metric])
-      .filter((value): value is number => value !== null)
-
-    if (values.length === 0) {
-      return [0, 1] as const
-    }
-
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-
-    if (min === max) {
-      return [min - 1, max + 1] as const
-    }
-
-    const padding = (max - min) * 0.08
-
-    return [min - padding, max + padding] as const
-  }
-
-  function scaleNumber(
-    value: number,
-    extent: readonly [number, number],
-    outputMin: number,
-    outputMax: number
-  ) {
-    const [inputMin, inputMax] = extent
-
-    return (
-      outputMin +
-      ((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)
-    )
-  }
-
   function selectExploreDay(day: ExploreDay) {
     selectedExploreDate = day.date
   }
@@ -1412,12 +834,6 @@
     selectedExploreTags = selectedExploreTags.includes(tag)
       ? selectedExploreTags.filter((selectedTag) => selectedTag !== tag)
       : [...selectedExploreTags, tag]
-  }
-
-  function timelinePath(points: ChartPoint[]) {
-    return points
-      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-      .join(" ")
   }
 
   function buildTagsByDate(entries: typeof tagEntries) {
@@ -1435,28 +851,10 @@
     return new Set(entries.map((tag) => tag.date))
   }
 
-  function metricLabel(metric: PrimaryInsightMetric) {
-    return metric === "sleepScore" ? "Sleep" : "Readiness"
-  }
-
-  function metricPlainLabel(metric: PrimaryInsightMetric) {
-    return metric === "sleepScore" ? "sleep score" : "readiness"
-  }
-
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
 
-  function daysAgo(days: number) {
-    const date = new Date()
-    date.setDate(date.getDate() - days)
-
-    return date
-  }
-
-  function formatInputDate(date: Date) {
-    return date.toISOString().slice(0, 10)
-  }
 </script>
 
 <svelte:head>
@@ -1506,172 +904,26 @@
   </nav>
 
   {#if isImportModalOpen}
-    <div
-      class="modal-backdrop"
-      role="presentation"
-      on:click={closeImportModal}
-    >
-      <section
-        class="import-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="import-modal-title"
-        on:click|stopPropagation
-      >
-        <div class="modal-header">
-          <div>
-            <p class="section-kicker">{hasLocalData ? "Local data" : "Private import"}</p>
-            <h2 id="import-modal-title">Import Oura data</h2>
-          </div>
-          <button type="button" class="modal-close" on:click={closeImportModal}>
-            Close
-          </button>
-        </div>
-
-        <div class="modal-grid">
-          <section class="modal-instructions">
-            <p>
-              Download your Oura personal data export, then import it here. Files are read locally and never uploaded.
-            </p>
-            <ol class="import-steps">
-              <li>
-                Open
-                <a href="https://membership.ouraring.com" target="_blank" rel="noreferrer">
-                  Oura Membership Hub
-                </a>
-              </li>
-              <li>Choose Export data, request your data, then download the export.</li>
-              <li>Import the ZIP, JSON, or CSV files into Phibo.</li>
-            </ol>
-          </section>
-
-          <div
-            class="import-panel"
-            on:dragover|preventDefault
-            on:drop|preventDefault={handleImportDrop}
-          >
-            <input
-              bind:this={importFileInput}
-              class="file-input"
-              type="file"
-              accept=".zip,.json,.csv"
-              multiple
-              on:change={handleOuraFileInput}
-            />
-            <div>
-              <strong>{isImporting ? "Importing Oura export" : "Drop Oura export here"}</strong>
-              <span>Supports the Oura ZIP or CSVs like dailysleep, dailyreadiness, dailyactivity, and enhancedtag.</span>
-            </div>
-            <button type="button" on:click={() => importFileInput?.click()} disabled={isImporting}>
-              {isImporting ? "Reading files" : "Choose files"}
-            </button>
-            <p>{importMessage}</p>
-          </div>
-        </div>
-
-        <details class="advanced-sync" open={isOuraConnected || isEditingToken}>
-          <summary>Automatic sync with Oura key</summary>
-          <div class="sync-strip compact">
-            <div>
-              <p class="section-kicker">{isOuraConnected ? "Connected locally" : "Optional"}</p>
-              <h2>{isOuraConnected ? "Oura key saved on this device" : "Connect with your Oura key"}</h2>
-              <p class="privacy-note">
-                Automatic sync stores your key locally. Import is the recommended path if you prefer not to grant API access.
-              </p>
-            </div>
-            {#if isOuraConnected && savedOuraToken}
-              <div class="connection-panel">
-                <div class="connection-status">
-                  <div>
-                    <span>Saved key</span>
-                    <strong aria-label="Oura key is hidden">•••• •••• ••••</strong>
-                  </div>
-                  <div>
-                    <span>Validated</span>
-                    <strong>{formatConnectionDate(savedOuraToken.lastValidatedAt)}</strong>
-                  </div>
-                  <div>
-                    <span>Last synced</span>
-                    <strong>{formatConnectionDate(savedOuraToken.lastSyncedAt)}</strong>
-                  </div>
-                </div>
-                <form class="sync-form connected" on:submit|preventDefault={syncData}>
-                  <label>
-                    <span>Start</span>
-                    <input bind:value={startDate} type="date" />
-                  </label>
-                  <label>
-                    <span>End</span>
-                    <input bind:value={endDate} type="date" />
-                  </label>
-                  <div class="connection-actions">
-                    <button type="submit" disabled={isSyncing}>
-                      {isSyncing ? "Syncing" : "Sync data"}
-                    </button>
-                    <button type="button" class="secondary" on:click={changeOuraToken}>
-                      Change key
-                    </button>
-                    <button type="button" class="danger" on:click={disconnectOura}>
-                      Disconnect
-                    </button>
-                  </div>
-                  <p>{syncMessage}</p>
-                </form>
-              </div>
-            {:else}
-              <form class="sync-form" on:submit|preventDefault={connectAndSyncData}>
-                <label>
-                  <span>Oura key</span>
-                  <input
-                    bind:value={accessToken}
-                    type="password"
-                    autocomplete="off"
-                    placeholder="Paste Oura personal access token"
-                  />
-                </label>
-                <label>
-                  <span>Start</span>
-                  <input bind:value={startDate} type="date" />
-                </label>
-                <label>
-                  <span>End</span>
-                  <input bind:value={endDate} type="date" />
-                </label>
-                <div class="connection-actions">
-                  <button type="submit" disabled={isSyncing}>
-                    {isSyncing ? "Connecting" : "Connect & sync"}
-                  </button>
-                  {#if savedOuraToken}
-                    <button type="button" class="secondary" on:click={cancelTokenChange}>
-                      Cancel
-                    </button>
-                  {/if}
-                  <a
-                    href="https://cloud.ouraring.com/personal-access-tokens"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open Oura keys
-                  </a>
-                </div>
-                <p class="key-help">
-                  Find or create your key in
-                  <a
-                    href="https://cloud.ouraring.com/personal-access-tokens"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Oura Cloud Personal Access Tokens
-                  </a>
-                  and enable daily and tag access.
-                </p>
-                <p>{syncMessage}</p>
-              </form>
-            {/if}
-          </div>
-        </details>
-      </section>
-    </div>
+    <ImportModal
+      {hasLocalData}
+      {isImporting}
+      {importMessage}
+      {isOuraConnected}
+      {isEditingToken}
+      {savedOuraToken}
+      {isSyncing}
+      {syncMessage}
+      bind:accessToken
+      bind:startDate
+      bind:endDate
+      on:close={closeImportModal}
+      on:importFiles={(event) => importFiles(event.detail)}
+      on:connect={connectAndSyncData}
+      on:sync={syncData}
+      on:disconnect={disconnectOura}
+      on:changeKey={changeOuraToken}
+      on:cancelKeyChange={cancelTokenChange}
+    />
   {/if}
 
   {#if activeView === "insights"}
@@ -2033,73 +1285,16 @@
         {:else if matchingExploreDays.length === 0}
           <p class="empty-state">No nights match every selected tag yet.</p>
         {:else if exploreChartMode === "scatter"}
-          <div class="svg-chart">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
-              {#each scatterYTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={chartPadding}
-                  x2={chartWidth - chartPadding}
-                  y1={tick.position}
-                  y2={tick.position}
-                />
-                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
-                  {tick.label}
-                </text>
-              {/each}
-              {#each scatterXTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={tick.position}
-                  x2={tick.position}
-                  y1={chartPadding}
-                  y2={chartHeight - chartPadding}
-                />
-                <text
-                  class="axis-tick x"
-                  x={tick.position}
-                  y={chartHeight - chartPadding + 20}
-                >
-                  {tick.label}
-                </text>
-              {/each}
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartPadding}
-                y1={chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartWidth - chartPadding}
-                y1={chartHeight - chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              {#each scatterPoints as point}
-                <circle
-                  class:match={point.day.matches}
-                  class="scatter-point"
-                  cx={point.x}
-                  cy={point.y}
-                  r={point.day.matches ? 8 : 5}
-                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
-                  on:mouseleave={() => (hoveredExploreDate = "")}
-                  on:click={() => selectExploreDay(point.day)}
-                />
-              {/each}
-              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
-                {metricAxisLabel(selectedXDefinition)}
-              </text>
-              <text
-                class="axis-title y"
-                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
-              >
-                {metricAxisLabel(selectedYDefinition)}
-              </text>
-            </svg>
-          </div>
+          <ExploreChart
+            mode="scatter"
+            points={scatterPoints}
+            xTicks={scatterXTicks}
+            yTicks={scatterYTicks}
+            xTitle={metricAxisLabel(selectedXDefinition)}
+            yTitle={metricAxisLabel(selectedYDefinition)}
+            on:selectDay={(event) => selectExploreDay(event.detail)}
+            on:hover={(event) => (hoveredExploreDate = event.detail)}
+          />
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
             {#each groupedExploreImpacts as group}
@@ -2141,7 +1336,7 @@
                       <div class="impact-bar">
                         <span
                           class="impact-fill {impactTone(row.toneDelta)}"
-                          style={`width: ${impactWidth(row)}`}
+                          style={`width: ${impactWidth(row, exploreImpacts)}`}
                         />
                       </div>
                     </article>
@@ -2151,162 +1346,29 @@
             {/each}
           </div>
         {:else}
-          <div class="svg-chart">
-            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img">
-              {#each timelineYTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={chartPadding}
-                  x2={chartWidth - chartPadding}
-                  y1={tick.position}
-                  y2={tick.position}
-                />
-                <text class="axis-tick y" x={chartPadding - 10} y={tick.position}>
-                  {tick.label}
-                </text>
-              {/each}
-              {#each timelineDateTicks as tick}
-                <line
-                  class="tick-line"
-                  x1={tick.position}
-                  x2={tick.position}
-                  y1={chartPadding}
-                  y2={chartHeight - chartPadding}
-                />
-                <text
-                  class="axis-tick x"
-                  x={tick.position}
-                  y={chartHeight - chartPadding + 20}
-                >
-                  {tick.label}
-                </text>
-              {/each}
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartPadding}
-                y1={chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <line
-                class="axis-line"
-                x1={chartPadding}
-                x2={chartWidth - chartPadding}
-                y1={chartHeight - chartPadding}
-                y2={chartHeight - chartPadding}
-              />
-              <path class="timeline-line" d={timelinePath(timelinePoints)} />
-              {#each timelinePoints as point}
-                <circle
-                  class:match={point.day.matches}
-                  class="scatter-point"
-                  cx={point.x}
-                  cy={point.y}
-                  r={point.day.matches ? 7 : 4}
-                  on:mouseenter={() => (hoveredExploreDate = point.day.date)}
-                  on:mouseleave={() => (hoveredExploreDate = "")}
-                  on:click={() => selectExploreDay(point.day)}
-                />
-              {/each}
-              <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
-                Date
-              </text>
-              <text
-                class="axis-title y"
-                transform={`translate(14 ${chartHeight / 2}) rotate(-90)`}
-              >
-                {metricAxisLabel(selectedYDefinition)}
-              </text>
-            </svg>
-          </div>
+          <ExploreChart
+            mode="timeline"
+            points={timelinePoints}
+            xTicks={timelineDateTicks}
+            yTicks={timelineYTicks}
+            xTitle="Date"
+            yTitle={metricAxisLabel(selectedYDefinition)}
+            on:selectDay={(event) => selectExploreDay(event.detail)}
+            on:hover={(event) => (hoveredExploreDate = event.detail)}
+          />
         {/if}
 
-        <div class="tag-calendar-section">
-          <div class="tag-calendar-heading">
-            <div>
-              <p class="section-kicker">Tag activity</p>
-              <h3>
-                {selectedExploreTags.length > 0
-                  ? formatTagList(selectedExploreTags, " + ")
-                  : "Choose tags"}
-              </h3>
-            </div>
-            <div class="tag-calendar-range">
-              <div class="tag-calendar-range-meta">
-                <strong>{exploreTagCalendar.rangeLabel}</strong>
-                <span>{exploreTagCalendar.taggedDayCount} tagged nights</span>
-              </div>
-            </div>
-          </div>
-
-          {#if selectedExploreTags.length === 0}
-            <p class="empty-state">Select tags to see their daily activity.</p>
-          {:else}
-            <div class="tag-calendar-layout">
-              <div
-                class="tag-calendar"
-                aria-label="Selected tag activity by day"
-              >
-                <span aria-hidden="true" />
-                <div
-                  class="tag-calendar-months"
-                  style={`grid-template-columns: repeat(${exploreTagCalendar.monthLabels.length}, ${tagCalendarSquareSize});`}
-                >
-                  {#each exploreTagCalendar.monthLabels as month}
-                    <span>{month}</span>
-                  {/each}
-                </div>
-                {#each exploreTagCalendar.rows as row}
-                  <span class="tag-calendar-weekday">{row.label}</span>
-                  <div
-                    class="tag-calendar-days"
-                    style={`grid-template-columns: repeat(${row.cells.length}, ${tagCalendarSquareSize});`}
-                  >
-                    {#each row.cells as cell}
-                      {#if cell.day}
-                        <button
-                          type="button"
-                          class:tagged={cell.taggedTags.length > 0}
-                          class:selected={activeExploreDay?.date === cell.day.date}
-                          class="tag-calendar-day"
-                          aria-label={tagCalendarCellLabel(cell)}
-                          title={tagCalendarCellLabel(cell)}
-                          on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
-                          on:mouseleave={() => (hoveredExploreDate = "")}
-                          on:click={() => selectExploreDay(cell.day)}
-                        />
-                      {:else if cell.date}
-                        <span
-                          class="tag-calendar-day no-data"
-                          aria-label={tagCalendarCellLabel(cell)}
-                          title={tagCalendarCellLabel(cell)}
-                        />
-                      {:else}
-                        <span class="tag-calendar-day empty" aria-hidden="true" />
-                      {/if}
-                    {/each}
-                  </div>
-                {/each}
-              </div>
-              <div
-                class="tag-calendar-range-actions"
-                aria-label="Tag activity date range"
-              >
-                {#each exploreTagCalendarOptions as option}
-                  <button
-                    type="button"
-                    class:active={selectedExploreTagCalendarRange === option.id}
-                    aria-pressed={selectedExploreTagCalendarRange === option.id}
-                    on:click={() =>
-                      (selectedExploreTagCalendarRange = option.id)}
-                  >
-                    {option.label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          {/if}
-        </div>
+        <TagCalendar
+          selectedTags={selectedExploreTags}
+          calendar={exploreTagCalendar}
+          options={exploreTagCalendarOptions}
+          selectedRange={selectedExploreTagCalendarRange}
+          activeDate={activeExploreDay?.date ?? ""}
+          on:selectDay={(event) => selectExploreDay(event.detail)}
+          on:hover={(event) => (hoveredExploreDate = event.detail)}
+          on:selectRange={(event) =>
+            (selectedExploreTagCalendarRange = event.detail)}
+        />
 
         <div class="explore-log">
           <section class="matching-log" aria-label="Matching explore nights">
@@ -2446,7 +1508,6 @@
 
   .header,
   .view-tabs,
-  .sync-strip,
   .explore-workspace,
   .workspace,
   .metric-grid {
@@ -2480,28 +1541,6 @@
   }
 
   .eyebrow,
-  .section-kicker {
-    margin: 0;
-    color: #6f786f;
-    font-size: 0.75rem;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
-  h1,
-  h2,
-  h3,
-  h4,
-  p {
-    margin: 0;
-  }
-
-  h1 {
-    font-size: clamp(2rem, 4vw, 3.4rem);
-    line-height: 0.98;
-  }
-
   .oura-o {
     display: inline-block;
     position: relative;
@@ -2515,21 +1554,6 @@
     width: 0.58em;
     border-top: 0.11em solid currentColor;
     border-radius: 999px;
-  }
-
-  h2 {
-    font-size: 1.1rem;
-    line-height: 1.2;
-  }
-
-  h3 {
-    font-size: 1rem;
-    line-height: 1.25;
-  }
-
-  h4 {
-    font-size: 0.95rem;
-    line-height: 1.25;
   }
 
   .sync-button {
@@ -2590,312 +1614,6 @@
     border-bottom-color: rgba(251, 247, 239, 0.78);
     color: #17201b;
     transform: translateY(1px);
-  }
-
-  .sync-strip {
-    display: grid;
-    grid-template-columns: minmax(220px, 0.85fr) minmax(260px, 1.15fr);
-    gap: 1rem;
-  }
-
-  .modal-backdrop {
-    align-items: center;
-    background: rgba(23, 32, 27, 0.42);
-    display: grid;
-    inset: 0;
-    justify-items: center;
-    padding: 1.2rem;
-    position: fixed;
-    z-index: 20;
-  }
-
-  .import-modal {
-    background: #fbf7ef;
-    border: 1px solid #d3d5c8;
-    border-radius: 8px;
-    box-shadow: 0 24px 80px rgba(23, 32, 27, 0.22);
-    box-sizing: border-box;
-    display: grid;
-    gap: 1rem;
-    max-height: calc(100vh - 2.4rem);
-    max-width: 920px;
-    overflow: auto;
-    padding: 1rem;
-    width: min(920px, 100%);
-  }
-
-  .modal-header {
-    align-items: flex-start;
-    border-bottom: 1px solid #d8d8cc;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    padding-bottom: 0.85rem;
-  }
-
-  .modal-close {
-    appearance: none;
-    background: #f7f1e8;
-    border: 1px solid #c5cbbd;
-    border-radius: 8px;
-    color: #17201b;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    min-height: 38px;
-    padding: 0.5rem 0.72rem;
-  }
-
-  .modal-grid {
-    align-items: stretch;
-    display: grid;
-    grid-template-columns: minmax(230px, 0.78fr) minmax(320px, 1.22fr);
-    gap: 0.85rem;
-  }
-
-  .modal-instructions {
-    display: grid;
-    align-content: start;
-    gap: 0.55rem;
-  }
-
-  .modal-instructions > p {
-    color: #566157;
-    font-size: 0.9rem;
-    line-height: 1.45;
-  }
-
-  .sync-strip.compact {
-    border-top: 1px solid #d8d8cc;
-    padding-top: 1rem;
-  }
-
-  .privacy-note {
-    color: #566157;
-    font-size: 0.9rem;
-    line-height: 1.45;
-    margin-top: 0.45rem;
-    max-width: 34rem;
-  }
-
-  .import-steps {
-    color: #566157;
-    display: grid;
-    gap: 0.32rem;
-    font-size: 0.9rem;
-    line-height: 1.45;
-    margin: 0.7rem 0 0;
-    padding-left: 1.25rem;
-  }
-
-  .import-steps a,
-  .key-help a {
-    color: #263f6f;
-    font-weight: 800;
-  }
-
-  .import-panel {
-    align-items: center;
-    border: 1px dashed #b8c1af;
-    border-radius: 8px;
-    background: rgba(255, 252, 246, 0.52);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.75rem;
-    min-height: 174px;
-    padding: 1rem;
-  }
-
-  .import-panel div {
-    display: grid;
-    gap: 0.22rem;
-    min-width: 0;
-  }
-
-  .import-panel strong {
-    font-size: 1.05rem;
-  }
-
-  .import-panel span,
-  .import-panel p {
-    color: #566157;
-    font-size: 0.9rem;
-    line-height: 1.45;
-  }
-
-  .import-panel p {
-    grid-column: 1 / -1;
-  }
-
-  .import-panel button {
-    appearance: none;
-    border: 1px solid #1d2a22;
-    border-radius: 8px;
-    background: #1d2a22;
-    color: #f8f3ea;
-    cursor: pointer;
-    font: inherit;
-    font-weight: 800;
-    min-height: 42px;
-    padding: 0.58rem 0.8rem;
-    white-space: nowrap;
-  }
-
-  .import-panel button:disabled {
-    cursor: wait;
-    opacity: 0.72;
-  }
-
-  .file-input {
-    display: none;
-  }
-
-  .advanced-sync {
-    display: grid;
-    gap: 0.8rem;
-  }
-
-  .advanced-sync summary {
-    color: #4f5f53;
-    cursor: pointer;
-    font-size: 0.82rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .connection-panel {
-    display: grid;
-    gap: 0.7rem;
-    min-width: 0;
-  }
-
-  .connection-status {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.55rem;
-  }
-
-  .connection-status div {
-    border: 1px solid #d8d8cc;
-    border-radius: 8px;
-    background: rgba(255, 252, 246, 0.52);
-    min-width: 0;
-    padding: 0.65rem 0.7rem;
-  }
-
-  .connection-status span,
-  .connection-actions a {
-    color: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .connection-status strong {
-    display: block;
-    font-size: 0.92rem;
-    line-height: 1.25;
-    margin-top: 0.2rem;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .sync-form {
-    display: grid;
-    grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 0.55fr) minmax(
-        130px,
-        0.55fr
-      );
-    gap: 0.65rem;
-  }
-
-  .sync-form.connected {
-    grid-template-columns: minmax(130px, 0.55fr) minmax(130px, 0.55fr) minmax(
-        260px,
-        1fr
-      );
-  }
-
-  .sync-form label {
-    display: grid;
-    gap: 0.3rem;
-  }
-
-  .sync-form span {
-    color: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 750;
-    text-transform: uppercase;
-  }
-
-  .sync-form input {
-    width: 100%;
-    min-width: 0;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    background: #fbf7ef;
-    box-sizing: border-box;
-    color: #17201b;
-    font: inherit;
-    padding: 0.68rem 0.75rem;
-  }
-
-  .connection-actions {
-    align-items: end;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    min-width: 0;
-  }
-
-  .connection-actions button,
-  .connection-actions a {
-    align-items: center;
-    appearance: none;
-    border: 1px solid #c5cbbd;
-    border-radius: 8px;
-    background: #fbf7ef;
-    color: #17201b;
-    cursor: pointer;
-    display: inline-flex;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    justify-content: center;
-    min-height: 42px;
-    padding: 0.58rem 0.72rem;
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .connection-actions button[type="submit"] {
-    background: #1d2a22;
-    border-color: #1d2a22;
-    color: #f8f3ea;
-  }
-
-  .connection-actions button:disabled {
-    cursor: wait;
-    opacity: 0.72;
-  }
-
-  .connection-actions .secondary {
-    background: #f7f1e8;
-  }
-
-  .connection-actions .danger {
-    border-color: #d2b5a5;
-    color: #8a3f2f;
-  }
-
-  .sync-form p {
-    grid-column: 1 / -1;
-    color: #566157;
-    font-size: 0.9rem;
-    line-height: 1.45;
   }
 
   .metric-grid {
@@ -3184,69 +1902,6 @@
     white-space: nowrap;
   }
 
-  .svg-chart {
-    border-top: 1px solid #d8d8cc;
-    padding-block: 0.65rem;
-  }
-
-  .svg-chart svg {
-    display: block;
-    height: auto;
-    width: 100%;
-  }
-
-  .axis-line {
-    stroke: #cfd2c4;
-    stroke-width: 2;
-  }
-
-  .tick-line {
-    stroke: rgba(207, 210, 196, 0.56);
-    stroke-width: 1;
-  }
-
-  .axis-tick,
-  .axis-title {
-    fill: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-  }
-
-  .axis-tick.x,
-  .axis-title.x {
-    text-anchor: middle;
-  }
-
-  .axis-tick.y {
-    dominant-baseline: middle;
-    text-anchor: end;
-  }
-
-  .axis-title.y {
-    text-anchor: middle;
-  }
-
-  .scatter-point {
-    cursor: pointer;
-    fill: #9ca69a;
-    opacity: 0.82;
-    stroke: #fbf7ef;
-    stroke-width: 2;
-  }
-
-  .scatter-point.match {
-    fill: #4f8a63;
-    opacity: 1;
-  }
-
-  .timeline-line {
-    fill: none;
-    stroke: #6f786f;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 3;
-  }
-
   .impact-list {
     display: grid;
     gap: 0.85rem;
@@ -3411,162 +2066,6 @@
     background: #a8423e;
   }
 
-  .tag-calendar-section {
-    border-top: 10px solid rgba(231, 233, 223, 0.9);
-    display: grid;
-    gap: 0.95rem;
-    margin-inline: -1rem;
-    padding: 1.15rem 1rem 0.15rem;
-  }
-
-  .tag-calendar-heading {
-    align-items: flex-start;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-  }
-
-  .tag-calendar-heading h3 {
-    font-size: 1rem;
-    margin-top: 0.1rem;
-  }
-
-  .tag-calendar-range {
-    color: #6f786f;
-    display: grid;
-    font-size: 0.72rem;
-    font-weight: 800;
-    justify-items: end;
-    min-width: 10rem;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .tag-calendar-range-meta {
-    display: grid;
-    gap: 0.18rem;
-    justify-items: end;
-  }
-
-  .tag-calendar-range-meta strong {
-    color: #1f2520;
-    font-size: 0.78rem;
-  }
-
-  .tag-calendar-range-actions {
-    display: flex;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 0.35rem;
-    justify-content: flex-end;
-    min-width: 5.8rem;
-  }
-
-  .tag-calendar-range-actions button {
-    appearance: none;
-    background: #f7f1e8;
-    border: 1px solid #d8d8cc;
-    border-radius: 999px;
-    color: #6f786f;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.68rem;
-    font-weight: 800;
-    min-height: 1.65rem;
-    padding: 0.32rem 0.56rem;
-    text-transform: uppercase;
-  }
-
-  .tag-calendar-range-actions button.active {
-    background: #1e2c64;
-    border-color: #1e2c64;
-    color: #fbf7ef;
-  }
-
-  .tag-calendar {
-    --tag-calendar-day-size: 0.78rem;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    align-items: center;
-    gap: 0.3rem 0.78rem;
-    padding-top: 0.1rem;
-  }
-
-  .tag-calendar-layout {
-    align-items: flex-end;
-    display: flex;
-    gap: 1.15rem;
-    justify-content: center;
-    overflow-x: auto;
-    padding-right: 0.35rem;
-    width: 100%;
-  }
-
-  .tag-calendar-weekday {
-    color: #6f786f;
-    font-size: 0.68rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .tag-calendar-months {
-    color: #6f786f;
-    display: grid;
-    font-size: 0.68rem;
-    font-weight: 800;
-    gap: 0.26rem;
-    line-height: 1;
-    min-height: 1rem;
-    overflow-x: auto;
-    padding-bottom: 0.18rem;
-    text-transform: uppercase;
-  }
-
-  .tag-calendar-months span {
-    min-width: 0;
-    overflow: visible;
-    white-space: nowrap;
-  }
-
-  .tag-calendar-days {
-    display: grid;
-    gap: 0.26rem;
-    overflow-x: auto;
-    padding-block: 0.09rem;
-  }
-
-  .tag-calendar-day {
-    appearance: none;
-    background: #ebe7dd;
-    border: 1px solid transparent;
-    border-radius: 2px;
-    box-sizing: border-box;
-    cursor: pointer;
-    display: block;
-    height: var(--tag-calendar-day-size);
-    line-height: 0;
-    padding: 0;
-    width: var(--tag-calendar-day-size);
-  }
-
-  .tag-calendar-day.no-data {
-    cursor: default;
-  }
-
-  .tag-calendar-day.empty {
-    background: transparent;
-    cursor: default;
-  }
-
-  .tag-calendar-day.tagged {
-    background: #1e2c64;
-    border-color: #1e2c64;
-  }
-
-  .tag-calendar-day.selected {
-    box-shadow: inset 0 0 0 2px #fbf7ef, inset 0 0 0 3px #6f786f;
-  }
-
   .explore-log {
     border-top: 10px solid rgba(231, 233, 223, 0.9);
     display: grid;
@@ -3698,19 +2197,6 @@
   .insight-stack {
     display: grid;
     gap: 0.5rem;
-  }
-
-  .empty-state {
-    border: 1px dashed #c5cbbd;
-    border-radius: 8px;
-    color: #6f786f;
-    font-size: 0.9rem;
-    line-height: 1.4;
-    min-height: 74px;
-    padding: 0.75rem 0.9rem;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
   }
 
   .discoveries {
@@ -4036,14 +2522,8 @@
     }
 
     .header,
-    .modal-grid,
-    .import-panel,
-    .sync-strip,
     .workspace,
-    .explore-builder,
-    .sync-form,
-    .sync-form.connected,
-    .connection-status {
+    .explore-builder {
       grid-template-columns: 1fr;
     }
 
@@ -4109,36 +2589,6 @@
     .setting-row,
     .setting-row.tag-timing-setting {
       grid-template-columns: 1fr;
-    }
-
-    .tag-calendar-heading {
-      display: grid;
-    }
-
-    .tag-calendar-range {
-      justify-items: start;
-      min-width: 0;
-      padding-right: 0;
-      white-space: normal;
-    }
-
-    .tag-calendar-range-meta {
-      justify-items: start;
-    }
-
-    .tag-calendar-range-actions {
-      align-items: flex-start;
-      justify-content: flex-start;
-    }
-
-    .tag-calendar {
-      margin-left: 0;
-    }
-
-    .tag-calendar-layout {
-      align-items: flex-start;
-      flex-direction: column;
-      justify-content: flex-start;
     }
 
     .log-row.header {
