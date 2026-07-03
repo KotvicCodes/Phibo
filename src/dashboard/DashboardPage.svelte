@@ -1711,19 +1711,6 @@
   }
 
   .eyebrow,
-  h1,
-  h2,
-  h3,
-  h4,
-  p {
-    margin: 0;
-  }
-
-  h1 {
-    font-size: clamp(2rem, 4vw, 3.4rem);
-    line-height: 0.98;
-  }
-
   .oura-o {
     display: inline-block;
     position: relative;
@@ -1737,21 +1724,6 @@
     width: 0.58em;
     border-top: 0.11em solid currentColor;
     border-radius: 999px;
-  }
-
-  h2 {
-    font-size: 1.1rem;
-    line-height: 1.2;
-  }
-
-  h3 {
-    font-size: 1rem;
-    line-height: 1.25;
-  }
-
-  h4 {
-    font-size: 0.95rem;
-    line-height: 1.25;
   }
 
   .sync-button {

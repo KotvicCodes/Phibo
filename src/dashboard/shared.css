@@ -2,6 +2,34 @@
    child components. Loaded once (globally) from DashboardPage so the classes
    apply regardless of which component's markup renders them. */
 
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 0.98;
+}
+
+h2 {
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+h3 {
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+h4 {
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
 .section-kicker {
   margin: 0;
   color: #6f786f;
