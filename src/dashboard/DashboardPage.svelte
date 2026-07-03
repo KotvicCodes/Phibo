@@ -79,6 +79,7 @@
   } from "./exploreImpacts"
   import ExploreChart from "./ExploreChart.svelte"
   import logoUrl from "../../assets/phibo-mark.svg"
+  import "./shared.css"
 
   interface MetricSummary {
     detail: string
@@ -1787,15 +1788,6 @@
   }
 
   .eyebrow,
-  .section-kicker {
-    margin: 0;
-    color: #6f786f;
-    font-size: 0.75rem;
-    font-weight: 750;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-
   h1,
   h2,
   h3,
@@ -2942,19 +2934,6 @@
   .insight-stack {
     display: grid;
     gap: 0.5rem;
-  }
-
-  .empty-state {
-    border: 1px dashed #c5cbbd;
-    border-radius: 8px;
-    color: #6f786f;
-    font-size: 0.9rem;
-    line-height: 1.4;
-    min-height: 74px;
-    padding: 0.75rem 0.9rem;
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
   }
 
   .discoveries {
