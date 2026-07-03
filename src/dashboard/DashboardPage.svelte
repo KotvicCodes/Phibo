@@ -1509,6 +1509,7 @@
   .header,
   .view-tabs,
   .explore-workspace,
+  .settings-workspace,
   .workspace,
   .metric-grid {
     width: min(1180px, 100%);
