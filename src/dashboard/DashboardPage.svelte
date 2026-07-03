@@ -338,6 +338,12 @@
     isImportModalOpen = false
   }
 
+  function handleModalBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeImportModal()
+    }
+  }
+
   async function handleImportDrop(event: DragEvent) {
     await importFiles(Array.from(event.dataTransfer?.files ?? []))
   }
@@ -847,6 +853,13 @@
     selectedExploreDate = day.date
   }
 
+  function handleExploreDayKeydown(event: KeyboardEvent, day: ExploreDay) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      selectExploreDay(day)
+    }
+  }
+
   function toggleExploreTag(tag: string) {
     selectedExploreDate = ""
     selectedExploreTags = selectedExploreTags.includes(tag)
@@ -925,14 +938,13 @@
     <div
       class="modal-backdrop"
       role="presentation"
-      on:click={closeImportModal}
+      on:click={handleModalBackdropClick}
     >
       <section
         class="import-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="import-modal-title"
-        on:click|stopPropagation
       >
         <div class="modal-header">
           <div>
@@ -963,6 +975,8 @@
 
           <div
             class="import-panel"
+            role="group"
+            aria-label="Import Oura export files"
             on:dragover|preventDefault
             on:drop|preventDefault={handleImportDrop}
           >
@@ -1497,12 +1511,18 @@
                 <circle
                   class:match={point.day.matches}
                   class="scatter-point"
+                  role="button"
+                  tabindex="0"
+                  aria-label={`Select ${formatDate(point.day.date)}`}
                   cx={point.x}
                   cy={point.y}
                   r={point.day.matches ? 8 : 5}
                   on:mouseenter={() => (hoveredExploreDate = point.day.date)}
                   on:mouseleave={() => (hoveredExploreDate = "")}
+                  on:focus={() => (hoveredExploreDate = point.day.date)}
+                  on:blur={() => (hoveredExploreDate = "")}
                   on:click={() => selectExploreDay(point.day)}
+                  on:keydown={(event) => handleExploreDayKeydown(event, point.day)}
                 />
               {/each}
               <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
@@ -1616,12 +1636,18 @@
                 <circle
                   class:match={point.day.matches}
                   class="scatter-point"
+                  role="button"
+                  tabindex="0"
+                  aria-label={`Select ${formatDate(point.day.date)}`}
                   cx={point.x}
                   cy={point.y}
                   r={point.day.matches ? 7 : 4}
                   on:mouseenter={() => (hoveredExploreDate = point.day.date)}
                   on:mouseleave={() => (hoveredExploreDate = "")}
+                  on:focus={() => (hoveredExploreDate = point.day.date)}
+                  on:blur={() => (hoveredExploreDate = "")}
                   on:click={() => selectExploreDay(point.day)}
+                  on:keydown={(event) => handleExploreDayKeydown(event, point.day)}
                 />
               {/each}
               <text class="axis-title x" x={chartWidth / 2} y={chartHeight - 8}>
@@ -1680,16 +1706,17 @@
                   >
                     {#each row.cells as cell}
                       {#if cell.day}
+                        {@const day = cell.day}
                         <button
                           type="button"
                           class:tagged={cell.taggedTags.length > 0}
-                          class:selected={activeExploreDay?.date === cell.day.date}
+                          class:selected={activeExploreDay?.date === day.date}
                           class="tag-calendar-day"
                           aria-label={tagCalendarCellLabel(cell)}
                           title={tagCalendarCellLabel(cell)}
-                          on:mouseenter={() => (hoveredExploreDate = cell.day.date)}
+                          on:mouseenter={() => (hoveredExploreDate = day.date)}
                           on:mouseleave={() => (hoveredExploreDate = "")}
-                          on:click={() => selectExploreDay(cell.day)}
+                          on:click={() => selectExploreDay(day)}
                         />
                       {:else if cell.date}
                         <span
