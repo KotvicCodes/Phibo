@@ -11,8 +11,6 @@
     getTagDiscoveries,
     type ExploreDay,
     type ExploreMetricCategory,
-    type ExploreMetricDefinition,
-    type ExploreMetricImpact,
     type ExploreMetricKey,
     type PrimaryInsightMetric,
     type TagInsight
@@ -71,6 +69,17 @@
     buildExploreTagCalendarOptions,
     tagCalendarCellLabel
   } from "./tagCalendar"
+  import {
+    groupExploreImpacts,
+    impactGroupDelta,
+    impactGroupDeltaLabel,
+    impactGroupMetricCount,
+    impactGroupTone,
+    impactTone,
+    impactWidth,
+    isPrimaryScoreMetric,
+    type ExploreImpactGroup
+  } from "./exploreImpacts"
   import logoUrl from "../../assets/phibo-mark.svg"
 
   interface MetricSummary {
@@ -108,20 +117,9 @@
   >
   type TagTimingMode = "morning" | "sameDay"
 
-  interface ExploreImpactGroup {
-    category: ExploreMetricCategory
-    rows: ExploreMetricImpact[]
-    strongest: ExploreMetricImpact | null
-  }
-
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
-  const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
-    "Sleep",
-    "Readiness",
-    "Activity"
-  ]
   const tagCalendarSquareSize = "0.78rem"
   const scoreWeekDays = 7
   const insightComparisonMetrics: Array<
@@ -822,92 +820,8 @@
     }
   }
 
-  function isPrimaryScoreMetric(metric: ExploreMetricKey) {
-    return (
-      metric === "activityScore" ||
-      metric === "readinessScore" ||
-      metric === "sleepScore"
-    )
-  }
-
   function insightKey(item: TagInsight) {
     return `${item.tag}-${item.metric}`
-  }
-
-  function impactTone(value: number | null) {
-    if (value === null || Math.abs(value) <= 0.5) {
-      return "neutral"
-    }
-
-    if (value >= 2) {
-      return "excellent"
-    }
-
-    if (value > 0.5) {
-      return "positive"
-    }
-
-    if (value <= -2) {
-      return "negative"
-    }
-
-    return "warning"
-  }
-
-  function impactWidth(row: ExploreMetricImpact) {
-    const maxDelta = Math.max(
-      ...exploreImpacts.map((impact) => Math.abs(impact.delta ?? 0)),
-      1
-    )
-
-    return `${Math.min((Math.abs(row.delta ?? 0) / maxDelta) * 100, 100)}%`
-  }
-
-  function groupExploreImpacts(rows: ExploreMetricImpact[]): ExploreImpactGroup[] {
-    return exploreImpactCategoryOrder
-      .map((category) => {
-        const categoryRows = rows.filter((row) => row.metric.category === category)
-
-        return {
-          category,
-          rows: categoryRows,
-          strongest: strongestExploreImpact(categoryRows)
-        }
-      })
-      .filter((group) => group.rows.length > 0)
-  }
-
-  function strongestExploreImpact(rows: ExploreMetricImpact[]) {
-    return rows.reduce<ExploreMetricImpact | null>((strongest, row) => {
-      if (row.delta === null) {
-        return strongest
-      }
-
-      if (strongest === null) {
-        return row
-      }
-
-      const rowImpact = Math.abs(row.toneDelta ?? row.delta)
-      const strongestImpact = Math.abs(strongest.toneDelta ?? strongest.delta ?? 0)
-
-      return rowImpact > strongestImpact ? row : strongest
-    }, null)
-  }
-
-  function impactGroupTone(group: ExploreImpactGroup) {
-    return impactTone(group.strongest?.toneDelta ?? null)
-  }
-
-  function impactGroupDelta(group: ExploreImpactGroup) {
-    return group.strongest ? formatExploreDelta(group.strongest) : "n/a"
-  }
-
-  function impactGroupDeltaLabel(group: ExploreImpactGroup) {
-    return group.strongest?.metric.label ?? "Strongest"
-  }
-
-  function impactGroupMetricCount(group: ExploreImpactGroup) {
-    return `${group.rows.length} ${group.rows.length === 1 ? "metric" : "metrics"}`
   }
 
   function isExploreImpactGroupOpen(category: ExploreMetricCategory) {
@@ -1643,7 +1557,7 @@
                       <div class="impact-bar">
                         <span
                           class="impact-fill {impactTone(row.toneDelta)}"
-                          style={`width: ${impactWidth(row)}`}
+                          style={`width: ${impactWidth(row, exploreImpacts)}`}
                         />
                       </div>
                     </article>
