@@ -135,6 +135,16 @@
     { label: "Readiness", metric: "readinessScore" },
     { label: "Activity", metric: "activityScore" }
   ]
+  const exploreMetricGroups = (
+    ["Sleep", "Readiness", "Activity", "Health"] as ExploreMetricCategory[]
+  )
+    .map((category) => ({
+      category,
+      metrics: exploreMetricDefinitions.filter(
+        (metric) => metric.category === category
+      )
+    }))
+    .filter((group) => group.metrics.length > 0)
 
   let accessToken = ""
   let activeView: DashboardView = "insights"
@@ -1310,8 +1320,12 @@
                 <label>
                   <span>X axis</span>
                   <select bind:value={selectedXMetric}>
-                    {#each exploreMetricDefinitions as metric}
-                      <option value={metric.key}>{metric.label}</option>
+                    {#each exploreMetricGroups as group}
+                      <optgroup label={group.category}>
+                        {#each group.metrics as metric}
+                          <option value={metric.key}>{metric.label}</option>
+                        {/each}
+                      </optgroup>
                     {/each}
                   </select>
                 </label>
@@ -1323,8 +1337,12 @@
                   disabled={exploreChartMode === "impact"}
                   tabindex={exploreChartMode === "impact" ? -1 : 0}
                 >
-                  {#each exploreMetricDefinitions as metric}
-                    <option value={metric.key}>{metric.label}</option>
+                  {#each exploreMetricGroups as group}
+                    <optgroup label={group.category}>
+                      {#each group.metrics as metric}
+                        <option value={metric.key}>{metric.label}</option>
+                      {/each}
+                    </optgroup>
                   {/each}
                 </select>
               </label>
