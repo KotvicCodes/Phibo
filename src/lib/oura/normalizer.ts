@@ -60,6 +60,8 @@ export interface OuraMetricInput {
   dailyStress: OuraDailySummary[]
   sleepSessions: OuraSleepSession[]
   smoothedCardiovascularAge: OuraDailySummary[]
+  vo2Max: OuraDailySummary[]
+  workouts: OuraRecord[]
 }
 
 const resilienceLevelScores = new Map([
@@ -291,10 +293,46 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
       row.pulseWaveVelocity
   })
 
-  input.sleepSessions.forEach((record) => {
+  input.vo2Max.forEach((record) => {
     const day = getRecordDay(record)
 
     if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.vo2Max = getNumber(record, "vo2_max", "Vo2Max") ?? null
+  })
+
+  input.workouts.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.workoutCount = (row.workoutCount ?? 0) + 1
+
+    const calories = getNumber(record, "calories", "Calories")
+
+    if (calories !== null) {
+      row.workoutCalories = (row.workoutCalories ?? 0) + calories
+    }
+
+    const minutes = getWorkoutMinutes(record)
+
+    if (minutes !== null) {
+      row.workoutMinutes = (row.workoutMinutes ?? 0) + minutes
+    }
+  })
+
+  input.sleepSessions.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day || !isMainSleepSession(record)) {
       return
     }
 
@@ -426,6 +464,10 @@ function getDailyRow(
     resilienceLevelScore: null,
     spo2AveragePercentage: null,
     stressHighMinutes: null,
+    vo2Max: null,
+    workoutCalories: null,
+    workoutCount: null,
+    workoutMinutes: null,
     equivalentWalkingDistance: null,
     highActivityMetMinutes: null,
     highActivityMinutes: null,
@@ -489,6 +531,30 @@ function getContributor(
   }
 
   return getNumber(record, `Contributors${pascalCaseName}`)
+}
+
+// Naps and rest periods would otherwise overwrite the main night for that day.
+function isMainSleepSession(record: OuraRecord) {
+  const sessionType = getString(record, "type", "Type")
+
+  return (
+    !sessionType || sessionType === "long_sleep" || sessionType === "sleep"
+  )
+}
+
+function getWorkoutMinutes(record: OuraRecord) {
+  const start = getString(record, "start_datetime", "StartDatetime")
+  const end = getString(record, "end_datetime", "EndDatetime")
+
+  if (!start || !end) {
+    return null
+  }
+
+  const elapsedMs = new Date(end).getTime() - new Date(start).getTime()
+
+  return Number.isFinite(elapsedMs) && elapsedMs > 0
+    ? Math.round(elapsedMs / 60_000)
+    : null
 }
 
 function getNestedNumber(

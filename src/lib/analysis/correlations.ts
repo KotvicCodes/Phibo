@@ -73,6 +73,10 @@ export type ExploreMetricKey =
   | "timeInBedMinutes"
   | "totalCalories"
   | "totalSleepMinutes"
+  | "vo2Max"
+  | "workoutCalories"
+  | "workoutCount"
+  | "workoutMinutes"
 
 export type ExploreMetricCategory = "Activity" | "Health" | "Readiness" | "Sleep"
 
@@ -466,6 +470,34 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     key: "readinessContributorSleepBalance",
     label: "Sleep balance",
     unit: "pts"
+  },
+  {
+    category: "Activity",
+    higherIsBetter: true,
+    key: "workoutCount",
+    label: "Workouts",
+    unit: "count"
+  },
+  {
+    category: "Activity",
+    higherIsBetter: true,
+    key: "workoutMinutes",
+    label: "Workout time",
+    unit: "min"
+  },
+  {
+    category: "Activity",
+    higherIsBetter: true,
+    key: "workoutCalories",
+    label: "Workout calories",
+    unit: "cal"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "vo2Max",
+    label: "VO2 max",
+    unit: "ml/kg/min"
   },
   {
     category: "Health",

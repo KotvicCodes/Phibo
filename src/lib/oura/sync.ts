@@ -63,7 +63,9 @@ export async function syncOuraRange(
       dailySpo2: [],
       dailyStress: [],
       sleepSessions,
-      smoothedCardiovascularAge: []
+      smoothedCardiovascularAge: [],
+      vo2Max: [],
+      workouts: []
     })
     const tagEntries = mapTagEntries(tags)
 
