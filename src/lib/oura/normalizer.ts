@@ -51,11 +51,24 @@ export type OuraSleepSession = OuraRecord
 export type OuraTag = OuraRecord
 
 export interface OuraMetricInput {
+  cardiovascularAge: OuraDailySummary[]
   dailyActivity: OuraDailyActivity[]
   dailyReadiness: OuraDailySummary[]
+  dailyResilience: OuraDailySummary[]
   dailySleep: OuraDailySummary[]
+  dailySpo2: OuraDailySummary[]
+  dailyStress: OuraDailySummary[]
   sleepSessions: OuraSleepSession[]
+  smoothedCardiovascularAge: OuraDailySummary[]
 }
+
+const resilienceLevelScores = new Map([
+  ["limited", 1],
+  ["adequate", 2],
+  ["solid", 3],
+  ["strong", 4],
+  ["exceptional", 5]
+])
 
 export function mergeDailyMetrics(input: OuraMetricInput) {
   const syncedAt = new Date().toISOString()
@@ -180,6 +193,102 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
     row.steps = getNumber(record, "steps", "Steps")
     row.targetCalories = getNumber(record, "target_calories", "TargetCalories")
     row.totalCalories = getNumber(record, "total_calories", "TotalCalories")
+  })
+
+  input.dailySpo2.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.spo2AveragePercentage =
+      getNestedNumber(
+        record,
+        ["spo2_percentage", "Spo2Percentage"],
+        "average",
+        "Average"
+      ) ?? null
+    row.breathingDisturbanceIndex =
+      getNumber(
+        record,
+        "breathing_disturbance_index",
+        "BreathingDisturbanceIndex"
+      ) ?? null
+  })
+
+  input.dailyStress.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.stressHighMinutes = secondsToMinutes(
+      getNumber(record, "stress_high", "StressHigh")
+    )
+    row.recoveryHighMinutes = secondsToMinutes(
+      getNumber(record, "recovery_high", "RecoveryHigh")
+    )
+  })
+
+  input.dailyResilience.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+    const level = getString(record, "level", "Level")
+
+    row.resilienceLevelScore = level
+      ? (resilienceLevelScores.get(level.toLowerCase()) ?? null)
+      : null
+    row.resilienceContributorSleepRecovery =
+      getContributor(record, "sleep_recovery", "SleepRecovery") ?? null
+    row.resilienceContributorDaytimeRecovery =
+      getContributor(record, "daytime_recovery", "DaytimeRecovery") ?? null
+    row.resilienceContributorStress =
+      getContributor(record, "stress", "Stress") ?? null
+  })
+
+  input.smoothedCardiovascularAge.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.cardiovascularAge =
+      getNumber(record, "cardiovascular_age", "CardiovascularAge") ??
+      row.cardiovascularAge
+    row.pulseWaveVelocity =
+      getNumber(record, "pulse_wave_velocity", "PulseWaveVelocity") ??
+      row.pulseWaveVelocity
+  })
+
+  // Processed after the smoothed file so the per-day value wins when both exist.
+  input.cardiovascularAge.forEach((record) => {
+    const day = getRecordDay(record)
+
+    if (!day) {
+      return
+    }
+
+    const row = getDailyRow(rowsByDate, day, syncedAt)
+
+    row.cardiovascularAge =
+      getNumber(record, "vascular_age", "VascularAge") ?? row.cardiovascularAge
+    row.pulseWaveVelocity =
+      getNumber(record, "pulse_wave_velocity", "PulseWaveVelocity") ??
+      row.pulseWaveVelocity
   })
 
   input.sleepSessions.forEach((record) => {
@@ -307,6 +416,16 @@ function getDailyRow(
     averageHrv: null,
     averageMetMinutes: null,
     awakeMinutes: null,
+    breathingDisturbanceIndex: null,
+    cardiovascularAge: null,
+    pulseWaveVelocity: null,
+    recoveryHighMinutes: null,
+    resilienceContributorDaytimeRecovery: null,
+    resilienceContributorSleepRecovery: null,
+    resilienceContributorStress: null,
+    resilienceLevelScore: null,
+    spo2AveragePercentage: null,
+    stressHighMinutes: null,
     equivalentWalkingDistance: null,
     highActivityMetMinutes: null,
     highActivityMinutes: null,
@@ -370,6 +489,19 @@ function getContributor(
   }
 
   return getNumber(record, `Contributors${pascalCaseName}`)
+}
+
+function getNestedNumber(
+  record: OuraRecord,
+  outerKeys: string[],
+  snakeCaseName: string,
+  pascalCaseName: string
+) {
+  const container = getValue(record, outerKeys)
+
+  return isRecord(container)
+    ? getNumber(container, snakeCaseName, pascalCaseName)
+    : null
 }
 
 function getNumber(record: OuraRecord, ...keys: string[]) {

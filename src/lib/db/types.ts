@@ -38,6 +38,16 @@ export interface DailyMetricRow {
   averageHrv: number | null
   averageMetMinutes?: number | null
   awakeMinutes?: number | null
+  breathingDisturbanceIndex?: number | null
+  cardiovascularAge?: number | null
+  pulseWaveVelocity?: number | null
+  recoveryHighMinutes?: number | null
+  resilienceContributorDaytimeRecovery?: number | null
+  resilienceContributorSleepRecovery?: number | null
+  resilienceContributorStress?: number | null
+  resilienceLevelScore?: number | null
+  spo2AveragePercentage?: number | null
+  stressHighMinutes?: number | null
   equivalentWalkingDistance?: number | null
   highActivityMetMinutes?: number | null
   highActivityMinutes?: number | null
