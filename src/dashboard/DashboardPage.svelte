@@ -143,6 +143,9 @@
   let tagSortMode: TagSortMode = "alpha"
   let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
+  let deleteDataArmed = false
+  let isDeletingData = false
+  let deleteDataMessage = ""
   let excludeUntaggedDays = true
   let showTagCounts = false
   let openExploreImpactCategories: ExploreMetricCategory[] = []
@@ -605,6 +608,47 @@
     return error instanceof Error
       ? "Could not import that Oura export. Check the file and try again."
       : "Import failed."
+  }
+
+  async function deleteAllLocalData() {
+    if (!deleteDataArmed) {
+      deleteDataArmed = true
+      deleteDataMessage =
+        "This permanently deletes all imported days, tags, and import history from this device. Click Confirm delete to continue."
+      return
+    }
+
+    isDeletingData = true
+
+    try {
+      await db.transaction(
+        "rw",
+        db.dailyMetrics,
+        db.tagEntries,
+        db.importRuns,
+        async () => {
+          await db.dailyMetrics.clear()
+          await db.tagEntries.clear()
+          await db.importRuns.clear()
+        }
+      )
+
+      dailyMetrics = sampleDailyMetrics
+      tagEntries = sampleTagEntries
+      exploreTagsInitialized = false
+      importMessage = "Import your Oura personal data export to begin."
+      deleteDataMessage = "All imported Oura data was deleted from this device."
+    } catch {
+      deleteDataMessage = "Could not delete local data. Try again."
+    } finally {
+      deleteDataArmed = false
+      isDeletingData = false
+    }
+  }
+
+  function cancelDeleteData() {
+    deleteDataArmed = false
+    deleteDataMessage = ""
   }
 
   async function loadLocalOuraData() {
@@ -1587,6 +1631,46 @@
               : "All imported days included."}
           </p>
         </div>
+
+        <div class="setting-row delete-data-setting">
+          <div>
+            <strong>Delete local data</strong>
+            <p>
+              Permanently remove all imported days, tags, and import history
+              from this device. A saved Oura key is not affected. Use this to
+              start fresh before re-importing an export.
+            </p>
+            {#if deleteDataMessage}
+              <p class="delete-data-message" role="status">{deleteDataMessage}</p>
+            {/if}
+          </div>
+          <div class="delete-data-actions">
+            <button
+              type="button"
+              class="delete-data-button"
+              class:armed={deleteDataArmed}
+              disabled={isDeletingData || !hasLocalData}
+              on:click={deleteAllLocalData}
+            >
+              {isDeletingData
+                ? "Deleting"
+                : deleteDataArmed
+                  ? "Confirm delete"
+                  : hasLocalData
+                    ? "Delete local data"
+                    : "No local data"}
+            </button>
+            {#if deleteDataArmed && !isDeletingData}
+              <button
+                type="button"
+                class="delete-data-cancel"
+                on:click={cancelDeleteData}
+              >
+                Cancel
+              </button>
+            {/if}
+          </div>
+        </div>
       </div>
     </section>
   {/if}
@@ -1879,6 +1963,55 @@
     display: grid;
     gap: 0.15rem;
     padding-top: 0.9rem;
+  }
+
+  .setting-row.delete-data-setting {
+    align-items: start;
+    border-top: 1px solid #d8d8cc;
+    margin-top: 0.4rem;
+  }
+
+  .delete-data-message {
+    color: #8a3f2f;
+    font-weight: 700;
+  }
+
+  .delete-data-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .delete-data-button,
+  .delete-data-cancel {
+    appearance: none;
+    border: 1px solid #d2b5a5;
+    border-radius: 8px;
+    background: #fbf7ef;
+    color: #8a3f2f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    min-height: 42px;
+    padding: 0.58rem 0.72rem;
+    white-space: nowrap;
+  }
+
+  .delete-data-button.armed {
+    background: #8a3f2f;
+    border-color: #8a3f2f;
+    color: #f8f3ea;
+  }
+
+  .delete-data-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .delete-data-cancel {
+    border-color: #c5cbbd;
+    color: #17201b;
   }
 
   .setting-summary span {
