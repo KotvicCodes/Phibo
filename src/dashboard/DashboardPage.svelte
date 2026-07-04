@@ -68,6 +68,7 @@
     groupExploreImpacts,
     impactGroupDelta,
     impactGroupDeltaLabel,
+    impactEffectTone,
     impactGroupMetricCount,
     impactGroupTone,
     impactTone,
@@ -1311,7 +1312,12 @@
                     <strong>{group.category}</strong>
                     <span>{impactGroupMetricCount(group)}</span>
                   </span>
-                  <span class="score-impact {impactGroupTone(group)}">
+                  <span
+                    class="score-impact {impactGroupTone(
+                      group,
+                      exploreImpacts
+                    )}"
+                  >
                     <span>{impactGroupDeltaLabel(group)}</span>
                     <b>{impactGroupDelta(group)}</b>
                   </span>
@@ -1329,13 +1335,21 @@
                             {formatAverage(row.otherAverage, row.metric)} other
                           </span>
                         </div>
-                        <strong class="score-impact {impactTone(row.toneDelta)}">
+                        <strong
+                          class="score-impact {impactEffectTone(
+                            row.effectSize,
+                            exploreImpacts
+                          )}"
+                        >
                           <b>{formatExploreDelta(row)}</b>
                         </strong>
                       </div>
                       <div class="impact-bar">
                         <span
-                          class="impact-fill {impactTone(row.toneDelta)}"
+                          class="impact-fill {impactEffectTone(
+                            row.effectSize,
+                            exploreImpacts
+                          )}"
                           style={`width: ${impactWidth(row, exploreImpacts)}`}
                         />
                       </div>
