@@ -28,14 +28,23 @@ The main workflow is:
 2. Request and download your personal data export.
 3. Import the export ZIP into Phibo.
 
-Phibo supports the export ZIP or selected CSV/JSON files. The important export files are:
+Phibo supports the export ZIP or selected CSV/JSON files. The imported export files are:
 
 - `dailyactivity.csv`
 - `dailyreadiness.csv`
 - `dailysleep.csv`
+- `dailyspo2.csv`
+- `dailystress.csv`
+- `dailyresilience.csv`
+- `dailycardiovascularage.csv` and `dailysmoothedcardiovascularage.csv`
+- `sleepmodel.csv`
+- `workout.csv`
+- `vo2max.csv`
 - `enhancedtag.csv`
 
-Tags come from `enhancedtag.csv`; daily sleep, readiness, and activity metrics come from the daily metric files. Oura exports can mix delimiters, and Phibo detects the delimiter per file.
+Tags come from `enhancedtag.csv`; the other files contribute daily metrics. Oura exports can mix delimiters, and Phibo detects the delimiter per file.
+
+Other export files (raw heart rate and temperature time series, intraday stress, device data, location, recommendations, and files that are empty in current exports) are intentionally not imported and are listed in `knownIgnoredOuraFilePrefixes` in `src/lib/oura/import.ts`. To start importing one of them later (for example `restmodeperiod.csv` or `session.csv`), it must also be removed from that ignore list, or it will keep being skipped silently.
 
 ## Main Views
 
