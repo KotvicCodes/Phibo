@@ -14,7 +14,8 @@ export interface ExploreImpactGroup {
 const exploreImpactCategoryOrder: ExploreMetricCategory[] = [
   "Sleep",
   "Readiness",
-  "Activity"
+  "Activity",
+  "Health"
 ]
 
 export function isPrimaryScoreMetric(metric: ExploreMetricKey) {

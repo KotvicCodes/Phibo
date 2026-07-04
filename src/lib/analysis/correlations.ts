@@ -23,6 +23,8 @@ export type ExploreMetricKey =
   | "averageHrv"
   | "averageMetMinutes"
   | "awakeMinutes"
+  | "breathingDisturbanceIndex"
+  | "cardiovascularAge"
   | "deepSleepMinutes"
   | "equivalentWalkingDistance"
   | "highActivityMetMinutes"
@@ -32,6 +34,7 @@ export type ExploreMetricKey =
   | "mediumActivityMetMinutes"
   | "mediumActivityMinutes"
   | "nonWearMinutes"
+  | "pulseWaveVelocity"
   | "readinessContributorActivityBalance"
   | "readinessContributorBodyTemperature"
   | "readinessContributorHrvBalance"
@@ -42,7 +45,12 @@ export type ExploreMetricKey =
   | "readinessContributorSleepBalance"
   | "readinessScoreDelta"
   | "readinessScore"
+  | "recoveryHighMinutes"
   | "remSleepMinutes"
+  | "resilienceContributorDaytimeRecovery"
+  | "resilienceContributorSleepRecovery"
+  | "resilienceContributorStress"
+  | "resilienceLevelScore"
   | "restingMinutes"
   | "restingHeartRate"
   | "restlessPeriods"
@@ -58,13 +66,15 @@ export type ExploreMetricKey =
   | "sleepLatencyMinutes"
   | "sleepScoreDelta"
   | "sleepScore"
+  | "spo2AveragePercentage"
   | "steps"
+  | "stressHighMinutes"
   | "targetCalories"
   | "timeInBedMinutes"
   | "totalCalories"
   | "totalSleepMinutes"
 
-export type ExploreMetricCategory = "Activity" | "Readiness" | "Sleep"
+export type ExploreMetricCategory = "Activity" | "Health" | "Readiness" | "Sleep"
 
 export interface ExploreMetricDefinition {
   category: ExploreMetricCategory
@@ -456,6 +466,76 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     key: "readinessContributorSleepBalance",
     label: "Sleep balance",
     unit: "pts"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "spo2AveragePercentage",
+    label: "Blood oxygen",
+    unit: "%"
+  },
+  {
+    category: "Health",
+    higherIsBetter: false,
+    key: "breathingDisturbanceIndex",
+    label: "Breathing disturbance",
+    unit: "idx"
+  },
+  {
+    category: "Health",
+    higherIsBetter: false,
+    key: "stressHighMinutes",
+    label: "Stress high",
+    unit: "min"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "recoveryHighMinutes",
+    label: "Recovery high",
+    unit: "min"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "resilienceLevelScore",
+    label: "Resilience level",
+    unit: "lvl"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "resilienceContributorSleepRecovery",
+    label: "Sleep recovery",
+    unit: "pts"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "resilienceContributorDaytimeRecovery",
+    label: "Daytime recovery",
+    unit: "pts"
+  },
+  {
+    category: "Health",
+    higherIsBetter: true,
+    key: "resilienceContributorStress",
+    label: "Stress resilience",
+    unit: "pts"
+  },
+  {
+    category: "Health",
+    higherIsBetter: false,
+    key: "cardiovascularAge",
+    label: "Cardiovascular age",
+    unit: "yrs"
+  },
+  {
+    category: "Health",
+    higherIsBetter: false,
+    key: "pulseWaveVelocity",
+    label: "Pulse wave velocity",
+    unit: "m/s"
   },
   {
     category: "Activity",

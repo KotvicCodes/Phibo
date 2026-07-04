@@ -55,10 +55,15 @@ export async function syncOuraRange(
       ])
 
     const dailyMetrics = mergeDailyMetrics({
+      cardiovascularAge: [],
       dailyActivity,
       dailyReadiness,
+      dailyResilience: [],
       dailySleep,
-      sleepSessions
+      dailySpo2: [],
+      dailyStress: [],
+      sleepSessions,
+      smoothedCardiovascularAge: []
     })
     const tagEntries = mapTagEntries(tags)
 

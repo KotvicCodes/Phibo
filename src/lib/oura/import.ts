@@ -11,9 +11,14 @@ import {
 } from "./normalizer"
 
 type ImportKind =
+  | "cardiovascularAge"
   | "dailyActivity"
   | "dailyReadiness"
+  | "dailyResilience"
   | "dailySleep"
+  | "dailySpo2"
+  | "dailyStress"
+  | "smoothedCardiovascularAge"
   | "tags"
 
 interface ImportFileRecord {
@@ -73,15 +78,20 @@ export async function importOuraFiles(files: File[]) {
 
     if (expandedFiles.supported.length === 0) {
       throw new OuraImportError(
-        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
+        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, dailyspo2.csv, dailystress.csv, dailyresilience.csv, dailycardiovascularage.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
       )
     }
 
     const metricInput: OuraMetricInput = {
+      cardiovascularAge: [],
       dailyActivity: [],
       dailyReadiness: [],
+      dailyResilience: [],
       dailySleep: [],
-      sleepSessions: []
+      dailySpo2: [],
+      dailyStress: [],
+      sleepSessions: [],
+      smoothedCardiovascularAge: []
     }
     const tags: OuraTag[] = []
     const parsedFileSummaries: ParsedFileSummary[] = []
@@ -235,6 +245,41 @@ function classifyOuraFile(name: string): ImportKind | null {
     compactName.startsWith("ouradailyactivity")
   ) {
     return "dailyActivity"
+  }
+
+  if (
+    compactName === "dailyspo2" ||
+    compactName.startsWith("ouradailyspo2")
+  ) {
+    return "dailySpo2"
+  }
+
+  if (
+    compactName === "dailystress" ||
+    compactName.startsWith("ouradailystress")
+  ) {
+    return "dailyStress"
+  }
+
+  if (
+    compactName === "dailyresilience" ||
+    compactName.startsWith("ouradailyresilience")
+  ) {
+    return "dailyResilience"
+  }
+
+  if (
+    compactName === "dailysmoothedcardiovascularage" ||
+    compactName.startsWith("ouradailysmoothedcardiovascularage")
+  ) {
+    return "smoothedCardiovascularAge"
+  }
+
+  if (
+    compactName === "dailycardiovascularage" ||
+    compactName.startsWith("ouradailycardiovascularage")
+  ) {
+    return "cardiovascularAge"
   }
 
   if (
