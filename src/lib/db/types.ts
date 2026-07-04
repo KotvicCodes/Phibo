@@ -48,6 +48,10 @@ export interface DailyMetricRow {
   resilienceLevelScore?: number | null
   spo2AveragePercentage?: number | null
   stressHighMinutes?: number | null
+  vo2Max?: number | null
+  workoutCalories?: number | null
+  workoutCount?: number | null
+  workoutMinutes?: number | null
   equivalentWalkingDistance?: number | null
   highActivityMetMinutes?: number | null
   highActivityMinutes?: number | null

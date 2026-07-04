@@ -18,8 +18,11 @@ type ImportKind =
   | "dailySleep"
   | "dailySpo2"
   | "dailyStress"
+  | "sleepSessions"
   | "smoothedCardiovascularAge"
   | "tags"
+  | "vo2Max"
+  | "workouts"
 
 interface ImportFileRecord {
   kind: ImportKind
@@ -78,7 +81,7 @@ export async function importOuraFiles(files: File[]) {
 
     if (expandedFiles.supported.length === 0) {
       throw new OuraImportError(
-        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, dailyspo2.csv, dailystress.csv, dailyresilience.csv, dailycardiovascularage.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
+        "No supported Oura personal export files found. Import the export ZIP or files named dailyactivity.csv, dailyreadiness.csv, dailysleep.csv, dailyspo2.csv, dailystress.csv, dailyresilience.csv, dailycardiovascularage.csv, sleepmodel.csv, workout.csv, vo2max.csv, enhancedtag.csv, or their Oura-prefixed JSON/CSV equivalents."
       )
     }
 
@@ -91,7 +94,9 @@ export async function importOuraFiles(files: File[]) {
       dailySpo2: [],
       dailyStress: [],
       sleepSessions: [],
-      smoothedCardiovascularAge: []
+      smoothedCardiovascularAge: [],
+      vo2Max: [],
+      workouts: []
     }
     const tags: OuraTag[] = []
     const parsedFileSummaries: ParsedFileSummary[] = []
@@ -245,6 +250,28 @@ function classifyOuraFile(name: string): ImportKind | null {
     compactName.startsWith("ouradailyactivity")
   ) {
     return "dailyActivity"
+  }
+
+  if (
+    compactName === "sleepmodel" ||
+    compactName.startsWith("ourasleepmodel")
+  ) {
+    return "sleepSessions"
+  }
+
+  if (
+    compactName === "vo2max" ||
+    compactName.startsWith("ouravo2max")
+  ) {
+    return "vo2Max"
+  }
+
+  if (
+    compactName === "workout" ||
+    compactName === "workouts" ||
+    compactName.startsWith("ouraworkout")
+  ) {
+    return "workouts"
   }
 
   if (
