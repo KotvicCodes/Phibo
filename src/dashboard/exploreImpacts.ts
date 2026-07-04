@@ -45,16 +45,50 @@ export function impactTone(value: number | null) {
   return "warning"
 }
 
+function effectIntensity(
+  effectSize: number | null,
+  impacts: ExploreMetricImpact[]
+) {
+  if (effectSize === null) {
+    return 0
+  }
+
+  const maxEffectSize = Math.max(
+    ...impacts.map((impact) => Math.abs(impact.effectSize ?? 0)),
+    0.1
+  )
+
+  return Math.min(Math.abs(effectSize) / maxEffectSize, 1)
+}
+
+export function impactEffectTone(
+  effectSize: number | null,
+  impacts: ExploreMetricImpact[]
+) {
+  if (effectSize === null || effectSize === 0) {
+    return "neutral"
+  }
+
+  const intensity = effectIntensity(effectSize, impacts)
+
+  if (intensity < 0.2) {
+    return "neutral"
+  }
+
+  const strong = intensity >= 0.66
+
+  if (effectSize > 0) {
+    return strong ? "excellent" : "positive"
+  }
+
+  return strong ? "negative" : "warning"
+}
+
 export function impactWidth(
   row: ExploreMetricImpact,
   impacts: ExploreMetricImpact[]
 ) {
-  const maxDelta = Math.max(
-    ...impacts.map((impact) => Math.abs(impact.delta ?? 0)),
-    1
-  )
-
-  return `${Math.min((Math.abs(row.delta ?? 0) / maxDelta) * 100, 100)}%`
+  return `${effectIntensity(row.effectSize, impacts) * 100}%`
 }
 
 export function groupExploreImpacts(
@@ -83,15 +117,22 @@ function strongestExploreImpact(rows: ExploreMetricImpact[]) {
       return row
     }
 
-    const rowImpact = Math.abs(row.toneDelta ?? row.delta)
-    const strongestImpact = Math.abs(strongest.toneDelta ?? strongest.delta ?? 0)
+    const rowImpact = Math.abs(
+      row.effectSize ?? row.toneDelta ?? row.delta
+    )
+    const strongestImpact = Math.abs(
+      strongest.effectSize ?? strongest.toneDelta ?? strongest.delta ?? 0
+    )
 
     return rowImpact > strongestImpact ? row : strongest
   }, null)
 }
 
-export function impactGroupTone(group: ExploreImpactGroup) {
-  return impactTone(group.strongest?.toneDelta ?? null)
+export function impactGroupTone(
+  group: ExploreImpactGroup,
+  impacts: ExploreMetricImpact[]
+) {
+  return impactEffectTone(group.strongest?.effectSize ?? null, impacts)
 }
 
 export function impactGroupDelta(group: ExploreImpactGroup) {

@@ -111,6 +111,7 @@ export interface ExploreDay {
 
 export interface ExploreMetricImpact {
   delta: number | null
+  effectSize: number | null
   metric: ExploreMetricDefinition
   otherAverage: number | null
   otherCount: number
@@ -672,15 +673,23 @@ export function calculateExploreMetricImpacts(
       taggedAverage === null || otherAverage === null
         ? null
         : roundToOne(taggedAverage - otherAverage)
+    const toneDelta = delta === null ? null : metricToneDelta(definition, delta)
+    const deviation = standardDeviation(
+      days.map((day) => day.metric[definition.key])
+    )
 
     return {
       delta,
+      effectSize:
+        toneDelta === null || deviation === null || deviation === 0
+          ? null
+          : roundToTwo(toneDelta / deviation),
       metric: definition,
       otherAverage,
       otherCount: otherDays.length,
       taggedAverage,
       taggedCount: taggedDays.length,
-      toneDelta: delta === null ? null : metricToneDelta(definition, delta)
+      toneDelta
     }
   })
 }
@@ -791,6 +800,27 @@ function average(values: Array<number | null | undefined>) {
   )
 }
 
+function standardDeviation(values: Array<number | null | undefined>) {
+  const usableValues = values.filter((value): value is number => value != null)
+
+  if (usableValues.length < 2) {
+    return null
+  }
+
+  const mean =
+    usableValues.reduce((total, value) => total + value, 0) /
+    usableValues.length
+  const variance =
+    usableValues.reduce((total, value) => total + (value - mean) ** 2, 0) /
+    (usableValues.length - 1)
+
+  return Math.sqrt(variance)
+}
+
 function roundToOne(value: number) {
   return Math.round(value * 10) / 10
+}
+
+function roundToTwo(value: number) {
+  return Math.round(value * 100) / 100
 }
