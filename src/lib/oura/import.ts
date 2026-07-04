@@ -1,6 +1,7 @@
 import JSZip from "jszip"
 import Papa from "papaparse"
 import { db } from "../db"
+import type { DailyMetricRow } from "../db/types"
 import {
   mapTagEntries,
   mergeDailyMetrics,
@@ -39,6 +40,9 @@ interface ParsedFileSummary {
 export interface OuraImportResult {
   dailyMetrics: ReturnType<typeof mergeDailyMetrics>
   filesImported: number
+  // Known Oura export files Phibo deliberately does not import
+  // (raw time series, device data, recommendations, location).
+  ignoredFiles: number
   skippedFiles: number
   tagEntries: ReturnType<typeof mapTagEntries>
   unsupportedFiles: number
@@ -121,16 +125,29 @@ export async function importOuraFiles(files: File[]) {
     const dailyMetrics = mergeDailyMetrics(metricInput)
     const tagEntries = mapTagEntries(tags)
 
-    if (dailyMetrics.length === 0) {
+    if (dailyMetrics.length === 0 && tagEntries.length === 0) {
       throw new OuraImportError(
-        `The selected Oura files did not include usable daily metric rows. ${formatParsedFileSummaries(parsedFileSummaries)}${formatParseFailures(parseFailures)}${formatUnsupportedFiles(expandedFiles.unsupported)}`
+        `The selected Oura files did not include usable daily metric or tag rows. ${formatParsedFileSummaries(parsedFileSummaries)}${formatParseFailures(parseFailures)}${formatUnsupportedFiles(expandedFiles.unsupported)}`
       )
     }
 
-    const [startDate, endDate] = getMetricDateRange(dailyMetrics)
+    const [startDate, endDate] = getImportDateRange(dailyMetrics, tagEntries)
 
     await db.transaction("rw", db.dailyMetrics, db.tagEntries, db.importRuns, async () => {
-      await db.dailyMetrics.bulkPut(dailyMetrics)
+      if (dailyMetrics.length > 0) {
+        // Merge into any previously stored rows so importing a subset of
+        // files (for example only workout.csv) does not null out metrics
+        // that came from an earlier import.
+        const storedRows = await db.dailyMetrics.bulkGet(
+          dailyMetrics.map((metric) => metric.date)
+        )
+
+        await db.dailyMetrics.bulkPut(
+          dailyMetrics.map((metric, index) =>
+            mergeWithStoredRow(storedRows[index], metric)
+          )
+        )
+      }
 
       if (tagEntries.length > 0) {
         await db.tagEntries.bulkPut(tagEntries)
@@ -148,6 +165,7 @@ export async function importOuraFiles(files: File[]) {
     return {
       dailyMetrics,
       filesImported: parsedFileSummaries.length,
+      ignoredFiles: expandedFiles.ignored,
       skippedFiles: parseFailures.length,
       tagEntries,
       unsupportedFiles: expandedFiles.unsupported
@@ -176,7 +194,16 @@ function tryParseImportRows(file: ImportFileRecord, failures: string[]) {
 
 async function expandImportFiles(files: File[]) {
   const supported: ImportFileRecord[] = []
+  let ignored = 0
   let unsupported = 0
+
+  const countSkippedFile = (name: string) => {
+    if (isKnownIgnoredOuraFile(name)) {
+      ignored += 1
+    } else {
+      unsupported += 1
+    }
+  }
 
   for (const file of files) {
     if (file.name.toLowerCase().endsWith(".zip")) {
@@ -188,7 +215,7 @@ async function expandImportFiles(files: File[]) {
           const kind = classifyOuraFile(entry.name)
 
           if (!kind) {
-            unsupported += 1
+            countSkippedFile(entry.name)
             continue
           }
 
@@ -208,7 +235,7 @@ async function expandImportFiles(files: File[]) {
     const kind = classifyOuraFile(file.name)
 
     if (!kind) {
-      unsupported += 1
+      countSkippedFile(file.name)
       continue
     }
 
@@ -220,16 +247,62 @@ async function expandImportFiles(files: File[]) {
   }
 
   return {
+    ignored,
     supported,
     unsupported
   }
 }
 
-function classifyOuraFile(name: string): ImportKind | null {
+// Oura export files Phibo deliberately does not import: raw time series,
+// intraday samples, device/app data, recommendations, location, and files
+// that are empty in current exports.
+const knownIgnoredOuraFilePrefixes = [
+  "applicationdebugstate",
+  "behaviorcoaching",
+  "bloodglucose",
+  "dailycyclephases",
+  "dailymetabolicscore",
+  "daytimestress",
+  "fooditem",
+  "glp1settings",
+  "heartrate",
+  "hormonalcontraception",
+  "labtestresult",
+  "meal",
+  "medication",
+  "nonhormonalcontraception",
+  "otherreproductivehormone",
+  "personalinfo",
+  "rawlocation",
+  "restmodeperiod",
+  "ringbatterylevel",
+  "ringconfiguration",
+  "session",
+  "sleepstorysession",
+  "sleeptime",
+  "surveyresponse",
+  "temperature",
+  "userconsentsettings"
+]
+
+function isKnownIgnoredOuraFile(name: string) {
+  const compactName = getCompactFileName(name)
+
+  return knownIgnoredOuraFilePrefixes.some(
+    (prefix) =>
+      compactName.startsWith(prefix) || compactName.startsWith(`oura${prefix}`)
+  )
+}
+
+function getCompactFileName(name: string) {
   const fileName = name.split(/[\\/]/).pop() ?? name
-  const normalizedName = fileName.toLowerCase()
-  const baseName = normalizedName.replace(/\.(csv|json)$/i, "")
-  const compactName = baseName.replace(/[^a-z0-9]/g, "")
+  const baseName = fileName.toLowerCase().replace(/\.(csv|json)$/i, "")
+
+  return baseName.replace(/[^a-z0-9]/g, "")
+}
+
+function classifyOuraFile(name: string): ImportKind | null {
+  const compactName = getCompactFileName(name)
 
   if (
     compactName === "dailysleep" ||
@@ -464,9 +537,7 @@ function formatParseFailures(failures: string[]) {
 }
 
 function formatUnsupportedFiles(count: number) {
-  return count > 0
-    ? ` Ignored ${count} Oura export files Phibo does not import yet.`
-    : ""
+  return count > 0 ? ` Ignored ${count} unrecognized files.` : ""
 }
 
 function parseJsonRows(file: ImportFileRecord) {
@@ -515,8 +586,33 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
-function getMetricDateRange(dailyMetrics: OuraImportResult["dailyMetrics"]) {
-  const dates = dailyMetrics.map((metric) => metric.date).sort()
+function getImportDateRange(
+  dailyMetrics: OuraImportResult["dailyMetrics"],
+  tagEntries: OuraImportResult["tagEntries"]
+) {
+  const dates = [
+    ...dailyMetrics.map((metric) => metric.date),
+    ...tagEntries.map((entry) => entry.date)
+  ].sort()
 
   return [dates[0], dates.at(-1) ?? dates[0]] as const
+}
+
+function mergeWithStoredRow(
+  storedRow: DailyMetricRow | undefined,
+  incomingRow: DailyMetricRow
+): DailyMetricRow {
+  if (!storedRow) {
+    return incomingRow
+  }
+
+  const mergedRow: Record<string, unknown> = { ...storedRow }
+
+  for (const [key, value] of Object.entries(incomingRow)) {
+    if (value !== null && value !== undefined) {
+      mergedRow[key] = value
+    }
+  }
+
+  return mergedRow as unknown as DailyMetricRow
 }

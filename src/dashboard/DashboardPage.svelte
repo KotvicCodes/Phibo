@@ -371,14 +371,24 @@
 
       await loadLocalOuraData()
       exploreTagsInitialized = false
+      const skippedParts = [
+        result.skippedFiles > 0
+          ? `${result.skippedFiles} unreadable files`
+          : null,
+        result.unsupportedFiles > 0
+          ? `${result.unsupportedFiles} unrecognized files`
+          : null
+      ].filter((part): part is string => part !== null)
       const skippedText =
-        result.skippedFiles > 0 || result.unsupportedFiles > 0
-          ? ` Skipped ${result.skippedFiles + result.unsupportedFiles} files Phibo could not import.`
+        skippedParts.length > 0 ? ` Skipped ${skippedParts.join(" and ")}.` : ""
+      const ignoredText =
+        result.ignoredFiles > 0
+          ? ` ${result.ignoredFiles} other export files hold data Phibo does not use (raw time series, device info, or empty files).`
           : ""
       importMessage =
         result.tagEntries.length > 0
-          ? `Imported ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags from ${result.filesImported} Oura files.${skippedText}`
-          : `Imported ${result.dailyMetrics.length} days. No tags were found in this export; existing local tags remain available.${skippedText}`
+          ? `Imported ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags from ${result.filesImported} Oura files.${skippedText}${ignoredText}`
+          : `Imported ${result.dailyMetrics.length} days. No tags were found in this export; existing local tags remain available.${skippedText}${ignoredText}`
     } catch (error) {
       importMessage = formatOuraImportError(error)
     } finally {
