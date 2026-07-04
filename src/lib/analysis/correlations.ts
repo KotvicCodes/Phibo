@@ -634,6 +634,16 @@ export function getAvailableTags(tags: TagEntryRow[]) {
   )
 }
 
+export function getTagNightCounts(tags: TagEntryRow[]) {
+  const counts = new Map<string, number>()
+
+  for (const [tag, dates] of groupTagsByName(tags)) {
+    counts.set(tag, dates.size)
+  }
+
+  return counts
+}
+
 export function buildExploreDays(
   metrics: DailyMetricRow[],
   tags: TagEntryRow[],

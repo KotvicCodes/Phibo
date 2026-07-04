@@ -6,6 +6,7 @@
     calculateTagCorrelations,
     exploreMetricDefinitions,
     getAvailableTags,
+    getTagNightCounts,
     getExploreMetric,
     getRankedTagInsights,
     getTagDiscoveries,
@@ -116,10 +117,16 @@
     "activityScore" | "readinessScore" | "sleepScore"
   >
   type TagTimingMode = "morning" | "sameDay"
+  type TagSortMode = "alpha" | "count"
 
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
+  const tagSortModes: { id: TagSortMode; label: string }[] = [
+    { id: "alpha", label: "A–Z" },
+    { id: "count", label: "Most tagged" }
+  ]
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
+  const showTagCountsSettingKey = "phibo.showTagCounts"
   const scoreWeekDays = 7
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
@@ -132,9 +139,12 @@
   let accessToken = ""
   let activeView: DashboardView = "insights"
   let exploreChartMode: ChartMode = "impact"
+  let tagSearch = ""
+  let tagSortMode: TagSortMode = "alpha"
   let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
   let excludeUntaggedDays = true
+  let showTagCounts = false
   let openExploreImpactCategories: ExploreMetricCategory[] = []
   let hoveredExploreDate = ""
   let dailyMetrics = sampleDailyMetrics
@@ -167,6 +177,27 @@
     effectiveTagEntries
   )
   $: availableTags = sortTagsForDisplay(getAvailableTags(effectiveTagEntries))
+  $: tagNightCounts = getTagNightCounts(effectiveTagEntries)
+  $: sortedExploreTags =
+    tagSortMode === "count"
+      ? [...availableTags].sort(
+          (left, right) =>
+            (tagNightCounts.get(right) ?? 0) - (tagNightCounts.get(left) ?? 0)
+        )
+      : availableTags
+  $: visibleExploreTags = (() => {
+    const query = tagSearch.trim().toLocaleLowerCase()
+
+    if (query.length === 0) {
+      return sortedExploreTags
+    }
+
+    return sortedExploreTags.filter(
+      (tag) =>
+        formatTagLabel(tag).toLocaleLowerCase().includes(query) ||
+        tag.toLocaleLowerCase().includes(query)
+    )
+  })()
   $: if (!exploreTagsInitialized && availableTags.length > 0) {
     const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
       availableTags.includes(tag)
@@ -299,6 +330,7 @@
   onMount(async () => {
     excludeUntaggedDays =
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
+    showTagCounts = localStorage.getItem(showTagCountsSettingKey) === "true"
     tagTimingMode = getSavedTagTimingMode()
 
     const savedToken = await db.authTokens.get("oura")
@@ -472,6 +504,17 @@
 
     excludeUntaggedDays = input.checked
     localStorage.setItem(excludeUntaggedDaysSettingKey, `${excludeUntaggedDays}`)
+  }
+
+  function updateShowTagCounts(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    showTagCounts = input.checked
+    localStorage.setItem(showTagCountsSettingKey, `${showTagCounts}`)
   }
 
   function updateTagTimingMode(event: Event) {
@@ -1138,18 +1181,48 @@
 
         <div class="explore-builder">
           <section class="explore-control">
-            <h3>Tags</h3>
+            <div class="tag-control-heading">
+              <h3>Tags</h3>
+              <div class="tag-sort" role="group" aria-label="Sort tags">
+                {#each tagSortModes as mode}
+                  <button
+                    type="button"
+                    class:active={tagSortMode === mode.id}
+                    aria-pressed={tagSortMode === mode.id}
+                    on:click={() => (tagSortMode = mode.id)}
+                  >
+                    {mode.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            {#if availableTags.length > 0}
+              <input
+                class="tag-search"
+                type="search"
+                placeholder="Search tags"
+                aria-label="Search tags"
+                bind:value={tagSearch}
+              />
+            {/if}
             <div class="tag-picker">
-              {#each availableTags as tag}
+              {#each visibleExploreTags as tag}
                 <button
                   type="button"
                   class:active={selectedExploreTags.includes(tag)}
                   on:click={() => toggleExploreTag(tag)}
                 >
                   {formatTagLabel(tag)}
+                  {#if showTagCounts}
+                    <span class="tag-count">{tagNightCounts.get(tag) ?? 0}</span>
+                  {/if}
                 </button>
               {:else}
-                <p class="empty-state">Sync or add tags to explore patterns.</p>
+                <p class="empty-state">
+                  {availableTags.length === 0
+                    ? "Sync or add tags to explore patterns."
+                    : "No tags match your search."}
+                </p>
               {/each}
             </div>
           </section>
@@ -1439,6 +1512,20 @@
             type="checkbox"
             checked={excludeUntaggedDays}
             on:change={updateExcludeUntaggedDays}
+          />
+        </label>
+
+        <label class="setting-row">
+          <div>
+            <strong>Show tag night counts</strong>
+            <p>
+              Display how many tagged nights each tag has next to it in the Explore tag list.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={showTagCounts}
+            on:change={updateShowTagCounts}
           />
         </label>
 
@@ -1823,6 +1910,47 @@
     padding-bottom: 0.9rem;
   }
 
+  .tag-control-heading {
+    align-items: center;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+  }
+
+  .tag-sort {
+    display: flex;
+    gap: 0.3rem;
+  }
+
+  .tag-sort button {
+    background: #f7f1e8;
+    border: 1px solid #d8d8cc;
+    border-radius: 999px;
+    color: #6f786f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.28rem 0.6rem;
+    text-transform: uppercase;
+  }
+
+  .tag-sort button.active {
+    background: #1e2c64;
+    border-color: #1e2c64;
+    color: #fbf7ef;
+  }
+
+  .tag-search {
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    background: #fbf7ef;
+    color: #17201b;
+    font: inherit;
+    padding: 0.55rem 0.7rem;
+    width: 100%;
+  }
+
   .tag-picker {
     display: flex;
     flex-wrap: wrap;
@@ -1839,10 +1967,32 @@
     padding: 0.5rem 0.72rem;
   }
 
+  .tag-picker button {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.4rem;
+  }
+
+  .tag-count {
+    background: rgba(31, 37, 32, 0.08);
+    border-radius: 999px;
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    min-width: 1.1rem;
+    padding: 0.02rem 0.36rem;
+    text-align: center;
+  }
+
   .tag-picker button.active,
   .segmented-control button.active {
     background: #1d2a22;
     border-color: #1d2a22;
+    color: #f8f3ea;
+  }
+
+  .tag-picker button.active .tag-count {
+    background: rgba(248, 243, 234, 0.22);
     color: #f8f3ea;
   }
 
