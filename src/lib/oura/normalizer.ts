@@ -329,64 +329,85 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
     }
   })
 
+  const sleepSessionsByDay = new Map<string, OuraRecord[]>()
+
   input.sleepSessions.forEach((record) => {
     const day = getRecordDay(record)
 
-    if (!day || !isMainSleepSession(record)) {
+    if (!day || !isSleepSession(record)) {
       return
     }
 
+    const sessions = sleepSessionsByDay.get(day) ?? []
+    sessions.push(record)
+    sleepSessionsByDay.set(day, sessions)
+  })
+
+  sleepSessionsByDay.forEach((sessions, day) => {
     const row = getDailyRow(rowsByDate, day, syncedAt)
+    // Durations are summed across the day's sessions and rate-like metrics
+    // are weighted by sleep duration, so naps contribute proportionally
+    // instead of overwriting the main night. Bedtimes, latency, and score
+    // deltas only make sense for a single night, so they come from the
+    // longest session.
+    const mainSession = getLongestSleepSession(sessions)
 
     row.averageBreath =
-      getNumber(record, "average_breath", "AverageBreath") ?? row.averageBreath
+      getWeightedSessionAverage(sessions, "average_breath", "AverageBreath") ??
+      row.averageBreath
     row.averageHeartRate =
-      getNumber(record, "average_heart_rate", "AverageHeartRate") ??
-      row.averageHeartRate
+      getWeightedSessionAverage(
+        sessions,
+        "average_heart_rate",
+        "AverageHeartRate"
+      ) ?? row.averageHeartRate
     row.averageHrv =
-      getNumber(record, "average_hrv", "AverageHrv") ?? row.averageHrv
-    row.awakeMinutes =
-      secondsToMinutes(getNumber(record, "awake_time", "AwakeTime")) ??
-      row.awakeMinutes
-    row.restingHeartRate =
-      getNumber(record, "lowest_heart_rate", "LowestHeartRate") ??
-      row.restingHeartRate
+      getWeightedSessionAverage(sessions, "average_hrv", "AverageHrv") ??
+      row.averageHrv
     row.sleepEfficiency =
-      getNumber(record, "efficiency", "Efficiency") ?? row.sleepEfficiency
-    row.sleepLatencyMinutes = secondsToMinutes(
-      getNumber(record, "latency", "Latency")
-    )
+      getWeightedSessionAverage(sessions, "efficiency", "Efficiency") ??
+      row.sleepEfficiency
+    row.awakeMinutes =
+      secondsToMinutes(getSessionSum(sessions, "awake_time", "AwakeTime")) ??
+      row.awakeMinutes
     row.deepSleepMinutes = secondsToMinutes(
-      getNumber(record, "deep_sleep_duration", "DeepSleepDuration")
+      getSessionSum(sessions, "deep_sleep_duration", "DeepSleepDuration")
     )
     row.lightSleepMinutes =
       secondsToMinutes(
-        getNumber(record, "light_sleep_duration", "LightSleepDuration")
+        getSessionSum(sessions, "light_sleep_duration", "LightSleepDuration")
       ) ?? row.lightSleepMinutes
     row.remSleepMinutes = secondsToMinutes(
-      getNumber(record, "rem_sleep_duration", "RemSleepDuration")
+      getSessionSum(sessions, "rem_sleep_duration", "RemSleepDuration")
     )
-    row.readinessScoreDelta =
-      getNumber(record, "readiness_score_delta", "ReadinessScoreDelta") ??
-      row.readinessScoreDelta
-    row.restlessPeriods =
-      getNumber(record, "restless_periods", "RestlessPeriods") ??
-      row.restlessPeriods
-    row.sleepScoreDelta =
-      getNumber(record, "sleep_score_delta", "SleepScoreDelta") ??
-      row.sleepScoreDelta
     row.timeInBedMinutes = secondsToMinutes(
-      getNumber(record, "time_in_bed", "TimeInBed")
+      getSessionSum(sessions, "time_in_bed", "TimeInBed")
     )
     row.totalSleepMinutes = secondsToMinutes(
-      getNumber(record, "total_sleep_duration", "TotalSleepDuration")
+      getSessionSum(sessions, "total_sleep_duration", "TotalSleepDuration")
     )
+    row.restlessPeriods =
+      getSessionSum(sessions, "restless_periods", "RestlessPeriods") ??
+      row.restlessPeriods
+    row.restingHeartRate =
+      getSessionMin(sessions, "lowest_heart_rate", "LowestHeartRate") ??
+      row.restingHeartRate
+    row.sleepLatencyMinutes = secondsToMinutes(
+      getNumber(mainSession, "latency", "Latency")
+    )
+    row.readinessScoreDelta =
+      getNumber(mainSession, "readiness_score_delta", "ReadinessScoreDelta") ??
+      row.readinessScoreDelta
+    row.sleepScoreDelta =
+      getNumber(mainSession, "sleep_score_delta", "SleepScoreDelta") ??
+      row.sleepScoreDelta
     row.bedtimeStart =
-      getString(record, "bedtime_start", "BedtimeStart") ?? row.bedtimeStart
+      getString(mainSession, "bedtime_start", "BedtimeStart") ??
+      row.bedtimeStart
     row.bedtimeEnd =
-      getString(record, "bedtime_end", "BedtimeEnd") ?? row.bedtimeEnd
+      getString(mainSession, "bedtime_end", "BedtimeEnd") ?? row.bedtimeEnd
     row.sourceUpdatedAt =
-      getString(record, "updated_at", "UpdatedAt", "InsertedDate") ??
+      getString(mainSession, "updated_at", "UpdatedAt", "InsertedDate") ??
       row.sourceUpdatedAt
   })
 
@@ -533,13 +554,78 @@ function getContributor(
   return getNumber(record, `Contributors${pascalCaseName}`)
 }
 
-// Naps and rest periods would otherwise overwrite the main night for that day.
-function isMainSleepSession(record: OuraRecord) {
+// Rest periods are lying down without sleep; they carry no sleep metrics.
+function isSleepSession(record: OuraRecord) {
   const sessionType = getString(record, "type", "Type")
 
-  return (
-    !sessionType || sessionType === "long_sleep" || sessionType === "sleep"
+  return !sessionType || (sessionType !== "rest" && sessionType !== "deleted")
+}
+
+function getLongestSleepSession(sessions: OuraRecord[]) {
+  return sessions.reduce((longest, session) =>
+    getSleepSessionDuration(session) > getSleepSessionDuration(longest)
+      ? session
+      : longest
   )
+}
+
+function getSleepSessionDuration(session: OuraRecord) {
+  return (
+    getNumber(session, "total_sleep_duration", "TotalSleepDuration") ??
+    getNumber(session, "time_in_bed", "TimeInBed") ??
+    0
+  )
+}
+
+function getSessionSum(
+  sessions: OuraRecord[],
+  snakeCaseName: string,
+  pascalCaseName: string
+) {
+  const values = sessions
+    .map((session) => getNumber(session, snakeCaseName, pascalCaseName))
+    .filter((value): value is number => value !== null)
+
+  return values.length > 0
+    ? values.reduce((total, value) => total + value, 0)
+    : null
+}
+
+function getSessionMin(
+  sessions: OuraRecord[],
+  snakeCaseName: string,
+  pascalCaseName: string
+) {
+  const values = sessions
+    .map((session) => getNumber(session, snakeCaseName, pascalCaseName))
+    .filter((value): value is number => value !== null)
+
+  return values.length > 0 ? Math.min(...values) : null
+}
+
+function getWeightedSessionAverage(
+  sessions: OuraRecord[],
+  snakeCaseName: string,
+  pascalCaseName: string
+) {
+  let weightedTotal = 0
+  let weightTotal = 0
+
+  for (const session of sessions) {
+    const value = getNumber(session, snakeCaseName, pascalCaseName)
+
+    if (value === null) {
+      continue
+    }
+
+    const weight = getSleepSessionDuration(session) || 1
+    weightedTotal += value * weight
+    weightTotal += weight
+  }
+
+  return weightTotal > 0
+    ? Math.round((weightedTotal / weightTotal) * 10) / 10
+    : null
 }
 
 function getWorkoutMinutes(record: OuraRecord) {
