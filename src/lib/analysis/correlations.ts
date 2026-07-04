@@ -85,6 +85,9 @@ export interface ExploreMetricDefinition {
   higherIsBetter: boolean
   key: ExploreMetricKey
   label: string
+  // Slow-moving metrics (weeks-scale outcomes) opt out of day-level tag
+  // comparisons, where the deltas would be coincidence rather than signal.
+  tagComparable?: boolean
   unit: string
 }
 
@@ -497,6 +500,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     higherIsBetter: true,
     key: "vo2Max",
     label: "VO2 max",
+    tagComparable: false,
     unit: "ml/kg/min"
   },
   {
@@ -560,6 +564,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     higherIsBetter: false,
     key: "cardiovascularAge",
     label: "Cardiovascular age",
+    tagComparable: false,
     unit: "yrs"
   },
   {
@@ -567,6 +572,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     higherIsBetter: false,
     key: "pulseWaveVelocity",
     label: "Pulse wave velocity",
+    tagComparable: false,
     unit: "m/s"
   },
   {
@@ -786,7 +792,11 @@ export function calculateExploreMetricImpacts(
   const taggedDays = days.filter((day) => day.matches).map((day) => day.metric)
   const otherDays = days.filter((day) => !day.matches).map((day) => day.metric)
 
-  return exploreMetricDefinitions.map((definition) => {
+  const comparableDefinitions = exploreMetricDefinitions.filter(
+    (definition) => definition.tagComparable !== false
+  )
+
+  return comparableDefinitions.map((definition) => {
     const taggedAverage = average(
       taggedDays.map((day) => day[definition.key])
     )
