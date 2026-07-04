@@ -3,9 +3,11 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 export type MetricKey =
   | "averageHrv"
   | "readinessScore"
+  | "recoveryHighMinutes"
   | "restingHeartRate"
   | "sleepEfficiency"
   | "sleepScore"
+  | "stressHighMinutes"
 
 export type PrimaryInsightMetric = "readinessScore" | "sleepScore"
 
@@ -23,6 +25,8 @@ export type ExploreMetricKey =
   | "averageHrv"
   | "averageMetMinutes"
   | "awakeMinutes"
+  | "bedtimeEndHour"
+  | "bedtimeStartHour"
   | "breathingDisturbanceIndex"
   | "cardiovascularAge"
   | "deepSleepMinutes"
@@ -142,7 +146,9 @@ const metricKeys: MetricKey[] = [
   "readinessScore",
   "averageHrv",
   "restingHeartRate",
-  "sleepEfficiency"
+  "sleepEfficiency",
+  "stressHighMinutes",
+  "recoveryHighMinutes"
 ]
 export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   {
@@ -354,6 +360,20 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     key: "restlessPeriods",
     label: "Restless periods",
     unit: "periods"
+  },
+  {
+    category: "Sleep",
+    higherIsBetter: false,
+    key: "bedtimeStartHour",
+    label: "Bedtime",
+    unit: "h"
+  },
+  {
+    category: "Sleep",
+    higherIsBetter: false,
+    key: "bedtimeEndHour",
+    label: "Wake time",
+    unit: "h"
   },
   {
     category: "Sleep",
@@ -622,6 +642,35 @@ const primaryInsightMetrics: PrimaryInsightMetric[] = [
   "sleepScore",
   "readinessScore"
 ]
+
+// Bedtime hours are derived from the stored bedtime timestamps at load time
+// so previously imported data gets them without a re-import. The bedtime
+// start hour uses a past-noon clock (00:30 becomes 24.5) so averages of
+// nights around midnight do not wrap.
+export function withDerivedMetricFields(metrics: DailyMetricRow[]) {
+  return metrics.map((metric) => ({
+    ...metric,
+    bedtimeStartHour: getClockHour(metric.bedtimeStart, true),
+    bedtimeEndHour: getClockHour(metric.bedtimeEnd, false)
+  }))
+}
+
+function getClockHour(
+  timestamp: string | null | undefined,
+  shiftPastMidnight: boolean
+) {
+  // Read the wall-clock time as written, keeping the wearer's local timezone.
+  const match = timestamp?.match(/T(\d{2}):(\d{2})/)
+
+  if (!match) {
+    return null
+  }
+
+  const hour = Number(match[1]) + Number(match[2]) / 60
+  const shiftedHour = shiftPastMidnight && hour < 12 ? hour + 24 : hour
+
+  return Math.round(shiftedHour * 10) / 10
+}
 
 export function calculateTagCorrelations(
   metrics: DailyMetricRow[],

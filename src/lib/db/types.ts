@@ -38,6 +38,9 @@ export interface DailyMetricRow {
   averageHrv: number | null
   averageMetMinutes?: number | null
   awakeMinutes?: number | null
+  // Derived at load time from bedtimeStart/bedtimeEnd, not stored.
+  bedtimeStartHour?: number | null
+  bedtimeEndHour?: number | null
   breathingDisturbanceIndex?: number | null
   cardiovascularAge?: number | null
   pulseWaveVelocity?: number | null
