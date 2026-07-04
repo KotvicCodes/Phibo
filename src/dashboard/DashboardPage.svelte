@@ -1363,8 +1363,6 @@
           calendar={exploreTagCalendar}
           options={exploreTagCalendarOptions}
           selectedRange={selectedExploreTagCalendarRange}
-          activeDate={activeExploreDay?.date ?? ""}
-          on:selectDay={(event) => selectExploreDay(event.detail)}
           on:hover={(event) => (hoveredExploreDate = event.detail)}
           on:selectRange={(event) =>
             (selectedExploreTagCalendarRange = event.detail)}

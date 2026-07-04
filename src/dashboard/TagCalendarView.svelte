@@ -1,6 +1,5 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte"
-  import type { ExploreDay } from "../lib/analysis/correlations"
   import { formatTagList } from "./tagLabels"
   import {
     tagCalendarCellLabel,
@@ -12,12 +11,10 @@
   export let calendar: ExploreTagCalendar
   export let options: ExploreTagCalendarOption[]
   export let selectedRange: string
-  export let activeDate: string
 
   const tagCalendarSquareSize = "0.78rem"
 
   const dispatch = createEventDispatcher<{
-    selectDay: ExploreDay
     hover: string
     selectRange: string
   }>()
@@ -49,7 +46,7 @@
         <span aria-hidden="true" />
         <div
           class="tag-calendar-months"
-          style={`grid-template-columns: repeat(${calendar.monthLabels.length}, ${tagCalendarSquareSize});`}
+          style={`grid-template-columns: repeat(${calendar.monthLabels.length}, minmax(0, ${tagCalendarSquareSize}));`}
         >
           {#each calendar.monthLabels as month}
             <span>{month}</span>
@@ -59,21 +56,19 @@
           <span class="tag-calendar-weekday">{row.label}</span>
           <div
             class="tag-calendar-days"
-            style={`grid-template-columns: repeat(${row.cells.length}, ${tagCalendarSquareSize});`}
+            style={`grid-template-columns: repeat(${row.cells.length}, minmax(0, ${tagCalendarSquareSize}));`}
           >
             {#each row.cells as cell}
               {#if cell.day}
                 {@const day = cell.day}
-                <button
-                  type="button"
+                <span
+                  role="img"
                   class:tagged={cell.taggedTags.length > 0}
-                  class:selected={activeDate === day.date}
                   class="tag-calendar-day"
                   aria-label={tagCalendarCellLabel(cell)}
                   title={tagCalendarCellLabel(cell)}
                   on:mouseenter={() => dispatch("hover", day.date)}
                   on:mouseleave={() => dispatch("hover", "")}
-                  on:click={() => dispatch("selectDay", day)}
                 />
               {:else if cell.date}
                 <span
@@ -181,12 +176,12 @@
   }
 
   .tag-calendar {
-    --tag-calendar-day-size: 0.78rem;
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 0.3rem 0.78rem;
     padding-top: 0.1rem;
+    min-width: 0;
   }
 
   .tag-calendar-layout {
@@ -194,7 +189,6 @@
     display: flex;
     gap: 1.15rem;
     justify-content: center;
-    overflow-x: auto;
     padding-right: 0.35rem;
     width: 100%;
   }
@@ -214,7 +208,7 @@
     gap: 0.26rem;
     line-height: 1;
     min-height: 1rem;
-    overflow-x: auto;
+    min-width: 0;
     padding-bottom: 0.18rem;
     text-transform: uppercase;
   }
@@ -228,40 +222,30 @@
   .tag-calendar-days {
     display: grid;
     gap: 0.26rem;
-    overflow-x: auto;
+    min-width: 0;
     padding-block: 0.09rem;
   }
 
   .tag-calendar-day {
-    appearance: none;
+    aspect-ratio: 1;
     background: #ebe7dd;
     border: 1px solid transparent;
     border-radius: 2px;
     box-sizing: border-box;
-    cursor: pointer;
     display: block;
-    height: var(--tag-calendar-day-size);
     line-height: 0;
+    min-width: 0;
     padding: 0;
-    width: var(--tag-calendar-day-size);
-  }
-
-  .tag-calendar-day.no-data {
-    cursor: default;
+    width: 100%;
   }
 
   .tag-calendar-day.empty {
     background: transparent;
-    cursor: default;
   }
 
   .tag-calendar-day.tagged {
     background: #1e2c64;
     border-color: #1e2c64;
-  }
-
-  .tag-calendar-day.selected {
-    box-shadow: inset 0 0 0 2px #fbf7ef, inset 0 0 0 3px #6f786f;
   }
 
   @media (max-width: 560px) {
