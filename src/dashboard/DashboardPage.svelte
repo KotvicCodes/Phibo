@@ -10,6 +10,7 @@
     getExploreMetric,
     getRankedTagInsights,
     getTagDiscoveries,
+    withDerivedMetricFields,
     type ExploreDay,
     type ExploreMetricCategory,
     type ExploreMetricKey,
@@ -353,7 +354,7 @@
     savedOuraToken = savedToken ?? null
 
     if (savedMetrics.length > 0) {
-      dailyMetrics = savedMetrics
+      dailyMetrics = withDerivedMetricFields(savedMetrics)
       tagEntries = savedTags
       importMessage = `Loaded ${savedMetrics.length} saved Oura days from local storage.`
       syncMessage = `Loaded ${savedMetrics.length} saved Oura days.`
@@ -666,7 +667,7 @@
     const savedTags = await db.tagEntries.orderBy("date").toArray()
 
     if (savedMetrics.length > 0) {
-      dailyMetrics = savedMetrics
+      dailyMetrics = withDerivedMetricFields(savedMetrics)
       tagEntries = savedTags
     }
   }
@@ -747,13 +748,27 @@
             label: "RHR",
             metric: "restingHeartRate",
             unit: "bpm"
+          },
+          {
+            helper: "high stress time difference",
+            label: "Stress",
+            metric: "stressHighMinutes",
+            unit: "min"
+          },
+          {
+            helper: "high recovery time difference",
+            label: "Recovery",
+            metric: "recoveryHighMinutes",
+            unit: "min"
           }
-        ] as const).map((stat) => ({
-          helper: stat.helper,
-          label: stat.label,
-          unit: stat.unit,
-          value: formatMetricDelta(correlation.deltas[stat.metric])
-        }))
+        ] as const)
+          .map((stat) => ({
+            helper: stat.helper,
+            label: stat.label,
+            unit: stat.unit,
+            value: formatMetricDelta(correlation.deltas[stat.metric])
+          }))
+          .filter((stat) => stat.value !== "n/a")
       : []
 
     return [
