@@ -5,10 +5,32 @@ import type {
 import { formatDelta } from "./format"
 
 export function metricAxisLabel(metric: ExploreMetricDefinition) {
-  return metric.unit === "pts" ? metric.label : `${metric.label} (${metric.unit})`
+  // Scores have no meaningful unit and bedtime hours render as clock times,
+  // so neither gets a unit suffix.
+  if (metric.unit === "pts" || metric.unit === "h") {
+    return metric.label
+  }
+
+  return `${metric.label} (${metric.unit})`
+}
+
+// Bedtime metrics store hours on a past-noon clock (00:30 is 24.5, 06:00 is
+// 30) so averages around midnight do not wrap. Display them as wall-clock
+// time instead of the raw shifted number.
+export function formatClockHour(value: number) {
+  const normalized = ((value % 24) + 24) % 24
+  const totalMinutes = Math.round(normalized * 60)
+  const hours = Math.floor(totalMinutes / 60) % 24
+  const minutes = totalMinutes % 60
+
+  return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}`
 }
 
 export function formatAxisValue(value: number, metric: ExploreMetricDefinition) {
+  if (metric.unit === "h") {
+    return formatClockHour(value)
+  }
+
   if (Math.abs(value) >= 1000) {
     return `${Math.round(value / 100) / 10}k`
   }
@@ -26,6 +48,10 @@ export function formatMetricValue(
 ) {
   if (value === null) {
     return "n/a"
+  }
+
+  if (metric.unit === "h") {
+    return formatClockHour(value)
   }
 
   const rounded =
