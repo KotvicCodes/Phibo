@@ -67,11 +67,18 @@ export function calculateOptimalDay(
     target?: OptimalTarget
     excludedTags?: string[]
     includedTags?: string[]
+    // Days used for the best/worst-days bounds. Baselines and tag deltas
+    // are anchored to `metrics` (the analysis set, which may exclude
+    // untagged days for fair tag contrasts), but the saturation bounds are
+    // physical limits: the optimal day cannot beat the user's actual best
+    // days, tagged or not. Defaults to `metrics`.
+    boundsMetrics?: DailyMetricRow[]
   } = {}
 ): OptimalDayResult {
   const target = options.target ?? "total"
   const excludedTags = new Set(options.excludedTags ?? [])
   const includedTags = new Set(options.includedTags ?? [])
+  const boundsMetrics = options.boundsMetrics ?? metrics
   const targetCategories =
     optimalTargets.find((option) => option.id === target)?.categories ?? []
   const baselines = mapCategories((key) =>
@@ -134,7 +141,7 @@ export function calculateOptimalDay(
 
   const bestDayAverages = mapCategories((key) =>
     tailAverage(
-      metrics
+      boundsMetrics
         .map((day) => day[key])
         .filter((value): value is number => value != null),
       "top"
@@ -142,7 +149,7 @@ export function calculateOptimalDay(
   )
   const worstDayAverages = mapCategories((key) =>
     tailAverage(
-      metrics
+      boundsMetrics
         .map((day) => day[key])
         .filter((value): value is number => value != null),
       "bottom"
