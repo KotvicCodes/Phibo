@@ -30,6 +30,7 @@ export interface OptimalTagContribution {
 export interface OptimalDayResult {
   target: OptimalTarget
   baselines: Record<ScoreCategory, number | null>
+  bestDayAverages: Record<ScoreCategory, number | null>
   estimates: Record<ScoreCategory, number | null>
   estimateDeltas: Record<ScoreCategory, number | null>
   contributions: OptimalTagContribution[]
@@ -75,13 +76,19 @@ export function calculateOptimalDay(
       const daysWithoutTag = metrics.filter(
         (day) => !taggedDates.has(day.date)
       )
+      // Deltas compare tagged days against ALL days, not just untagged
+      // ones. The baseline already contains the tagged days, so a
+      // tagged-vs-untagged delta would be double-counted when added back,
+      // and a near-daily tag would get a huge delta from a handful of
+      // untagged nights. Against the overall average, a tag applied to
+      // almost every day correctly contributes almost nothing.
       const deltas = mapCategories((key) => {
         const taggedAverage = average(daysWithTag.map((day) => day[key]))
-        const untaggedAverage = average(daysWithoutTag.map((day) => day[key]))
+        const overallAverage = baselines[key]
 
-        return taggedAverage === null || untaggedAverage === null
+        return taggedAverage === null || overallAverage === null
           ? null
-          : taggedAverage - untaggedAverage
+          : taggedAverage - overallAverage
       })
       const supportScore = calculateSupportScore(
         daysWithTag.length,
@@ -121,6 +128,23 @@ export function calculateOptimalDay(
     .sort((left, right) => right.targetContribution - left.targetContribution)
     .map(({ daysWithoutTag, ...contribution }) => contribution)
 
+  const bestDayAverages = mapCategories((key) =>
+    tailAverage(
+      metrics
+        .map((day) => day[key])
+        .filter((value): value is number => value != null),
+      "top"
+    )
+  )
+  const worstDayAverages = mapCategories((key) =>
+    tailAverage(
+      metrics
+        .map((day) => day[key])
+        .filter((value): value is number => value != null),
+      "bottom"
+    )
+  )
+
   const estimates = mapCategories((key) => {
     const baseline = baselines[key]
 
@@ -129,7 +153,14 @@ export function calculateOptimalDay(
     }
 
     return roundToOne(
-      clampScore(baseline + dampedContributionSum(contributions, key))
+      clampScore(
+        saturatedEstimate(
+          baseline,
+          dampedContributionSum(contributions, key),
+          bestDayAverages[key] ?? baseline,
+          worstDayAverages[key] ?? baseline
+        )
+      )
     )
   })
 
@@ -139,6 +170,11 @@ export function calculateOptimalDay(
       const baseline = baselines[key]
 
       return baseline === null ? null : roundToOne(baseline)
+    }),
+    bestDayAverages: mapCategories((key) => {
+      const bestDayAverage = bestDayAverages[key]
+
+      return bestDayAverage === null ? null : roundToOne(bestDayAverage)
     }),
     estimates,
     estimateDeltas: mapCategories((key) => {
@@ -152,6 +188,52 @@ export function calculateOptimalDay(
     contributions,
     eligibleTagCount: eligibleTags.length
   }
+}
+
+// The optimal day cannot be better than the user's actually-observed best
+// days. Contributions push the estimate toward the best-decile average with
+// exponentially diminishing returns instead of past it: small sums behave
+// like plain addition, large sums approach the ceiling asymptotically.
+// Negative sums mirror this toward the worst-decile average.
+function saturatedEstimate(
+  baseline: number,
+  contributionSum: number,
+  ceiling: number,
+  floor: number
+) {
+  if (contributionSum > 0) {
+    const headroom = ceiling - baseline
+
+    if (headroom <= 0) {
+      return baseline
+    }
+
+    return baseline + headroom * (1 - Math.exp(-contributionSum / headroom))
+  }
+
+  if (contributionSum < 0) {
+    const legroom = baseline - floor
+
+    if (legroom <= 0) {
+      return baseline
+    }
+
+    return baseline - legroom * (1 - Math.exp(contributionSum / legroom))
+  }
+
+  return baseline
+}
+
+function tailAverage(values: number[], tail: "bottom" | "top") {
+  if (values.length === 0) {
+    return null
+  }
+
+  const sorted = [...values].sort((left, right) => right - left)
+  const count = Math.max(1, Math.round(sorted.length * 0.1))
+  const slice = tail === "top" ? sorted.slice(0, count) : sorted.slice(-count)
+
+  return slice.reduce((total, value) => total + value, 0) / count
 }
 
 // Selected tags overlap heavily on the same good days, so summing their
