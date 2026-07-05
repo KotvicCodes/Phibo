@@ -17,6 +17,13 @@
     type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
+  import {
+    calculateOptimalDay,
+    OPTIMAL_MIN_TAGGED_DAYS,
+    optimalTargets,
+    scoreCategories,
+    type OptimalTarget
+  } from "../lib/analysis/optimal"
   import { db } from "../lib/db"
   import type { AuthTokenRow, DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import { OuraApiError, validateOuraToken } from "../lib/oura/client"
@@ -108,7 +115,7 @@
   }
 
   type ChartMode = "impact" | "scatter" | "timeline"
-  type DashboardView = "explore" | "insights" | "settings"
+  type DashboardView = "explore" | "insights" | "optimal" | "settings"
   type InsightComparisonMetric = keyof Pick<
     DailyMetricRow,
     "activityScore" | "readinessScore" | "sleepScore"
@@ -148,6 +155,7 @@
   let exploreChartMode: ChartMode = "impact"
   let tagSearch = ""
   let tagSortMode: TagSortMode = "alpha"
+  let optimalTarget: OptimalTarget = "total"
   let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
   let deleteDataArmed = false
@@ -186,6 +194,12 @@
     analysisDailyMetrics,
     effectiveTagEntries
   )
+  $: optimalDay = calculateOptimalDay(analysisDailyMetrics, effectiveTagEntries, {
+    target: optimalTarget
+  })
+  $: optimalTargetCategories =
+    optimalTargets.find((option) => option.id === optimalTarget)?.categories ??
+    []
   $: availableTags = sortTagsForDisplay(getAvailableTags(effectiveTagEntries))
   $: tagNightCounts = getTagNightCounts(effectiveTagEntries)
   $: sortedExploreTags =
@@ -358,6 +372,18 @@
       syncMessage = "Oura key is connected. Your data stays on this device."
     }
   })
+
+  function optimalCardTone(delta: number | null): MetricSummary["tone"] {
+    if (delta === null || delta === 0) {
+      return "steady"
+    }
+
+    return delta > 0 ? "good" : "watch"
+  }
+
+  function formatOptimalScore(value: number | null) {
+    return value === null ? "n/a" : `${Math.round(value)}`
+  }
 
   function openImportModal() {
     isImportModalOpen = true
@@ -1015,6 +1041,13 @@
     </button>
     <button
       type="button"
+      class:active={activeView === "optimal"}
+      on:click={() => (activeView = "optimal")}
+    >
+      Optimal
+    </button>
+    <button
+      type="button"
       class:active={activeView === "settings"}
       on:click={() => (activeView = "settings")}
     >
@@ -1574,6 +1607,84 @@
         </div>
       </div>
     </section>
+  {:else if activeView === "optimal"}
+    <section class="metric-grid" aria-label="Optimal day estimates">
+      {#each scoreCategories as category}
+        <article
+          class="metric-card {optimalCardTone(
+            optimalDay.estimateDeltas[category.key]
+          )}"
+          class:dimmed={!optimalTargetCategories.includes(category.key)}
+        >
+          <p>{category.label} estimate</p>
+          <strong>{formatOptimalScore(optimalDay.estimates[category.key])}</strong>
+          <small>
+            baseline {formatOptimalScore(optimalDay.baselines[category.key])}
+          </small>
+          <span>{formatNullableDelta(optimalDay.estimateDeltas[category.key])}</span>
+        </article>
+      {/each}
+    </section>
+
+    <section class="optimal-workspace">
+      <div class="analysis-panel optimal-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Optimal Day</p>
+            <h2>Your best-day tag set</h2>
+          </div>
+          <div class="segmented-control" aria-label="Optimization target">
+            {#each optimalTargets as targetOption}
+              <button
+                type="button"
+                class:active={optimalTarget === targetOption.id}
+                on:click={() => (optimalTarget = targetOption.id)}
+              >
+                {targetOption.label}
+              </button>
+            {/each}
+          </div>
+        </div>
+
+        <p class="optimal-note">
+          Estimated scores combine your baseline averages with the tags that
+          lift the selected target (Night = sleep + readiness). Only tags with
+          at least {OPTIMAL_MIN_TAGGED_DAYS} tagged nights count, so one-off
+          outliers do not skew the estimate.
+        </p>
+
+        {#if optimalDay.contributions.length > 0}
+          <div class="optimal-tag-grid">
+            {#each optimalDay.contributions as contribution}
+              <article class="correlation-card optimal-tag-card">
+                <div class="correlation-title">
+                  <h4>{formatTagLabel(contribution.tag)}</h4>
+                  <span>{contribution.daysWithTag} nights</span>
+                </div>
+                <div class="optimal-tag-deltas">
+                  {#each scoreCategories as category}
+                    <strong
+                      class="score-impact {impactTone(
+                        contribution.weightedDeltas[category.key]
+                      )}"
+                    >
+                      <span>{category.label}</span>
+                      <b>{formatDelta(contribution.weightedDeltas[category.key])}</b>
+                    </strong>
+                  {/each}
+                </div>
+              </article>
+            {/each}
+          </div>
+        {:else}
+          <p class="empty-state">
+            {hasLocalData
+              ? `No tag with ${OPTIMAL_MIN_TAGGED_DAYS}+ tagged nights lifts this target yet. Keep tagging to unlock your optimal day.`
+              : "Import your Oura data to see your optimal day."}
+          </p>
+        {/if}
+      </div>
+    </section>
   {:else}
     <section class="settings-workspace">
       <div class="settings-panel">
@@ -1731,6 +1842,7 @@
   .header,
   .view-tabs,
   .explore-workspace,
+  .optimal-workspace,
   .settings-workspace,
   .workspace,
   .metric-grid {
@@ -1901,6 +2013,51 @@
 
   .metric-card.watch {
     border-top: 4px solid #a96745;
+  }
+
+  .metric-card.dimmed {
+    opacity: 0.55;
+  }
+
+  .optimal-note {
+    color: #5d685e;
+    font-size: 0.9rem;
+    margin: 0.7rem 0 1rem;
+    max-width: 72ch;
+  }
+
+  .optimal-tag-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 0.7rem;
+  }
+
+  .optimal-tag-card {
+    cursor: default;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.55rem;
+    align-items: start;
+    min-height: 0;
+  }
+
+  .optimal-tag-card:hover {
+    transform: none;
+    background: transparent;
+    border-color: #d8d8cc;
+  }
+
+  .optimal-tag-card .correlation-title {
+    justify-content: space-between;
+  }
+
+  .optimal-tag-deltas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+  }
+
+  .optimal-tag-deltas .score-impact b {
+    font-size: 1.05rem;
   }
 
   .workspace {
