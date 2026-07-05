@@ -16,10 +16,13 @@ const fontFamily =
 
 const dayMs = 86_400_000
 
-// Days can carry many tags; let the tooltip wrap instead of running off
-// the chart, and keep it inside the canvas (confine) on small viewports.
-const tooltipCss =
-  "max-width: 280px; white-space: normal; overflow-wrap: break-word; line-height: 1.45;"
+// Days can carry many tags; wrap only the tag block so the date and metric
+// lines stay on single lines while long tag lists stay fully readable.
+function tooltipTagsHtml(tags: string[]) {
+  const label = tags.length > 0 ? formatTagList(tags) : "no tags"
+
+  return `<div style="max-width: 260px; white-space: normal; overflow-wrap: break-word; line-height: 1.45;">${label}</div>`
+}
 
 interface NiceAxisBounds {
   min: number
@@ -176,7 +179,6 @@ export function buildTimelineOption(
     tooltip: {
       trigger: "axis",
       confine: true,
-      extraCssText: tooltipCss,
       formatter: (params: Array<{ name: string }>) => {
         const date = params.find((item) => item.name)?.name
 
@@ -189,10 +191,7 @@ export function buildTimelineOption(
           day?.metric[metric.key] ?? null,
           metric
         )
-        const tags =
-          day && day.tags.length > 0 ? formatTagList(day.tags) : "no tags"
-
-        return `<strong>${formatTooltipDate(date)}</strong><br/>${metric.label}: <strong>${value}</strong><br/>${tags}`
+        return `<strong>${formatTooltipDate(date)}</strong><br/>${metric.label}: <strong>${value}</strong>${tooltipTagsHtml(day?.tags ?? [])}`
       }
     },
     xAxis: {
@@ -267,7 +266,6 @@ export function buildScatterOption(
     tooltip: {
       trigger: "item",
       confine: true,
-      extraCssText: tooltipCss,
       formatter: (params: { name: string }) => {
         const day = dayByDate.get(params.name)
 
@@ -277,9 +275,7 @@ export function buildScatterOption(
 
         const xValue = formatMetricValue(day.metric[xMetric.key] ?? null, xMetric)
         const yValue = formatMetricValue(day.metric[yMetric.key] ?? null, yMetric)
-        const tags = day.tags.length > 0 ? formatTagList(day.tags) : "no tags"
-
-        return `<strong>${formatTooltipDate(day.date)}</strong><br/>${xMetric.label}: <strong>${xValue}</strong><br/>${yMetric.label}: <strong>${yValue}</strong><br/>${tags}`
+        return `<strong>${formatTooltipDate(day.date)}</strong><br/>${xMetric.label}: <strong>${xValue}</strong><br/>${yMetric.label}: <strong>${yValue}</strong>${tooltipTagsHtml(day.tags)}`
       }
     },
     xAxis: { ...valueAxis(xMetric, xBounds), nameGap: 30 },
