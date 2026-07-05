@@ -25,6 +25,10 @@ export interface OptimalTagContribution {
   deltas: Record<ScoreCategory, number | null>
   weightedDeltas: Record<ScoreCategory, number>
   targetContribution: number
+  // Marginal effect on the summed target estimate of toggling this tag
+  // against the current selection: for selected tags the cost of removing
+  // them, for unselected tags the effect of adding them.
+  targetImpact: number
 }
 
 export interface OptimalDayResult {
@@ -168,15 +172,57 @@ export function calculateOptimalDay(
     }
   }
 
+  // The raw contribution of a tag says how it performs alone, but with the
+  // damped combination a standalone-positive tag can still hurt the final
+  // estimate. Rank each tag by its marginal effect against the current
+  // selection instead, so the UI numbers match what toggling actually does.
+  const currentTargetScore = selectionTargetScore(
+    eligibleTags,
+    selectedTags,
+    targetCategories,
+    baselines,
+    bestDayAverages,
+    worstDayAverages
+  )
+
+  const withTargetImpact = (candidate: (typeof eligibleTags)[number]) => {
+    const trial = new Set(selectedTags)
+
+    if (trial.has(candidate.tag)) {
+      trial.delete(candidate.tag)
+    } else {
+      trial.add(candidate.tag)
+    }
+
+    const trialScore = selectionTargetScore(
+      eligibleTags,
+      trial,
+      targetCategories,
+      baselines,
+      bestDayAverages,
+      worstDayAverages
+    )
+    const { daysWithoutTag, ...contribution } = candidate
+
+    return {
+      ...contribution,
+      targetImpact: roundToOne(
+        selectedTags.has(candidate.tag)
+          ? currentTargetScore - trialScore
+          : trialScore - currentTargetScore
+      )
+    }
+  }
+
   const contributions = eligibleTags
     .filter((candidate) => selectedTags.has(candidate.tag))
-    .sort((left, right) => right.targetContribution - left.targetContribution)
-    .map(({ daysWithoutTag, ...contribution }) => contribution)
+    .map(withTargetImpact)
+    .sort((left, right) => right.targetImpact - left.targetImpact)
 
   const otherEligibleTags = eligibleTags
     .filter((candidate) => !selectedTags.has(candidate.tag))
-    .sort((left, right) => right.targetContribution - left.targetContribution)
-    .map(({ daysWithoutTag, ...contribution }) => contribution)
+    .map(withTargetImpact)
+    .sort((left, right) => right.targetImpact - left.targetImpact)
 
   const estimates = mapCategories((key) => {
     const baseline = baselines[key]
@@ -300,6 +346,41 @@ function dampedSum(values: number[]) {
 // that most improves the summed target estimate, until no single change
 // helps. This keeps the default set consistent with the nonlinear damped
 // and saturated estimate the cards actually show.
+// The summed target estimate for a candidate selection, shared by the
+// optimizer and by the per-tag marginal impact numbers shown in the UI.
+function selectionTargetScore(
+  candidates: Array<{ tag: string } & Pick<OptimalTagContribution, "weightedDeltas">>,
+  selection: Set<string>,
+  targetCategories: ScoreCategory[],
+  baselines: Record<ScoreCategory, number | null>,
+  bestDayAverages: Record<ScoreCategory, number | null>,
+  worstDayAverages: Record<ScoreCategory, number | null>
+) {
+  const selected = candidates.filter((candidate) =>
+    selection.has(candidate.tag)
+  )
+
+  return targetCategories.reduce((total, key) => {
+    const baseline = baselines[key]
+
+    if (baseline === null) {
+      return total
+    }
+
+    return (
+      total +
+      clampScore(
+        saturatedEstimate(
+          baseline,
+          dampedContributionSum(selected, key),
+          bestDayAverages[key] ?? baseline,
+          worstDayAverages[key] ?? baseline
+        )
+      )
+    )
+  }, 0)
+}
+
 function optimizeSelection(
   candidates: Array<{ tag: string } & Pick<OptimalTagContribution, "weightedDeltas" | "targetContribution">>,
   targetCategories: ScoreCategory[],
@@ -307,31 +388,15 @@ function optimizeSelection(
   bestDayAverages: Record<ScoreCategory, number | null>,
   worstDayAverages: Record<ScoreCategory, number | null>
 ) {
-  const scoreSelection = (selection: Set<string>) => {
-    const selected = candidates.filter((candidate) =>
-      selection.has(candidate.tag)
+  const scoreSelection = (selection: Set<string>) =>
+    selectionTargetScore(
+      candidates,
+      selection,
+      targetCategories,
+      baselines,
+      bestDayAverages,
+      worstDayAverages
     )
-
-    return targetCategories.reduce((total, key) => {
-      const baseline = baselines[key]
-
-      if (baseline === null) {
-        return total
-      }
-
-      return (
-        total +
-        clampScore(
-          saturatedEstimate(
-            baseline,
-            dampedContributionSum(selected, key),
-            bestDayAverages[key] ?? baseline,
-            worstDayAverages[key] ?? baseline
-          )
-        )
-      )
-    }, 0)
-  }
 
   const selection = new Set(
     candidates

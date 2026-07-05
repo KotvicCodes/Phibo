@@ -1763,6 +1763,13 @@
               sits from the most optimal one.
             </li>
             <li>
+              Each tag's bar and number show what toggling it would do to the
+              target estimate right now: for included tags the points lost by
+              removing them, for the others the effect of adding them. A tag
+              that looks good on its own can still show a negative number,
+              when it mostly repeats what stronger tags already cover.
+            </li>
+            <li>
               The estimate starts at your baseline and flattens out as it
               approaches your best days average, which it can never cross.
             </li>
@@ -1798,17 +1805,17 @@
                   <span
                     class="bar-fill tagged"
                     style={`width: ${optimalTagBarWidth(
-                      contribution.targetContribution,
-                      optimalDay.contributions[0]?.targetContribution ?? 0
+                      contribution.targetImpact,
+                      optimalDay.contributions[0]?.targetImpact ?? 0
                     )}`}
                   />
                 </div>
                 <strong
                   class="optimal-tag-value {impactTone(
-                    contribution.targetContribution
+                    contribution.targetImpact
                   )}"
                 >
-                  {formatDelta(contribution.targetContribution)}
+                  {formatDelta(contribution.targetImpact)}
                 </strong>
                 <button
                   type="button"
@@ -1852,17 +1859,17 @@
                     <span
                       class="bar-fill tagged"
                       style={`width: ${optimalTagBarWidth(
-                        candidate.targetContribution,
-                        optimalDay.contributions[0]?.targetContribution ?? 0
+                        candidate.targetImpact,
+                        optimalDay.contributions[0]?.targetImpact ?? 0
                       )}`}
                     />
                   </div>
                   <strong
                     class="optimal-tag-value {impactTone(
-                      candidate.targetContribution
+                      candidate.targetImpact
                     )}"
                   >
-                    {formatDelta(candidate.targetContribution)}
+                    {formatDelta(candidate.targetImpact)}
                   </strong>
                   <button
                     type="button"
