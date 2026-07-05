@@ -1753,7 +1753,9 @@
             <li>
               Tags that lift the selected target (Night = sleep + readiness)
               are combined with diminishing returns, because they often
-              overlap on the same good days.
+              overlap on the same good days. The optimal set is then tuned so
+              that no single tag added or removed would improve the target
+              estimate.
             </li>
             <li>
               Remove tags you cannot realistically use, or add other tags from
