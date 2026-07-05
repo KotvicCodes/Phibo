@@ -233,6 +233,13 @@
     },
     {} as Record<ScoreCategory, number | null>
   )
+  // Shared bar scale across both optimal lists: the strongest positive
+  // impact and the most harmful negative impact compete for full width, so
+  // green and red bar lengths stay comparable.
+  $: optimalImpactBarMax = Math.max(
+    optimalDay.contributions[0]?.targetImpact ?? 0,
+    Math.abs(optimalDay.otherEligibleTags.at(-1)?.targetImpact ?? 0)
+  )
   $: optimalTargetCategories =
     optimalTargets.find((option) => option.id === optimalTarget)?.categories ??
     []
@@ -1853,10 +1860,12 @@
                 </div>
                 <div class="bar-track">
                   <span
-                    class="bar-fill tagged"
+                    class="bar-fill {contribution.targetImpact < 0
+                      ? 'harmful'
+                      : 'tagged'}"
                     style={`width: ${optimalTagBarWidth(
-                      contribution.targetImpact,
-                      optimalDay.contributions[0]?.targetImpact ?? 0
+                      Math.abs(contribution.targetImpact),
+                      optimalImpactBarMax
                     )}`}
                   />
                 </div>
@@ -1907,10 +1916,12 @@
                   </div>
                   <div class="bar-track">
                     <span
-                      class="bar-fill tagged"
+                      class="bar-fill {candidate.targetImpact < 0
+                        ? 'harmful'
+                        : 'tagged'}"
                       style={`width: ${optimalTagBarWidth(
-                        candidate.targetImpact,
-                        optimalDay.contributions[0]?.targetImpact ?? 0
+                        Math.abs(candidate.targetImpact),
+                        optimalImpactBarMax
                       )}`}
                     />
                   </div>
@@ -3363,6 +3374,10 @@
 
   .bar-fill.baseline {
     background: #9ca69a;
+  }
+
+  .bar-fill.harmful {
+    background: #a8423e;
   }
 
   .detail-stats {
