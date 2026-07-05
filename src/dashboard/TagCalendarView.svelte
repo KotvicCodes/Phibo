@@ -16,6 +16,7 @@
 
   const dispatch = createEventDispatcher<{
     hover: string
+    selectDay: string
     selectRange: string
   }>()
 </script>
@@ -61,14 +62,15 @@
             {#each row.cells as cell}
               {#if cell.day}
                 {@const day = cell.day}
-                <span
-                  role="img"
+                <button
+                  type="button"
                   class:tagged={cell.taggedTags.length > 0}
                   class="tag-calendar-day"
                   aria-label={tagCalendarCellLabel(cell)}
                   title={tagCalendarCellLabel(cell)}
                   on:mouseenter={() => dispatch("hover", day.date)}
                   on:mouseleave={() => dispatch("hover", "")}
+                  on:click={() => dispatch("selectDay", day.date)}
                 />
               {:else if cell.date}
                 <span
@@ -241,6 +243,12 @@
 
   .tag-calendar-day.empty {
     background: transparent;
+  }
+
+  button.tag-calendar-day {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
   }
 
   .tag-calendar-day.tagged {
