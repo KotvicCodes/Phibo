@@ -1657,15 +1657,29 @@
           </div>
         </div>
 
-        <p class="optimal-note">
-          Estimated scores combine your baseline averages with tags that lift
-          the selected target (Night = sleep + readiness), compared against
-          your typical day. Estimates flatten out as they approach your best
-          days — the average of your top 10% of days — since no tag combination
-          can beat your actual best data. Only tags with at least
-          {OPTIMAL_MIN_TAGGED_DAYS} tagged nights count, so one-off outliers do
-          not skew the estimate.
-        </p>
+        <details class="optimal-method">
+          <summary>How the estimate works</summary>
+          <ul>
+            <li>
+              Baseline is your average score across all days; best days is the
+              average of your top 10% of days.
+            </li>
+            <li>
+              Each tag's impact compares its tagged days with your typical
+              day. Only tags with at least {OPTIMAL_MIN_TAGGED_DAYS} tagged
+              nights count, so one-off outliers do not skew the estimate.
+            </li>
+            <li>
+              Tags that lift the selected target (Night = sleep + readiness)
+              are combined with diminishing returns, because they often
+              overlap on the same good days.
+            </li>
+            <li>
+              The estimate flattens out as it approaches your best days — no
+              tag combination can beat your actual best data.
+            </li>
+          </ul>
+        </details>
 
         {#if optimalDay.contributions.length > 0}
           <div class="optimal-tag-list">
@@ -2041,11 +2055,47 @@
     opacity: 0.55;
   }
 
-  .optimal-note {
-    color: #5d685e;
-    font-size: 0.9rem;
+  .optimal-method {
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
     margin: 0.7rem 0 1rem;
-    max-width: 72ch;
+  }
+
+  .optimal-method summary {
+    color: #4f5f53;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 800;
+    list-style: none;
+    padding: 0.55rem 0.9rem;
+  }
+
+  .optimal-method summary::marker {
+    content: "";
+  }
+
+  .optimal-method summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .optimal-method summary::after {
+    color: #6f786f;
+    content: "+";
+    float: right;
+    font-weight: 900;
+  }
+
+  .optimal-method[open] summary::after {
+    content: "–";
+  }
+
+  .optimal-method ul {
+    color: #5d685e;
+    display: grid;
+    font-size: 0.85rem;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0 0.9rem 0.75rem 2rem;
   }
 
   .workspace {
