@@ -210,12 +210,13 @@
   $: optimalDayFull = calculateOptimalDay(
     analysisDailyMetrics,
     effectiveTagEntries,
-    { target: optimalTarget }
+    { target: optimalTarget, boundsMetrics: dailyMetrics }
   )
   $: optimalDay = calculateOptimalDay(analysisDailyMetrics, effectiveTagEntries, {
     target: optimalTarget,
     excludedTags: optimalExcludedTags,
-    includedTags: optimalIncludedTags
+    includedTags: optimalIncludedTags,
+    boundsMetrics: dailyMetrics
   })
   $: optimalHasOverrides =
     optimalExcludedTags.length > 0 || optimalIncludedTags.length > 0
@@ -1796,11 +1797,13 @@
           <ul>
             <li>Baseline is your average score across all imported days.</li>
             <li>
-              Best days is the average score of your top 10% of days in that
-              category. If you have 900 days of data, it is the average of
-              your 90 highest sleep, readiness, or activity scores. It acts as
-              a realistic ceiling for the estimate, because your optimal day
-              cannot be better than the best days you have actually recorded.
+              Best days is the average score of your top 10% of all imported
+              days in that category, tagged or not, even when untagged days
+              are excluded from the analysis. If you have 900 days of data,
+              it is the average of your 90 highest sleep, readiness, or
+              activity scores. It acts as a realistic ceiling for the
+              estimate, because your optimal day cannot be better than the
+              best days you have actually recorded.
             </li>
             <li>
               Each tag's impact compares its tagged days with your typical
