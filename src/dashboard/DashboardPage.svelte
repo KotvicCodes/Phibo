@@ -1675,9 +1675,13 @@
         <details class="optimal-method">
           <summary>How the estimate works</summary>
           <ul>
+            <li>Baseline is your average score across all imported days.</li>
             <li>
-              Baseline is your average score across all days; best days is the
-              average of your top 10% of days.
+              Best days is the average score of your top 10% of days in that
+              category. If you have 900 days of data, it is the average of
+              your 90 highest sleep, readiness, or activity scores. It acts as
+              a realistic ceiling for the estimate, because your optimal day
+              cannot be better than the best days you have actually recorded.
             </li>
             <li>
               Each tag's impact compares its tagged days with your typical
@@ -1690,8 +1694,8 @@
               overlap on the same good days.
             </li>
             <li>
-              The estimate flattens out as it approaches your best days — no
-              tag combination can beat your actual best data.
+              The estimate starts at your baseline and flattens out as it
+              approaches your best days average, which it can never cross.
             </li>
           </ul>
         </details>
