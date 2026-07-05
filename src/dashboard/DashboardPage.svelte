@@ -136,6 +136,7 @@
     { id: "alpha", label: "A–Z" },
     { id: "count", label: "Most tagged" }
   ]
+  const activeViewSettingKey = "phibo.activeView"
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const showTagCountsSettingKey = "phibo.showTagCounts"
@@ -376,6 +377,7 @@
     createSummary("Activity", "activityScore", analysisDailyMetrics)
   ]
   onMount(async () => {
+    activeView = getSavedActiveView()
     excludeUntaggedDays =
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
     showTagCounts = localStorage.getItem(showTagCountsSettingKey) === "true"
@@ -629,6 +631,26 @@
     const savedMode = localStorage.getItem(tagTimingModeSettingKey)
 
     return isTagTimingMode(savedMode) ? savedMode : "morning"
+  }
+
+  function setActiveView(view: DashboardView) {
+    activeView = view
+    localStorage.setItem(activeViewSettingKey, view)
+  }
+
+  function getSavedActiveView(): DashboardView {
+    const savedView = localStorage.getItem(activeViewSettingKey)
+
+    return isDashboardView(savedView) ? savedView : "insights"
+  }
+
+  function isDashboardView(value: string | null): value is DashboardView {
+    return (
+      value === "explore" ||
+      value === "insights" ||
+      value === "optimal" ||
+      value === "settings"
+    )
   }
 
   function isTagTimingMode(value: string | null): value is TagTimingMode {
@@ -1092,28 +1114,28 @@
     <button
       type="button"
       class:active={activeView === "insights"}
-      on:click={() => (activeView = "insights")}
+      on:click={() => setActiveView("insights")}
     >
       Insights
     </button>
     <button
       type="button"
       class:active={activeView === "explore"}
-      on:click={() => (activeView = "explore")}
+      on:click={() => setActiveView("explore")}
     >
       Explore
     </button>
     <button
       type="button"
       class:active={activeView === "optimal"}
-      on:click={() => (activeView = "optimal")}
+      on:click={() => setActiveView("optimal")}
     >
       Optimal
     </button>
     <button
       type="button"
       class:active={activeView === "settings"}
-      on:click={() => (activeView = "settings")}
+      on:click={() => setActiveView("settings")}
     >
       Settings
     </button>
