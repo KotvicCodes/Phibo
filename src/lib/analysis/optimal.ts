@@ -34,6 +34,7 @@ export interface OptimalDayResult {
   estimates: Record<ScoreCategory, number | null>
   estimateDeltas: Record<ScoreCategory, number | null>
   contributions: OptimalTagContribution[]
+  otherEligibleTags: OptimalTagContribution[]
   eligibleTagCount: number
 }
 
@@ -58,10 +59,15 @@ export const optimalTargets: OptimalTargetOption[] = [
 export function calculateOptimalDay(
   metrics: DailyMetricRow[],
   tags: TagEntryRow[],
-  options: { target?: OptimalTarget; excludedTags?: string[] } = {}
+  options: {
+    target?: OptimalTarget
+    excludedTags?: string[]
+    includedTags?: string[]
+  } = {}
 ): OptimalDayResult {
   const target = options.target ?? "total"
   const excludedTags = new Set(options.excludedTags ?? [])
+  const includedTags = new Set(options.includedTags ?? [])
   const targetCategories =
     optimalTargets.find((option) => option.id === target)?.categories ?? []
   const baselines = mapCategories((key) =>
@@ -69,7 +75,6 @@ export function calculateOptimalDay(
   )
 
   const eligibleTags = Array.from(groupTagsByName(tags).entries())
-    .filter(([tag]) => !excludedTags.has(tag))
     .map(([tag, dates]) => {
       const taggedDates = new Set(dates)
       const daysWithTag = metrics.filter((day) => taggedDates.has(day.date))
@@ -123,8 +128,20 @@ export function calculateOptimalDay(
         candidate.daysWithoutTag >= OPTIMAL_MIN_UNTAGGED_DAYS
     )
 
+  // Default selection picks every tag that lifts the target. User overrides
+  // adjust it both ways: excluded tags drop out even when helpful, included
+  // tags stay in even when they hurt, so "what if" estimates stay honest.
+  const isSelected = (candidate: { tag: string; targetContribution: number }) =>
+    includedTags.has(candidate.tag) ||
+    (candidate.targetContribution > 0 && !excludedTags.has(candidate.tag))
+
   const contributions = eligibleTags
-    .filter((candidate) => candidate.targetContribution > 0)
+    .filter(isSelected)
+    .sort((left, right) => right.targetContribution - left.targetContribution)
+    .map(({ daysWithoutTag, ...contribution }) => contribution)
+
+  const otherEligibleTags = eligibleTags
+    .filter((candidate) => !isSelected(candidate))
     .sort((left, right) => right.targetContribution - left.targetContribution)
     .map(({ daysWithoutTag, ...contribution }) => contribution)
 
@@ -186,6 +203,7 @@ export function calculateOptimalDay(
         : roundToOne(estimate - baseline)
     }),
     contributions,
+    otherEligibleTags,
     eligibleTagCount: eligibleTags.length
   }
 }
