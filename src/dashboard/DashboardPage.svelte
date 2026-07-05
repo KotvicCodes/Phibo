@@ -18,13 +18,9 @@
     type TagInsight
   } from "../lib/analysis/correlations"
   import { db } from "../lib/db"
-  import type { AuthTokenRow, DailyMetricRow } from "../lib/db/types"
+  import type { AuthTokenRow, DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import { OuraApiError, validateOuraToken } from "../lib/oura/client"
   import { importOuraFiles, OuraImportError } from "../lib/oura/import"
-  import {
-    sampleDailyMetrics,
-    sampleTagEntries
-  } from "../lib/oura/sampleData"
   import { syncOuraRange } from "../lib/oura/sync"
   import {
     average,
@@ -161,7 +157,7 @@
   let showTagCounts = false
   let openExploreImpactCategories: ExploreMetricCategory[] = []
   let hoveredExploreDate = ""
-  let dailyMetrics = sampleDailyMetrics
+  let dailyMetrics: DailyMetricRow[] = []
   let endDate = formatInputDate(new Date())
   let importMessage = "Import your Oura personal data export to begin."
   let isImportModalOpen = false
@@ -175,11 +171,11 @@
   let selectedXMetric: ExploreMetricKey = "sleepScore"
   let selectedYMetric: ExploreMetricKey = "readinessScore"
   let startDate = formatInputDate(daysAgo(30))
-  let syncMessage = "Sample data is showing until your first sync."
+  let syncMessage = "Connect an Oura key or import an export to begin."
   let tagTimingMode: TagTimingMode = "morning"
-  let tagEntries = sampleTagEntries
+  let tagEntries: TagEntryRow[] = []
 
-  $: hasLocalData = dailyMetrics !== sampleDailyMetrics
+  $: hasLocalData = dailyMetrics.length > 0
   $: effectiveTagEntries = getEffectiveTagEntries(tagEntries, tagTimingMode)
   $: taggedMetricDates = getTaggedMetricDates(effectiveTagEntries)
   $: analysisDailyMetrics = excludeUntaggedDays
@@ -516,7 +512,7 @@
     isEditingToken = false
     syncMessage = savedOuraToken
       ? "Oura key is connected. Your data stays on this device."
-      : "Sample data is showing until your first sync."
+      : "Connect an Oura key or import an export to begin."
   }
 
   function updateExcludeUntaggedDays(event: Event) {
@@ -644,8 +640,8 @@
         }
       )
 
-      dailyMetrics = sampleDailyMetrics
-      tagEntries = sampleTagEntries
+      dailyMetrics = []
+      tagEntries = []
       exploreTagsInitialized = false
       importMessage = "Import your Oura personal data export to begin."
       deleteDataMessage = "All imported Oura data was deleted from this device."
