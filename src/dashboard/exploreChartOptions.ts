@@ -4,7 +4,7 @@ import type {
 } from "../lib/analysis/correlations"
 import type { EChartsCoreOption } from "./echarts"
 import { formatAxisValue, formatMetricValue, metricAxisLabel } from "./exploreCharts"
-import { formatTagList } from "./tagLabels"
+import { formatTagLabel, sortTagsForDisplay } from "./tagLabels"
 
 const textColor = "#6f786f"
 const gridColor = "rgba(207, 210, 196, 0.56)"
@@ -17,11 +17,20 @@ const fontFamily =
 const dayMs = 86_400_000
 
 // Days can carry many tags; wrap only the tag block so the date and metric
-// lines stay on single lines while long tag lists stay fully readable.
+// lines stay on single lines. Line breaks happen between tags, never inside
+// a tag name.
 function tooltipTagsHtml(tags: string[]) {
-  const label = tags.length > 0 ? formatTagList(tags) : "no tags"
+  const label =
+    tags.length > 0
+      ? sortTagsForDisplay(tags)
+          .map(
+            (tag) =>
+              `<span style="white-space: nowrap;">${formatTagLabel(tag)}</span>`
+          )
+          .join(", ")
+      : "no tags"
 
-  return `<div style="max-width: 260px; white-space: normal; overflow-wrap: break-word; line-height: 1.45;">${label}</div>`
+  return `<div style="max-width: 260px; white-space: normal; line-height: 1.45;">${label}</div>`
 }
 
 interface NiceAxisBounds {
