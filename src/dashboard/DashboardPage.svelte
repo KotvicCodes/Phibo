@@ -167,7 +167,6 @@
   let optimalExcludedTags: string[] = []
   let optimalIncludedTags: string[] = []
   let selectedExploreTagCalendarRange = "last365"
-  let exploreTagsInitialized = false
   let deleteDataArmed = false
   let isDeletingData = false
   let deleteDataMessage = ""
@@ -255,14 +254,6 @@
         tag.toLocaleLowerCase().includes(query)
     )
   })()
-  $: if (!exploreTagsInitialized && availableTags.length > 0) {
-    const preferredTags = ["dark bedroom", "cool room"].filter((tag) =>
-      availableTags.includes(tag)
-    )
-    selectedExploreTags =
-      preferredTags.length > 0 ? preferredTags : availableTags.slice(0, 1)
-    exploreTagsInitialized = true
-  }
   $: {
     const validExploreTags = selectedExploreTags.filter((tag) =>
       availableTags.includes(tag)
@@ -466,7 +457,6 @@
       const result = await importOuraFiles(files)
 
       await loadLocalOuraData()
-      exploreTagsInitialized = false
       const skippedParts = [
         result.skippedFiles > 0
           ? `${result.skippedFiles} unreadable files`
@@ -566,7 +556,6 @@
     const lastSyncedAt = new Date().toISOString()
 
     await loadLocalOuraData()
-    exploreTagsInitialized = false
     syncMessage = `Synced ${result.dailyMetrics.length} days and ${result.tagEntries.length} tags.`
 
     if (savedOuraToken) {
@@ -728,7 +717,6 @@
 
       dailyMetrics = []
       tagEntries = []
-      exploreTagsInitialized = false
       importMessage = "Import your Oura personal data export to begin."
       deleteDataMessage = "All imported Oura data was deleted from this device."
     } catch {
