@@ -1,8 +1,4 @@
-import type {
-  ExploreDay,
-  ExploreMetricKey,
-  PrimaryInsightMetric
-} from "../lib/analysis/correlations"
+import type { PrimaryInsightMetric } from "../lib/analysis/correlations"
 
 export function formatInputDate(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -67,41 +63,6 @@ export function average(values: Array<number | null | undefined>) {
     usableValues.reduce((total, value) => total + value, 0) /
     usableValues.length
   )
-}
-
-export function scaleNumber(
-  value: number,
-  extent: readonly [number, number],
-  outputMin: number,
-  outputMax: number
-) {
-  const [inputMin, inputMax] = extent
-
-  return (
-    outputMin +
-    ((value - inputMin) / (inputMax - inputMin)) * (outputMax - outputMin)
-  )
-}
-
-export function metricExtent(days: ExploreDay[], metric: ExploreMetricKey) {
-  const values = days
-    .map((day) => day.metric[metric])
-    .filter((value): value is number => value !== null)
-
-  if (values.length === 0) {
-    return [0, 1] as const
-  }
-
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-
-  if (min === max) {
-    return [min - 1, max + 1] as const
-  }
-
-  const padding = (max - min) * 0.08
-
-  return [min - padding, max + padding] as const
 }
 
 export function formatDelta(value: number) {
