@@ -86,6 +86,11 @@ export type ExploreMetricCategory = "Activity" | "Health" | "Readiness" | "Sleep
 
 export interface ExploreMetricDefinition {
   category: ExploreMetricCategory
+  // Hard bounds for chart axes: the axis range never extends past these,
+  // regardless of padding or tick rounding. Left unset for signed deltas
+  // and past-noon clock hours, which are legitimately unbounded.
+  domainMax?: number
+  domainMin?: number
   higherIsBetter: boolean
   key: ExploreMetricKey
   label: string
@@ -153,6 +158,8 @@ const metricKeys: MetricKey[] = [
 export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepScore",
     label: "Sleep score",
@@ -160,6 +167,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessScore",
     label: "Readiness",
@@ -167,6 +176,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityScore",
     label: "Activity",
@@ -174,6 +185,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "activeCalories",
     label: "Active calories",
@@ -181,6 +193,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "totalCalories",
     label: "Total calories",
@@ -188,6 +201,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "targetCalories",
     label: "Target calories",
@@ -195,6 +209,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "steps",
     label: "Steps",
@@ -202,6 +217,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "equivalentWalkingDistance",
     label: "Walking distance",
@@ -209,6 +225,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "averageMetMinutes",
     label: "Avg MET",
@@ -216,6 +233,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "highActivityMetMinutes",
     label: "High MET min",
@@ -223,6 +241,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "mediumActivityMetMinutes",
     label: "Medium MET min",
@@ -230,6 +249,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "highActivityMinutes",
     label: "High activity",
@@ -237,6 +257,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "mediumActivityMinutes",
     label: "Medium activity",
@@ -244,6 +265,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "lowActivityMinutes",
     label: "Low activity",
@@ -251,6 +273,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: false,
     key: "sedentaryMinutes",
     label: "Sedentary",
@@ -258,6 +281,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: false,
     key: "nonWearMinutes",
     label: "Non-wear",
@@ -265,6 +289,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "restingMinutes",
     label: "Resting",
@@ -272,6 +297,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMin: 0,
     higherIsBetter: true,
     key: "averageHrv",
     label: "HRV",
@@ -279,6 +305,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMin: 0,
     higherIsBetter: false,
     key: "averageHeartRate",
     label: "Avg sleep HR",
@@ -286,6 +313,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMin: 0,
     higherIsBetter: false,
     key: "restingHeartRate",
     label: "Resting HR",
@@ -293,6 +321,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMin: 0,
     higherIsBetter: true,
     key: "averageBreath",
     label: "Breathing rate",
@@ -300,6 +329,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepEfficiency",
     label: "Sleep efficiency",
@@ -307,6 +338,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: false,
     key: "sleepLatencyMinutes",
     label: "Latency",
@@ -314,6 +346,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: true,
     key: "deepSleepMinutes",
     label: "Deep sleep",
@@ -321,6 +354,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: true,
     key: "lightSleepMinutes",
     label: "Light sleep",
@@ -328,6 +362,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: true,
     key: "remSleepMinutes",
     label: "REM sleep",
@@ -335,6 +370,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: true,
     key: "totalSleepMinutes",
     label: "Total sleep",
@@ -342,6 +378,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: false,
     key: "awakeMinutes",
     label: "Awake time",
@@ -349,6 +386,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: false,
     key: "timeInBedMinutes",
     label: "Time in bed",
@@ -356,6 +394,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMin: 0,
     higherIsBetter: false,
     key: "restlessPeriods",
     label: "Restless periods",
@@ -391,6 +430,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorDeepSleep",
     label: "Deep contributor",
@@ -398,6 +439,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorEfficiency",
     label: "Efficiency contributor",
@@ -405,6 +448,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorLatency",
     label: "Latency contributor",
@@ -412,6 +457,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorRemSleep",
     label: "REM contributor",
@@ -419,6 +466,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorRestfulness",
     label: "Restfulness contributor",
@@ -426,6 +475,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorTiming",
     label: "Timing contributor",
@@ -433,6 +484,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "sleepContributorTotalSleep",
     label: "Total sleep contributor",
@@ -440,6 +493,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorActivityBalance",
     label: "Activity balance",
@@ -447,6 +502,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorBodyTemperature",
     label: "Body temp contributor",
@@ -454,6 +511,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorHrvBalance",
     label: "HRV balance",
@@ -461,6 +520,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorPreviousDayActivity",
     label: "Prev day activity",
@@ -468,6 +529,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorPreviousNight",
     label: "Previous night",
@@ -475,6 +538,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorRecoveryIndex",
     label: "Recovery index",
@@ -482,6 +547,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorRestingHeartRate",
     label: "RHR contributor",
@@ -489,6 +556,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Readiness",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "readinessContributorSleepBalance",
     label: "Sleep balance",
@@ -496,6 +565,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "workoutCount",
     label: "Workouts",
@@ -503,6 +573,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "workoutMinutes",
     label: "Workout time",
@@ -510,6 +581,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMin: 0,
     higherIsBetter: true,
     key: "workoutCalories",
     label: "Workout calories",
@@ -517,6 +589,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: true,
     key: "vo2Max",
     label: "VO2 max",
@@ -525,6 +598,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "spo2AveragePercentage",
     label: "Blood oxygen",
@@ -532,6 +607,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: false,
     key: "breathingDisturbanceIndex",
     label: "Breathing disturbance",
@@ -539,6 +615,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: false,
     key: "stressHighMinutes",
     label: "Stress high",
@@ -546,6 +623,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: true,
     key: "recoveryHighMinutes",
     label: "Recovery high",
@@ -553,6 +631,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: true,
     key: "resilienceLevelScore",
     label: "Resilience level",
@@ -560,6 +639,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "resilienceContributorSleepRecovery",
     label: "Sleep recovery",
@@ -567,6 +648,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "resilienceContributorDaytimeRecovery",
     label: "Daytime recovery",
@@ -574,6 +657,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "resilienceContributorStress",
     label: "Stress resilience",
@@ -581,6 +666,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: false,
     key: "cardiovascularAge",
     label: "Cardiovascular age",
@@ -589,6 +675,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    domainMin: 0,
     higherIsBetter: false,
     key: "pulseWaveVelocity",
     label: "Pulse wave velocity",
@@ -597,6 +684,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorMeetDailyTargets",
     label: "Meet targets",
@@ -604,6 +693,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorMoveEveryHour",
     label: "Move hourly",
@@ -611,6 +702,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorRecoveryTime",
     label: "Recovery time",
@@ -618,6 +711,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorStayActive",
     label: "Stay active",
@@ -625,6 +720,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorTrainingFrequency",
     label: "Training frequency",
@@ -632,6 +729,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    domainMax: 100,
+    domainMin: 0,
     higherIsBetter: true,
     key: "activityContributorTrainingVolume",
     label: "Training volume",
