@@ -373,24 +373,12 @@
     }
   })
 
-  function scoreRangeTone(value: number | null) {
-    if (value === null) {
-      return "score-neutral"
+  function optimalCardTone(delta: number | null): MetricSummary["tone"] {
+    if (delta === null || delta === 0) {
+      return "steady"
     }
 
-    if (value >= 85) {
-      return "score-excellent"
-    }
-
-    if (value >= 78) {
-      return "score-good"
-    }
-
-    if (value >= 70) {
-      return "score-fair"
-    }
-
-    return "score-poor"
+    return delta > 0 ? "good" : "watch"
   }
 
   function formatOptimalScore(value: number | null) {
@@ -1631,8 +1619,8 @@
     <section class="metric-grid" aria-label="Optimal day estimates">
       {#each scoreCategories as category}
         <article
-          class="metric-card {scoreRangeTone(
-            optimalDay.estimates[category.key]
+          class="metric-card {optimalCardTone(
+            optimalDay.estimateDeltas[category.key]
           )}"
           class:dimmed={!optimalTargetCategories.includes(category.key)}
         >
@@ -2065,42 +2053,6 @@
 
   .metric-card.dimmed {
     opacity: 0.55;
-  }
-
-  .metric-card.score-excellent {
-    border-top: 4px solid #1e2c64;
-  }
-
-  .metric-card.score-excellent strong {
-    color: #1e2c64;
-  }
-
-  .metric-card.score-good {
-    border-top: 4px solid #4f8a63;
-  }
-
-  .metric-card.score-good strong {
-    color: #3f7b54;
-  }
-
-  .metric-card.score-fair {
-    border-top: 4px solid #b46b3f;
-  }
-
-  .metric-card.score-fair strong {
-    color: #b46b3f;
-  }
-
-  .metric-card.score-poor {
-    border-top: 4px solid #a8423e;
-  }
-
-  .metric-card.score-poor strong {
-    color: #a8423e;
-  }
-
-  .metric-card.score-neutral {
-    border-top: 4px solid #587a96;
   }
 
   .optimal-method {
