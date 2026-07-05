@@ -91,9 +91,16 @@
     detail: string
     label: string
     delta: string
-    tone: "good" | "steady" | "watch"
+    tone: ScoreRangeTone
     value: string
   }
+
+  type ScoreRangeTone =
+    | "score-excellent"
+    | "score-fair"
+    | "score-good"
+    | "score-neutral"
+    | "score-poor"
 
   interface MetricComparison {
     baselineAverage: number | null
@@ -372,14 +379,6 @@
       syncMessage = "Oura key is connected. Your data stays on this device."
     }
   })
-
-  function optimalCardTone(delta: number | null): MetricSummary["tone"] {
-    if (delta === null || delta === 0) {
-      return "steady"
-    }
-
-    return delta > 0 ? "good" : "watch"
-  }
 
   function formatOptimalScore(value: number | null) {
     return value === null ? "n/a" : `${Math.round(value)}`
@@ -723,7 +722,7 @@
       label,
       value: value === null ? "n/a" : `${Math.round(value)}`,
       delta: formatScoreTrend(trend),
-      tone: trendTone(trend)
+      tone: scoreRangeTone(value)
     }
   }
 
@@ -749,12 +748,28 @@
     return Math.round((currentAverage - previousAverage) * 10) / 10
   }
 
-  function trendTone(value: number | null): MetricSummary["tone"] {
-    if (value === null || Math.abs(value) < 1) {
-      return "steady"
+  // Tone thresholds compare the same rounded value the card displays, so a
+  // shown 85 is always blue even when the raw estimate is 84.6.
+  function scoreRangeTone(value: number | null): ScoreRangeTone {
+    if (value === null) {
+      return "score-neutral"
     }
 
-    return value > 0 ? "good" : "watch"
+    const displayedScore = Math.round(value)
+
+    if (displayedScore >= 85) {
+      return "score-excellent"
+    }
+
+    if (displayedScore >= 78) {
+      return "score-good"
+    }
+
+    if (displayedScore >= 70) {
+      return "score-fair"
+    }
+
+    return "score-poor"
   }
 
   function createInsightStats(
@@ -1619,8 +1634,8 @@
     <section class="metric-grid" aria-label="Optimal day estimates">
       {#each scoreCategories as category}
         <article
-          class="metric-card {optimalCardTone(
-            optimalDay.estimateDeltas[category.key]
+          class="metric-card {scoreRangeTone(
+            optimalDay.estimates[category.key]
           )}"
           class:dimmed={!optimalTargetCategories.includes(category.key)}
         >
@@ -2039,16 +2054,24 @@
     margin-top: 0.45rem;
   }
 
-  .metric-card.good {
+  .metric-card.score-excellent {
+    border-top: 4px solid #1e2c64;
+  }
+
+  .metric-card.score-good {
     border-top: 4px solid #4f8a63;
   }
 
-  .metric-card.steady {
-    border-top: 4px solid #587a96;
+  .metric-card.score-fair {
+    border-top: 4px solid #b46b3f;
   }
 
-  .metric-card.watch {
-    border-top: 4px solid #a96745;
+  .metric-card.score-poor {
+    border-top: 4px solid #a8423e;
+  }
+
+  .metric-card.score-neutral {
+    border-top: 4px solid #587a96;
   }
 
   .metric-card.dimmed {
