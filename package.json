@@ -1,7 +1,7 @@
 {
   "name": "phibo",
   "displayName": "Phibo",
-  "version": "0.1.15",
+  "version": "0.2.0",
   "description": "Minimal Plasmo browser extension with a popup and dashboard page.",
   "private": true,
   "scripts": {
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "dexie": "^4.4.2",
+    "echarts": "^6.1.0",
     "jszip": "^3.10.1",
     "papaparse": "^5.5.3",
     "plasmo": "^0.90.5",
