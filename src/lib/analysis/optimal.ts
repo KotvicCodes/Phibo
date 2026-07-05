@@ -128,23 +128,6 @@ export function calculateOptimalDay(
         candidate.daysWithoutTag >= OPTIMAL_MIN_UNTAGGED_DAYS
     )
 
-  // Default selection picks every tag that lifts the target. User overrides
-  // adjust it both ways: excluded tags drop out even when helpful, included
-  // tags stay in even when they hurt, so "what if" estimates stay honest.
-  const isSelected = (candidate: { tag: string; targetContribution: number }) =>
-    includedTags.has(candidate.tag) ||
-    (candidate.targetContribution > 0 && !excludedTags.has(candidate.tag))
-
-  const contributions = eligibleTags
-    .filter(isSelected)
-    .sort((left, right) => right.targetContribution - left.targetContribution)
-    .map(({ daysWithoutTag, ...contribution }) => contribution)
-
-  const otherEligibleTags = eligibleTags
-    .filter((candidate) => !isSelected(candidate))
-    .sort((left, right) => right.targetContribution - left.targetContribution)
-    .map(({ daysWithoutTag, ...contribution }) => contribution)
-
   const bestDayAverages = mapCategories((key) =>
     tailAverage(
       metrics
@@ -161,6 +144,39 @@ export function calculateOptimalDay(
       "bottom"
     )
   )
+
+  // The default set is optimized against the actual estimate, not a naive
+  // "every positive contribution" rule, so no single tag added or removed
+  // could improve the target estimate. User overrides then adjust it both
+  // ways: excluded tags drop out even when helpful, included tags stay in
+  // even when they hurt, so "what if" estimates stay honest.
+  const selectedTags = optimizeSelection(
+    eligibleTags,
+    targetCategories,
+    baselines,
+    bestDayAverages,
+    worstDayAverages
+  )
+
+  for (const tag of excludedTags) {
+    selectedTags.delete(tag)
+  }
+
+  for (const candidate of eligibleTags) {
+    if (includedTags.has(candidate.tag)) {
+      selectedTags.add(candidate.tag)
+    }
+  }
+
+  const contributions = eligibleTags
+    .filter((candidate) => selectedTags.has(candidate.tag))
+    .sort((left, right) => right.targetContribution - left.targetContribution)
+    .map(({ daysWithoutTag, ...contribution }) => contribution)
+
+  const otherEligibleTags = eligibleTags
+    .filter((candidate) => !selectedTags.has(candidate.tag))
+    .sort((left, right) => right.targetContribution - left.targetContribution)
+    .map(({ daysWithoutTag, ...contribution }) => contribution)
 
   const estimates = mapCategories((key) => {
     const baseline = baselines[key]
@@ -257,15 +273,108 @@ function tailAverage(values: number[], tail: "bottom" | "top") {
 // Selected tags overlap heavily on the same good days, so summing their
 // deltas would double-count. Harmonic rank damping keeps the strongest
 // signal at full weight and gives correlated extras diminishing returns.
+// Positive and negative values are damped separately: a large negative
+// delta must not steal a top rank and demote every positive contribution.
 function dampedContributionSum(
-  contributions: OptimalTagContribution[],
+  contributions: Array<Pick<OptimalTagContribution, "weightedDeltas">>,
   key: ScoreCategory
 ) {
-  return contributions
+  const values = contributions
     .map((contribution) => contribution.weightedDeltas[key])
     .filter((value) => value !== 0)
+
+  return (
+    dampedSum(values.filter((value) => value > 0)) +
+    dampedSum(values.filter((value) => value < 0))
+  )
+}
+
+function dampedSum(values: number[]) {
+  return values
     .sort((left, right) => Math.abs(right) - Math.abs(left))
     .reduce((total, value, index) => total + value / (index + 1), 0)
+}
+
+// Greedy local search over the eligible tags: starting from every tag with
+// a positive raw contribution, repeatedly apply the single add or remove
+// that most improves the summed target estimate, until no single change
+// helps. This keeps the default set consistent with the nonlinear damped
+// and saturated estimate the cards actually show.
+function optimizeSelection(
+  candidates: Array<{ tag: string } & Pick<OptimalTagContribution, "weightedDeltas" | "targetContribution">>,
+  targetCategories: ScoreCategory[],
+  baselines: Record<ScoreCategory, number | null>,
+  bestDayAverages: Record<ScoreCategory, number | null>,
+  worstDayAverages: Record<ScoreCategory, number | null>
+) {
+  const scoreSelection = (selection: Set<string>) => {
+    const selected = candidates.filter((candidate) =>
+      selection.has(candidate.tag)
+    )
+
+    return targetCategories.reduce((total, key) => {
+      const baseline = baselines[key]
+
+      if (baseline === null) {
+        return total
+      }
+
+      return (
+        total +
+        clampScore(
+          saturatedEstimate(
+            baseline,
+            dampedContributionSum(selected, key),
+            bestDayAverages[key] ?? baseline,
+            worstDayAverages[key] ?? baseline
+          )
+        )
+      )
+    }, 0)
+  }
+
+  const selection = new Set(
+    candidates
+      .filter((candidate) => candidate.targetContribution > 0)
+      .map((candidate) => candidate.tag)
+  )
+  let currentScore = scoreSelection(selection)
+
+  for (let pass = 0; pass < 100; pass++) {
+    let bestTag: string | null = null
+    let bestScore = currentScore
+
+    for (const candidate of candidates) {
+      const trial = new Set(selection)
+
+      if (trial.has(candidate.tag)) {
+        trial.delete(candidate.tag)
+      } else {
+        trial.add(candidate.tag)
+      }
+
+      const trialScore = scoreSelection(trial)
+
+      if (trialScore > bestScore + 1e-6) {
+        bestScore = trialScore
+        bestTag = candidate.tag
+      }
+    }
+
+    if (bestTag === null) {
+      break
+    }
+
+    if (selection.has(bestTag)) {
+      selection.delete(bestTag)
+    } else {
+      selection.add(bestTag)
+    }
+
+    currentScore = bestScore
+  }
+
+  return selection
 }
 
 function mapCategories<Value>(compute: (key: ScoreCategory) => Value) {
