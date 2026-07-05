@@ -1085,6 +1085,13 @@
 
   function selectExploreDate(date: string) {
     selectedExploreDate = date
+    // Bring the matching night into view in the log below the chart. Days
+    // without the selected tags have no log row, so this is best-effort.
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`.matching-log .log-row[data-date="${date}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    })
   }
 
   function toggleExploreTag(tag: string) {
@@ -1694,6 +1701,7 @@
                   type="button"
                   class:selected={activeExploreDay?.date === day.date}
                   class="log-row"
+                  data-date={day.date}
                   on:mouseenter={() => (hoveredExploreDate = day.date)}
                   on:mouseleave={() => (hoveredExploreDate = "")}
                   on:click={() => selectExploreDay(day)}

@@ -15,6 +15,11 @@ const fontFamily =
 
 const dayMs = 86_400_000
 
+// Days can carry many tags; let the tooltip wrap instead of running off
+// the chart, and keep it inside the canvas (confine) on small viewports.
+const tooltipCss =
+  "max-width: 280px; white-space: normal; overflow-wrap: break-word; line-height: 1.45;"
+
 interface NiceAxisBounds {
   min: number
   max: number
@@ -169,6 +174,8 @@ export function buildTimelineOption(
     grid: { left: 64, right: 24, top: 20, bottom: 64 },
     tooltip: {
       trigger: "axis",
+      confine: true,
+      extraCssText: tooltipCss,
       formatter: (params: Array<{ name: string }>) => {
         const date = params.find((item) => item.name)?.name
 
@@ -257,6 +264,8 @@ export function buildScatterOption(
     grid: { left: 64, right: 24, top: 20, bottom: 52 },
     tooltip: {
       trigger: "item",
+      confine: true,
+      extraCssText: tooltipCss,
       formatter: (params: { name: string }) => {
         const day = dayByDate.get(params.name)
 
