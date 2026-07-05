@@ -22,8 +22,7 @@
     OPTIMAL_MIN_TAGGED_DAYS,
     optimalTargets,
     scoreCategories,
-    type OptimalTarget,
-    type ScoreCategory
+    type OptimalTarget
   } from "../lib/analysis/optimal"
   import { db } from "../lib/db"
   import type { AuthTokenRow, DailyMetricRow, TagEntryRow } from "../lib/db/types"
@@ -164,8 +163,6 @@
   let tagSearch = ""
   let tagSortMode: TagSortMode = "alpha"
   let optimalTarget: OptimalTarget = "total"
-  let optimalExcludedTags: string[] = []
-  let optimalIncludedTags: string[] = []
   let selectedExploreTagCalendarRange = "last365"
   let exploreTagsInitialized = false
   let deleteDataArmed = false
@@ -204,32 +201,9 @@
     analysisDailyMetrics,
     effectiveTagEntries
   )
-  $: optimalDayFull = calculateOptimalDay(
-    analysisDailyMetrics,
-    effectiveTagEntries,
-    { target: optimalTarget }
-  )
   $: optimalDay = calculateOptimalDay(analysisDailyMetrics, effectiveTagEntries, {
-    target: optimalTarget,
-    excludedTags: optimalExcludedTags,
-    includedTags: optimalIncludedTags
+    target: optimalTarget
   })
-  $: optimalHasOverrides =
-    optimalExcludedTags.length > 0 || optimalIncludedTags.length > 0
-  $: optimalEstimateDiffs = scoreCategories.reduce(
-    (diffs, category) => {
-      const adjusted = optimalDay.estimates[category.key]
-      const full = optimalDayFull.estimates[category.key]
-
-      diffs[category.key] =
-        adjusted === null || full === null
-          ? null
-          : Math.round((adjusted - full) * 10) / 10
-
-      return diffs
-    },
-    {} as Record<ScoreCategory, number | null>
-  )
   $: optimalTargetCategories =
     optimalTargets.find((option) => option.id === optimalTarget)?.categories ??
     []
@@ -408,33 +382,6 @@
 
   function formatOptimalScore(value: number | null) {
     return value === null ? "n/a" : `${Math.round(value)}`
-  }
-
-  function removeOptimalTag(tag: string) {
-    if (optimalIncludedTags.includes(tag)) {
-      optimalIncludedTags = optimalIncludedTags.filter((item) => item !== tag)
-      return
-    }
-
-    if (!optimalExcludedTags.includes(tag)) {
-      optimalExcludedTags = [...optimalExcludedTags, tag]
-    }
-  }
-
-  function addOptimalTag(tag: string) {
-    if (optimalExcludedTags.includes(tag)) {
-      optimalExcludedTags = optimalExcludedTags.filter((item) => item !== tag)
-      return
-    }
-
-    if (!optimalIncludedTags.includes(tag)) {
-      optimalIncludedTags = [...optimalIncludedTags, tag]
-    }
-  }
-
-  function resetOptimalTags() {
-    optimalExcludedTags = []
-    optimalIncludedTags = []
   }
 
   function optimalTagBarWidth(value: number, maxValue: number) {
@@ -1701,15 +1648,6 @@
             )}
           </small>
           <span>{formatNullableDelta(optimalDay.estimateDeltas[category.key])}</span>
-          {#if optimalHasOverrides && optimalEstimateDiffs[category.key] !== null && optimalEstimateDiffs[category.key] !== 0}
-            <span
-              class="optimal-vs {(optimalEstimateDiffs[category.key] ?? 0) < 0
-                ? 'down'
-                : 'up'}"
-            >
-              {formatDelta(optimalEstimateDiffs[category.key] ?? 0)} vs optimal
-            </span>
-          {/if}
         </article>
       {/each}
     </section>
@@ -1756,29 +1694,11 @@
               overlap on the same good days.
             </li>
             <li>
-              Remove tags you cannot realistically use, or add other tags from
-              the list below. The cards then show how far your adjusted day
-              sits from the most optimal one.
-            </li>
-            <li>
               The estimate starts at your baseline and flattens out as it
               approaches your best days average, which it can never cross.
             </li>
           </ul>
         </details>
-
-        <div class="optimal-list-heading">
-          <h3>In your optimal day ({optimalDay.contributions.length})</h3>
-          {#if optimalHasOverrides}
-            <button
-              type="button"
-              class="optimal-reset"
-              on:click={resetOptimalTags}
-            >
-              Reset to optimal
-            </button>
-          {/if}
-        </div>
 
         {#if optimalDay.contributions.length > 0}
           <div class="optimal-tag-list">
@@ -1808,73 +1728,15 @@
                 >
                   {formatDelta(contribution.targetContribution)}
                 </strong>
-                <button
-                  type="button"
-                  class="optimal-tag-action"
-                  title="Remove from optimal day"
-                  aria-label={`Remove ${formatTagLabel(contribution.tag)} from your optimal day`}
-                  on:click={() => removeOptimalTag(contribution.tag)}
-                >
-                  ×
-                </button>
               </div>
             {/each}
           </div>
         {:else}
           <p class="empty-state">
             {hasLocalData
-              ? optimalHasOverrides
-                ? "You removed every contributing tag. Add tags back below or reset to optimal."
-                : `No tag with ${OPTIMAL_MIN_TAGGED_DAYS}+ tagged nights lifts this target yet. Keep tagging to unlock your optimal day.`
+              ? `No tag with ${OPTIMAL_MIN_TAGGED_DAYS}+ tagged nights lifts this target yet. Keep tagging to unlock your optimal day.`
               : "Import your Oura data to see your optimal day."}
           </p>
-        {/if}
-
-        {#if optimalDay.otherEligibleTags.length > 0}
-          <details class="optimal-method optimal-others">
-            <summary>
-              Not in your optimal day ({optimalDay.otherEligibleTags.length})
-            </summary>
-            <div class="optimal-tag-list">
-              {#each optimalDay.otherEligibleTags as candidate}
-                <div class="optimal-tag-row">
-                  <div class="optimal-tag-name">
-                    <strong>{formatTagLabel(candidate.tag)}</strong>
-                    <span>
-                      {candidate.daysWithTag} nights{#each scoreCategories as category}
-                        &nbsp;· {category.label}
-                        {formatDelta(candidate.weightedDeltas[category.key])}{/each}
-                    </span>
-                  </div>
-                  <div class="bar-track">
-                    <span
-                      class="bar-fill tagged"
-                      style={`width: ${optimalTagBarWidth(
-                        candidate.targetContribution,
-                        optimalDay.contributions[0]?.targetContribution ?? 0
-                      )}`}
-                    />
-                  </div>
-                  <strong
-                    class="optimal-tag-value {impactTone(
-                      candidate.targetContribution
-                    )}"
-                  >
-                    {formatDelta(candidate.targetContribution)}
-                  </strong>
-                  <button
-                    type="button"
-                    class="optimal-tag-action"
-                    title="Add to optimal day"
-                    aria-label={`Add ${formatTagLabel(candidate.tag)} to your optimal day`}
-                    on:click={() => addOptimalTag(candidate.tag)}
-                  >
-                    +
-                  </button>
-                </div>
-              {/each}
-            </div>
-          </details>
         {/if}
       </div>
     </section>
@@ -3017,7 +2879,7 @@
 
   .optimal-tag-row {
     display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(120px, 1fr) 58px 1.7rem;
+    grid-template-columns: minmax(0, 1.25fr) minmax(120px, 1fr) 58px;
     gap: 0.9rem;
     align-items: center;
     padding: 0.55rem 0.9rem;
@@ -3073,84 +2935,6 @@
   }
 
   .optimal-tag-value.negative {
-    color: #a8423e;
-  }
-
-  .optimal-tag-action {
-    appearance: none;
-    align-items: center;
-    background: transparent;
-    border: 1px solid #cbd3c3;
-    border-radius: 999px;
-    box-sizing: border-box;
-    color: #4f5f53;
-    cursor: pointer;
-    display: flex;
-    font: inherit;
-    font-size: 1rem;
-    font-weight: 900;
-    height: 1.7rem;
-    justify-content: center;
-    line-height: 1;
-    padding: 0;
-    width: 1.7rem;
-  }
-
-  .optimal-tag-action:hover {
-    background: #fffcf6;
-    border-color: #8b957f;
-  }
-
-  .optimal-list-heading {
-    align-items: center;
-    display: flex;
-    gap: 0.8rem;
-    justify-content: space-between;
-    margin-bottom: 0.55rem;
-  }
-
-  .optimal-list-heading h3 {
-    font-size: 0.95rem;
-    margin: 0;
-  }
-
-  .optimal-reset {
-    appearance: none;
-    background: transparent;
-    border: 1px solid #cbd3c3;
-    border-radius: 999px;
-    color: #4f5f53;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 800;
-    padding: 0.3rem 0.8rem;
-  }
-
-  .optimal-reset:hover {
-    background: rgba(255, 252, 246, 0.62);
-    border-color: #8b957f;
-  }
-
-  .optimal-others {
-    margin: 0.9rem 0 0;
-  }
-
-  .optimal-others .optimal-tag-list {
-    border: none;
-    border-radius: 0;
-    border-top: 1px solid #e6e2d6;
-  }
-
-  .metric-card .optimal-vs {
-    color: #3f7b54;
-    display: block;
-    font-size: 0.78rem;
-    font-weight: 800;
-    margin-top: 0.35rem;
-  }
-
-  .metric-card .optimal-vs.down {
     color: #a8423e;
   }
 
@@ -3422,7 +3206,7 @@
     }
 
     .optimal-tag-row {
-      grid-template-columns: minmax(0, 1fr) 52px 1.7rem;
+      grid-template-columns: minmax(0, 1fr) 52px;
     }
 
     .optimal-tag-row .bar-track {
