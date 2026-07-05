@@ -385,6 +385,14 @@
     return value === null ? "n/a" : `${Math.round(value)}`
   }
 
+  function optimalTagBarWidth(value: number, maxValue: number) {
+    if (maxValue <= 0 || value <= 0) {
+      return "0%"
+    }
+
+    return `${Math.max(6, Math.round((value / maxValue) * 100))}%`
+  }
+
   function openImportModal() {
     isImportModalOpen = true
   }
@@ -1654,26 +1662,34 @@
         </p>
 
         {#if optimalDay.contributions.length > 0}
-          <div class="optimal-tag-grid">
+          <div class="optimal-tag-list">
             {#each optimalDay.contributions as contribution}
-              <article class="correlation-card optimal-tag-card">
-                <div class="correlation-title">
-                  <h4>{formatTagLabel(contribution.tag)}</h4>
-                  <span>{contribution.daysWithTag} nights</span>
+              <div class="optimal-tag-row">
+                <div class="optimal-tag-name">
+                  <strong>{formatTagLabel(contribution.tag)}</strong>
+                  <span>
+                    {contribution.daysWithTag} nights{#each scoreCategories as category}
+                      &nbsp;· {category.label}
+                      {formatDelta(contribution.weightedDeltas[category.key])}{/each}
+                  </span>
                 </div>
-                <div class="optimal-tag-deltas">
-                  {#each scoreCategories as category}
-                    <strong
-                      class="score-impact {impactTone(
-                        contribution.weightedDeltas[category.key]
-                      )}"
-                    >
-                      <span>{category.label}</span>
-                      <b>{formatDelta(contribution.weightedDeltas[category.key])}</b>
-                    </strong>
-                  {/each}
+                <div class="bar-track">
+                  <span
+                    class="bar-fill tagged"
+                    style={`width: ${optimalTagBarWidth(
+                      contribution.targetContribution,
+                      optimalDay.contributions[0]?.targetContribution ?? 0
+                    )}`}
+                  />
                 </div>
-              </article>
+                <strong
+                  class="optimal-tag-value {impactTone(
+                    contribution.targetContribution
+                  )}"
+                >
+                  {formatDelta(contribution.targetContribution)}
+                </strong>
+              </div>
             {/each}
           </div>
         {:else}
@@ -2772,45 +2788,71 @@
     color: #a8423e;
   }
 
-  .optimal-tag-grid {
+  .optimal-tag-list {
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .optimal-tag-row {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 0.7rem;
+    grid-template-columns: minmax(0, 1.25fr) minmax(120px, 1fr) 58px;
+    gap: 0.9rem;
+    align-items: center;
+    padding: 0.55rem 0.9rem;
   }
 
-  .correlation-card.optimal-tag-card {
-    cursor: default;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.7rem;
-    align-items: start;
-    min-height: 0;
+  .optimal-tag-row + .optimal-tag-row {
+    border-top: 1px solid #e6e2d6;
   }
 
-  .correlation-card.optimal-tag-card:hover {
-    background: transparent;
-    border-color: #d8d8cc;
-    transform: none;
+  .optimal-tag-row:hover {
+    background: rgba(255, 252, 246, 0.62);
   }
 
-  .optimal-tag-card .correlation-title {
-    justify-content: space-between;
+  .optimal-tag-name {
+    min-width: 0;
   }
 
-  .optimal-tag-deltas {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.5rem;
+  .optimal-tag-name strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .optimal-tag-deltas .score-impact {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0.25rem;
-    justify-content: flex-start;
+  .optimal-tag-name span {
+    color: #6f786f;
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 600;
+    margin-top: 0.15rem;
   }
 
-  .optimal-tag-deltas .score-impact b {
-    font-size: 1.2rem;
+  .optimal-tag-value {
+    font-size: 1.05rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .optimal-tag-value.excellent {
+    color: #1e2c64;
+  }
+
+  .optimal-tag-value.positive {
+    color: #3f7b54;
+  }
+
+  .optimal-tag-value.neutral {
+    color: #17201b;
+  }
+
+  .optimal-tag-value.warning {
+    color: #b46b3f;
+  }
+
+  .optimal-tag-value.negative {
+    color: #a8423e;
   }
 
   .panel-heading.compact {
@@ -3078,6 +3120,14 @@
 
     .metric-selectors {
       grid-template-columns: 1fr;
+    }
+
+    .optimal-tag-row {
+      grid-template-columns: minmax(0, 1fr) 52px;
+    }
+
+    .optimal-tag-row .bar-track {
+      display: none;
     }
 
     .log-row {
