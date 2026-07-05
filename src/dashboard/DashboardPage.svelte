@@ -137,6 +137,9 @@
     { id: "count", label: "Most tagged" }
   ]
   const activeViewSettingKey = "phibo.activeView"
+  const optimalTargetSettingKey = "phibo.optimalTarget"
+  const optimalExcludedTagsSettingKey = "phibo.optimalExcludedTags"
+  const optimalIncludedTagsSettingKey = "phibo.optimalIncludedTags"
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const showTagCountsSettingKey = "phibo.showTagCounts"
@@ -382,6 +385,9 @@
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
     showTagCounts = localStorage.getItem(showTagCountsSettingKey) === "true"
     tagTimingMode = getSavedTagTimingMode()
+    optimalTarget = getSavedOptimalTarget()
+    optimalExcludedTags = getSavedOptimalTagList(optimalExcludedTagsSettingKey)
+    optimalIncludedTags = getSavedOptimalTagList(optimalIncludedTagsSettingKey)
 
     const savedToken = await db.authTokens.get("oura")
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
@@ -406,28 +412,62 @@
   function removeOptimalTag(tag: string) {
     if (optimalIncludedTags.includes(tag)) {
       optimalIncludedTags = optimalIncludedTags.filter((item) => item !== tag)
-      return
-    }
-
-    if (!optimalExcludedTags.includes(tag)) {
+    } else if (!optimalExcludedTags.includes(tag)) {
       optimalExcludedTags = [...optimalExcludedTags, tag]
     }
+
+    saveOptimalOverrides()
   }
 
   function addOptimalTag(tag: string) {
     if (optimalExcludedTags.includes(tag)) {
       optimalExcludedTags = optimalExcludedTags.filter((item) => item !== tag)
-      return
-    }
-
-    if (!optimalIncludedTags.includes(tag)) {
+    } else if (!optimalIncludedTags.includes(tag)) {
       optimalIncludedTags = [...optimalIncludedTags, tag]
     }
+
+    saveOptimalOverrides()
   }
 
   function resetOptimalTags() {
     optimalExcludedTags = []
     optimalIncludedTags = []
+    saveOptimalOverrides()
+  }
+
+  function setOptimalTarget(target: OptimalTarget) {
+    optimalTarget = target
+    localStorage.setItem(optimalTargetSettingKey, target)
+  }
+
+  function saveOptimalOverrides() {
+    localStorage.setItem(
+      optimalExcludedTagsSettingKey,
+      JSON.stringify(optimalExcludedTags)
+    )
+    localStorage.setItem(
+      optimalIncludedTagsSettingKey,
+      JSON.stringify(optimalIncludedTags)
+    )
+  }
+
+  function getSavedOptimalTarget(): OptimalTarget {
+    const savedTarget = localStorage.getItem(optimalTargetSettingKey)
+    const match = optimalTargets.find((option) => option.id === savedTarget)
+
+    return match?.id ?? "total"
+  }
+
+  function getSavedOptimalTagList(settingKey: string): string[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(settingKey) ?? "[]")
+
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === "string")
+        : []
+    } catch {
+      return []
+    }
   }
 
   function optimalTagBarWidth(value: number, maxValue: number) {
@@ -1736,7 +1776,7 @@
               <button
                 type="button"
                 class:active={optimalTarget === targetOption.id}
-                on:click={() => (optimalTarget = targetOption.id)}
+                on:click={() => setOptimalTarget(targetOption.id)}
               >
                 {targetOption.label}
               </button>
