@@ -42,25 +42,15 @@
     formatNullableDelta,
     formatScoreTrend,
     formatSleepNightDate,
-    metricExtent,
     metricLabel,
     metricPlainLabel,
     shiftDate
   } from "./format"
+  import { formatAverage, formatExploreDelta } from "./exploreCharts"
   import {
-    chartHeight,
-    chartPadding,
-    chartWidth,
-    createMetricTicks,
-    createScatterPoints,
-    createTimelineDateTicks,
-    createTimelinePoints,
-    formatAverage,
-    formatAxisValue,
-    formatExploreDelta,
-    formatMetricValue,
-    metricAxisLabel
-  } from "./exploreCharts"
+    buildScatterOption,
+    buildTimelineOption
+  } from "./exploreChartOptions"
   import {
     formatTagLabel,
     formatTagList,
@@ -82,7 +72,7 @@
     isPrimaryScoreMetric,
     type ExploreImpactGroup
   } from "./exploreImpacts"
-  import ExploreChart from "./ExploreChart.svelte"
+  import EChart from "./EChart.svelte"
   import TagCalendar from "./TagCalendarView.svelte"
   import ImportModal from "./ImportModal.svelte"
   import logoUrl from "../../assets/phibo-mark.svg"
@@ -317,40 +307,12 @@
       : []
   $: selectedXDefinition = getExploreMetric(selectedXMetric)
   $: selectedYDefinition = getExploreMetric(selectedYMetric)
-  $: scatterXExtent = metricExtent(exploreDays, selectedXMetric)
-  $: scatterYExtent = metricExtent(exploreDays, selectedYMetric)
-  $: timelineYExtent = metricExtent(exploreDays, selectedYMetric)
-  $: scatterXTicks = createMetricTicks(
-    scatterXExtent,
+  $: scatterOption = buildScatterOption(
+    exploreDays,
     selectedXDefinition,
-    chartPadding,
-    chartWidth - chartPadding
+    selectedYDefinition
   )
-  $: scatterYTicks = createMetricTicks(
-    scatterYExtent,
-    selectedYDefinition,
-    chartHeight - chartPadding,
-    chartPadding
-  )
-  $: timelineYTicks = createMetricTicks(
-    timelineYExtent,
-    selectedYDefinition,
-    chartHeight - chartPadding,
-    chartPadding
-  )
-  $: scatterPoints = createScatterPoints(
-    exploreDays,
-    selectedXMetric,
-    selectedYMetric,
-    scatterXExtent,
-    scatterYExtent
-  )
-  $: timelinePoints = createTimelinePoints(
-    exploreDays,
-    selectedYMetric,
-    timelineYExtent
-  )
-  $: timelineDateTicks = createTimelineDateTicks(timelinePoints)
+  $: timelineOption = buildTimelineOption(exploreDays, selectedYDefinition)
   $: activeExploreDay =
     exploreDays.find((day) => day.date === (hoveredExploreDate || selectedExploreDate)) ??
     matchingExploreDays[0] ??
@@ -1121,6 +1083,10 @@
     selectedExploreDate = day.date
   }
 
+  function selectExploreDate(date: string) {
+    selectedExploreDate = date
+  }
+
   function toggleExploreTag(tag: string) {
     selectedExploreDate = ""
     selectedExploreTags = selectedExploreTags.includes(tag)
@@ -1622,14 +1588,9 @@
         {:else if matchingExploreDays.length === 0}
           <p class="empty-state">No nights match every selected tag yet.</p>
         {:else if exploreChartMode === "scatter"}
-          <ExploreChart
-            mode="scatter"
-            points={scatterPoints}
-            xTicks={scatterXTicks}
-            yTicks={scatterYTicks}
-            xTitle={metricAxisLabel(selectedXDefinition)}
-            yTitle={metricAxisLabel(selectedYDefinition)}
-            on:selectDay={(event) => selectExploreDay(event.detail)}
+          <EChart
+            option={scatterOption}
+            on:selectDay={(event) => selectExploreDate(event.detail)}
             on:hover={(event) => (hoveredExploreDate = event.detail)}
           />
         {:else if exploreChartMode === "impact"}
@@ -1696,14 +1657,9 @@
             {/each}
           </div>
         {:else}
-          <ExploreChart
-            mode="timeline"
-            points={timelinePoints}
-            xTicks={timelineDateTicks}
-            yTicks={timelineYTicks}
-            xTitle="Date"
-            yTitle={metricAxisLabel(selectedYDefinition)}
-            on:selectDay={(event) => selectExploreDay(event.detail)}
+          <EChart
+            option={timelineOption}
+            on:selectDay={(event) => selectExploreDate(event.detail)}
             on:hover={(event) => (hoveredExploreDate = event.detail)}
           />
         {/if}
