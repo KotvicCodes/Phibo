@@ -929,7 +929,7 @@ function calculateMetricDeltas(
   )
 }
 
-export function calculateSupportScore(daysWithTag: number, daysWithoutTag: number) {
+function calculateSupportScore(daysWithTag: number, daysWithoutTag: number) {
   const taggedSupport = Math.min(daysWithTag / 5, 1)
   const comparisonSupport = Math.min(daysWithoutTag / 8, 1)
 
