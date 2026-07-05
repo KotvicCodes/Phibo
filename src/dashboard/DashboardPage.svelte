@@ -137,6 +137,7 @@
     { id: "count", label: "Most tagged" }
   ]
   const activeViewSettingKey = "phibo.activeView"
+  const tagSortModeSettingKey = "phibo.tagSortMode"
   const optimalTargetSettingKey = "phibo.optimalTarget"
   const optimalExcludedTagsSettingKey = "phibo.optimalExcludedTags"
   const optimalIncludedTagsSettingKey = "phibo.optimalIncludedTags"
@@ -393,6 +394,7 @@
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
     showTagCounts = localStorage.getItem(showTagCountsSettingKey) === "true"
     tagTimingMode = getSavedTagTimingMode()
+    tagSortMode = getSavedTagSortMode()
     optimalTarget = getSavedOptimalTarget()
     optimalExcludedTags = getSavedOptimalTagList(optimalExcludedTagsSettingKey)
     optimalIncludedTags = getSavedOptimalTagList(optimalIncludedTagsSettingKey)
@@ -441,6 +443,17 @@
     optimalExcludedTags = []
     optimalIncludedTags = []
     saveOptimalOverrides()
+  }
+
+  function setTagSortMode(mode: TagSortMode) {
+    tagSortMode = mode
+    localStorage.setItem(tagSortModeSettingKey, mode)
+  }
+
+  function getSavedTagSortMode(): TagSortMode {
+    const savedMode = localStorage.getItem(tagSortModeSettingKey)
+
+    return savedMode === "alpha" || savedMode === "count" ? savedMode : "alpha"
   }
 
   function setOptimalTarget(target: OptimalTarget) {
@@ -1431,7 +1444,7 @@
                     type="button"
                     class:active={tagSortMode === mode.id}
                     aria-pressed={tagSortMode === mode.id}
-                    on:click={() => (tagSortMode = mode.id)}
+                    on:click={() => setTagSortMode(mode.id)}
                   >
                     {mode.label}
                   </button>
