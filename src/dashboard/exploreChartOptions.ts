@@ -4,6 +4,7 @@ import type {
 } from "../lib/analysis/correlations"
 import type { EChartsCoreOption } from "./echarts"
 import { formatAxisValue, formatMetricValue, metricAxisLabel } from "./exploreCharts"
+import { formatTagList } from "./tagLabels"
 
 const textColor = "#6f786f"
 const gridColor = "rgba(207, 210, 196, 0.56)"
@@ -188,7 +189,8 @@ export function buildTimelineOption(
           day?.metric[metric.key] ?? null,
           metric
         )
-        const tags = day && day.tags.length > 0 ? day.tags.join(", ") : "no tags"
+        const tags =
+          day && day.tags.length > 0 ? formatTagList(day.tags) : "no tags"
 
         return `<strong>${formatTooltipDate(date)}</strong><br/>${metric.label}: <strong>${value}</strong><br/>${tags}`
       }
@@ -275,7 +277,7 @@ export function buildScatterOption(
 
         const xValue = formatMetricValue(day.metric[xMetric.key] ?? null, xMetric)
         const yValue = formatMetricValue(day.metric[yMetric.key] ?? null, yMetric)
-        const tags = day.tags.length > 0 ? day.tags.join(", ") : "no tags"
+        const tags = day.tags.length > 0 ? formatTagList(day.tags) : "no tags"
 
         return `<strong>${formatTooltipDate(day.date)}</strong><br/>${xMetric.label}: <strong>${xValue}</strong><br/>${yMetric.label}: <strong>${yValue}</strong><br/>${tags}`
       }
