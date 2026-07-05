@@ -1627,7 +1627,10 @@
           <p>{category.label} estimate</p>
           <strong>{formatOptimalScore(optimalDay.estimates[category.key])}</strong>
           <small>
-            baseline {formatOptimalScore(optimalDay.baselines[category.key])}
+            baseline {formatOptimalScore(optimalDay.baselines[category.key])} ·
+            best days {formatOptimalScore(
+              optimalDay.bestDayAverages[category.key]
+            )}
           </small>
           <span>{formatNullableDelta(optimalDay.estimateDeltas[category.key])}</span>
         </article>
@@ -1655,10 +1658,13 @@
         </div>
 
         <p class="optimal-note">
-          Estimated scores combine your baseline averages with the tags that
-          lift the selected target (Night = sleep + readiness). Only tags with
-          at least {OPTIMAL_MIN_TAGGED_DAYS} tagged nights count, so one-off
-          outliers do not skew the estimate.
+          Estimated scores combine your baseline averages with tags that lift
+          the selected target (Night = sleep + readiness), compared against
+          your typical day. Estimates flatten out as they approach your best
+          days — the average of your top 10% of days — since no tag combination
+          can beat your actual best data. Only tags with at least
+          {OPTIMAL_MIN_TAGGED_DAYS} tagged nights count, so one-off outliers do
+          not skew the estimate.
         </p>
 
         {#if optimalDay.contributions.length > 0}
