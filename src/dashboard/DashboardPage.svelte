@@ -2864,9 +2864,9 @@
     font: inherit;
     grid-template-columns: 150px minmax(0, 1fr);
     gap: 0.85rem;
-    min-height: 44px;
+    min-height: 52px;
     /* Left padding keeps text clear of the selected row's accent bar. */
-    padding: 0.5rem 0 0.5rem 0.75rem;
+    padding: 0.65rem 0 0.65rem 0.75rem;
     text-align: left;
   }
 
@@ -2888,9 +2888,8 @@
     color: #1e2c64;
   }
 
-  /* The clicked night expands so its full tag list is readable instead of
-     being cut off with an ellipsis. */
-  button.log-row.selected > span {
+  /* Every night shows its full tag list; rows grow as tall as they need. */
+  button.log-row > span {
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
