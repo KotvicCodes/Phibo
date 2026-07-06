@@ -11,6 +11,9 @@ const gridColor = "rgba(207, 210, 196, 0.56)"
 const axisColor = "#cfd2c4"
 const matchColor = "#4f8a63"
 const otherColor = "#9ca69a"
+const trendColor = "#1e2c64"
+// A regression through a handful of points is noise, not signal.
+const minTrendPoints = 10
 const fontFamily =
   'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
@@ -154,6 +157,68 @@ interface TimelineDatum {
   value: [number, number | null]
 }
 
+export function linearFit(points: Array<readonly [number, number]>) {
+  const n = points.length
+  const sumX = points.reduce((total, [x]) => total + x, 0)
+  const sumY = points.reduce((total, [, y]) => total + y, 0)
+  const meanX = sumX / n
+  const meanY = sumY / n
+  let covariance = 0
+  let varianceX = 0
+  let varianceY = 0
+
+  for (const [x, y] of points) {
+    covariance += (x - meanX) * (y - meanY)
+    varianceX += (x - meanX) ** 2
+    varianceY += (y - meanY) ** 2
+  }
+
+  if (varianceX === 0 || varianceY === 0) {
+    return null
+  }
+
+  return {
+    slope: covariance / varianceX,
+    intercept: meanY - (covariance / varianceX) * meanX,
+    r: covariance / Math.sqrt(varianceX * varianceY)
+  }
+}
+
+// Centered rolling mean over a calendar window, gap-aware: days with too
+// little surrounding data yield null so the trend breaks instead of
+// bridging holes in the dataset.
+export function rollingAverageSeries(
+  usable: ExploreDay[],
+  metric: ExploreMetricDefinition,
+  windowDays = 30,
+  minWindowValues = 3
+) {
+  const halfWindow = windowDays / 2
+  const epochs = usable.map((day) => dateMs(day.date) / dayMs)
+  const values = usable.map((day) => day.metric[metric.key] as number)
+  let start = 0
+  let end = 0
+
+  return usable.map((day, index) => {
+    while (epochs[start] < epochs[index] - halfWindow) {
+      start += 1
+    }
+
+    while (end < usable.length && epochs[end] <= epochs[index] + halfWindow) {
+      end += 1
+    }
+
+    const windowValues = values.slice(start, end)
+    const average =
+      windowValues.length >= minWindowValues
+        ? windowValues.reduce((total, value) => total + value, 0) /
+          windowValues.length
+        : null
+
+    return { value: [dateMs(day.date), average] }
+  })
+}
+
 // Break the line where the calendar gap between points is unusually large:
 // daily metrics split across multi-week holes, while sparse metrics (whose
 // normal cadence is already weeks) stay connected.
@@ -246,8 +311,20 @@ export function buildTimelineOption(
         showSymbol: true,
         symbolSize: 6,
         itemStyle: { color: otherColor },
-        lineStyle: { color: textColor, width: 2.5 },
+        lineStyle: { color: textColor, width: 2, opacity: 0.55 },
         emphasis: { scale: 1.6 }
+      },
+      {
+        type: "line",
+        name: "30-day average",
+        data: rollingAverageSeries(usable, metric),
+        connectNulls: false,
+        showSymbol: false,
+        silent: true,
+        smooth: 0.25,
+        lineStyle: { color: trendColor, width: 2.5 },
+        itemStyle: { color: trendColor },
+        z: 2
       },
       {
         type: "scatter",
@@ -276,6 +353,22 @@ export function buildScatterOption(
   const xBounds = niceAxisBounds(metricValues(usable, xMetric), xMetric)
   const yBounds = niceAxisBounds(metricValues(usable, yMetric), yMetric)
   const dayByDate = new Map(usable.map((day) => [day.date, day]))
+  const fitPoints = usable.map(
+    (day) =>
+      [
+        day.metric[xMetric.key] as number,
+        day.metric[yMetric.key] as number
+      ] as const
+  )
+  const fit =
+    fitPoints.length >= minTrendPoints ? linearFit(fitPoints) : null
+  const fitXs = fitPoints.map(([x]) => x)
+  const trendData = fit
+    ? [Math.min(...fitXs), Math.max(...fitXs)].map((x) => [
+        x,
+        fit.intercept + fit.slope * x
+      ])
+    : []
 
   const toDatum = (day: ExploreDay) => ({
     name: day.date,
@@ -305,7 +398,42 @@ export function buildScatterOption(
     },
     xAxis: { ...valueAxis(xMetric, xBounds), nameGap: 30 },
     yAxis: valueAxis(yMetric, yBounds),
+    graphic: fit
+      ? [
+          {
+            type: "text",
+            right: 30,
+            top: 6,
+            silent: true,
+            style: {
+              text: `r = ${fit.r.toFixed(2)} · n = ${fitPoints.length}`,
+              fill: textColor,
+              fontFamily,
+              fontSize: 12,
+              fontWeight: 700
+            }
+          }
+        ]
+      : [],
     series: [
+      ...(fit
+        ? [
+            {
+              type: "line" as const,
+              name: "Trend",
+              data: trendData,
+              showSymbol: false,
+              silent: true,
+              lineStyle: {
+                color: textColor,
+                width: 2,
+                type: "dashed" as const,
+                opacity: 0.8
+              },
+              z: 1
+            }
+          ]
+        : []),
       {
         type: "scatter",
         name: "Other days",

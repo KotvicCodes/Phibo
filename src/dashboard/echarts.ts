@@ -4,6 +4,7 @@ import { LineChart, ScatterChart } from "echarts/charts"
 import {
   AriaComponent,
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   TooltipComponent
 } from "echarts/components"
@@ -14,6 +15,7 @@ echarts.use([
   AriaComponent,
   CanvasRenderer,
   DataZoomComponent,
+  GraphicComponent,
   GridComponent,
   LineChart,
   ScatterChart,
