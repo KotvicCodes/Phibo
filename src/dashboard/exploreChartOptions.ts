@@ -408,7 +408,14 @@ export function buildScatterOption(
 
   return {
     ...baseOption(),
-    grid: { left: 64, right: 24, top: 20, bottom: 52 },
+    // Leave headroom above the plot for the stacked trend labels so they
+    // never overlap data points.
+    grid: {
+      left: 64,
+      right: 24,
+      top: trendGroups.length > 0 ? 12 + trendGroups.length * 17 + 10 : 20,
+      bottom: 52
+    },
     tooltip: {
       trigger: "item",
       confine: true,
