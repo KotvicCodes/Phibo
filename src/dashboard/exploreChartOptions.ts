@@ -11,6 +11,17 @@ const gridColor = "rgba(207, 210, 196, 0.56)"
 const axisColor = "#cfd2c4"
 const matchColor = "#4f8a63"
 const otherColor = "#9ca69a"
+// Navy matches the app's active-control color; it marks the clicked day so
+// the user can see what drives the day detail and the log highlight.
+const selectedColor = "#1e2c64"
+
+function selectedItemStyle() {
+  return {
+    color: selectedColor,
+    borderColor: "#fbf7ef",
+    borderWidth: 2
+  }
+}
 const fontFamily =
   'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 
@@ -186,16 +197,25 @@ export function timelineSeriesData(days: ExploreDay[], metric: ExploreMetricDefi
 
 export function buildTimelineOption(
   days: ExploreDay[],
-  metric: ExploreMetricDefinition
+  metric: ExploreMetricDefinition,
+  selectedDate = ""
 ): EChartsCoreOption {
   const { data, usable } = timelineSeriesData(days, metric)
   const bounds = niceAxisBounds(metricValues(days, metric), metric)
   const dayByDate = new Map(usable.map((day) => [day.date, day]))
+  const decoratedData = data.map((datum) =>
+    datum.name === selectedDate && selectedDate
+      ? { ...datum, itemStyle: selectedItemStyle(), symbolSize: 11 }
+      : datum
+  )
   const matchedData = usable
     .filter((day) => day.matches)
     .map((day) => ({
       name: day.date,
-      value: [dateMs(day.date), day.metric[metric.key] as number]
+      value: [dateMs(day.date), day.metric[metric.key] as number],
+      ...(day.date === selectedDate
+        ? { itemStyle: selectedItemStyle(), symbolSize: 14 }
+        : {})
     }))
 
   return {
@@ -241,7 +261,7 @@ export function buildTimelineOption(
       {
         type: "line",
         name: metric.label,
-        data,
+        data: decoratedData,
         connectNulls: false,
         showSymbol: true,
         symbolSize: 6,
@@ -268,7 +288,8 @@ export function buildTimelineOption(
 export function buildScatterOption(
   days: ExploreDay[],
   xMetric: ExploreMetricDefinition,
-  yMetric: ExploreMetricDefinition
+  yMetric: ExploreMetricDefinition,
+  selectedDate = ""
 ): EChartsCoreOption {
   const usable = days.filter(
     (day) => day.metric[xMetric.key] != null && day.metric[yMetric.key] != null
@@ -282,7 +303,10 @@ export function buildScatterOption(
     value: [
       day.metric[xMetric.key] as number,
       day.metric[yMetric.key] as number
-    ]
+    ],
+    ...(day.date === selectedDate && selectedDate
+      ? { itemStyle: selectedItemStyle(), symbolSize: 15 }
+      : {})
   })
 
   return {
