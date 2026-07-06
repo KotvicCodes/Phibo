@@ -13,7 +13,6 @@
     withDerivedMetricFields,
     type ExploreDay,
     type ExploreMetricCategory,
-    type ExploreMetricDefinition,
     type ExploreMetricKey,
     type PrimaryInsightMetric,
     type TagInsight
@@ -147,46 +146,15 @@
     { label: "Readiness", metric: "readinessScore" },
     { label: "Activity", metric: "activityScore" }
   ]
-  // Selector groups: contributors get their own group per category so the
-  // main metrics stay scannable, everything is alphabetical, and each
-  // category's headline score is pinned first.
-  const explorePrimaryMetricKeys: ExploreMetricKey[] = [
-    "sleepScore",
-    "readinessScore",
-    "activityScore"
-  ]
   const exploreMetricGroups = (
     ["Sleep", "Readiness", "Activity", "Health"] as ExploreMetricCategory[]
   )
-    .flatMap((category) => {
-      const categoryMetrics = exploreMetricDefinitions.filter(
+    .map((category) => ({
+      category,
+      metrics: exploreMetricDefinitions.filter(
         (metric) => metric.category === category
       )
-      const byLabel = (
-        left: ExploreMetricDefinition,
-        right: ExploreMetricDefinition
-      ) => left.label.localeCompare(right.label)
-      const isContributor = (metric: ExploreMetricDefinition) =>
-        metric.key.includes("Contributor")
-
-      return [
-        {
-          label: category,
-          metrics: categoryMetrics
-            .filter((metric) => !isContributor(metric))
-            .sort(byLabel)
-            .sort(
-              (left, right) =>
-                Number(explorePrimaryMetricKeys.includes(right.key)) -
-                Number(explorePrimaryMetricKeys.includes(left.key))
-            )
-        },
-        {
-          label: `${category} contributors`,
-          metrics: categoryMetrics.filter(isContributor).sort(byLabel)
-        }
-      ]
-    })
+    }))
     .filter((group) => group.metrics.length > 0)
 
   let accessToken = ""
@@ -1610,7 +1578,7 @@
             class:hidden={exploreChartMode === "impact"}
             class="explore-control"
           >
-            <h3>Metrics</h3>
+            <h3>Outcomes</h3>
             <div
               class:single={exploreChartMode !== "scatter"}
               class="metric-selectors"
@@ -1620,7 +1588,7 @@
                   <span>X axis</span>
                   <select bind:value={selectedXMetric}>
                     {#each exploreMetricGroups as group}
-                      <optgroup label={group.label}>
+                      <optgroup label={group.category}>
                         {#each group.metrics as metric}
                           <option value={metric.key}>{metric.label}</option>
                         {/each}
@@ -1637,7 +1605,7 @@
                   tabindex={exploreChartMode === "impact" ? -1 : 0}
                 >
                   {#each exploreMetricGroups as group}
-                    <optgroup label={group.label}>
+                    <optgroup label={group.category}>
                       {#each group.metrics as metric}
                         <option value={metric.key}>{metric.label}</option>
                       {/each}
