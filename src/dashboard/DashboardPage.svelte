@@ -1120,7 +1120,47 @@
     selectedInsightKey = insightKey(item)
   }
 
+  let tagSearchInput: HTMLInputElement | null = null
+
+  // On the Explore view, typing anywhere starts a tag search without having
+  // to click the search box first.
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    if (activeView !== "explore" || !tagSearchInput) {
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return
+    }
+
+    // Only printable characters; keeps shortcuts, Tab, and arrows working.
+    if (event.key.length !== 1) {
+      return
+    }
+
+    const target = event.target instanceof HTMLElement ? event.target : null
+
+    if (
+      target &&
+      (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.isContentEditable)
+    ) {
+      return
+    }
+
+    // Space on a focused button should still activate that button.
+    if (event.key === " " && target instanceof HTMLButtonElement) {
+      return
+    }
+
+    tagSearchInput.focus()
+  }
+
 </script>
+
+<svelte:window on:keydown={handleGlobalKeydown} />
 
 <svelte:head>
   <title>Phibo Dashboard</title>
@@ -1431,6 +1471,7 @@
                 placeholder="Search tags"
                 aria-label="Search tags"
                 bind:value={tagSearch}
+                bind:this={tagSearchInput}
               />
             {/if}
             <div class="tag-picker">
