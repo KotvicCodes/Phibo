@@ -66,6 +66,22 @@ export function niceAxisBounds(
   metric: ExploreMetricDefinition,
   targetTicks = 5
 ): NiceAxisBounds {
+  // Hours-displayed durations need ticks that are round in hours, not in
+  // stored minutes: compute in hours, then scale back to minute units.
+  if (metric.displayAsHours) {
+    const hourBounds = niceAxisBounds(
+      values.map((value) => value / 60),
+      { ...metric, displayAsHours: false },
+      targetTicks
+    )
+
+    return {
+      min: hourBounds.min * 60,
+      max: hourBounds.max * 60,
+      interval: hourBounds.interval * 60
+    }
+  }
+
   let min: number
   let max: number
 
