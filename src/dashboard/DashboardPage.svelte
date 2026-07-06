@@ -441,14 +441,6 @@
     }
   }
 
-  function exploreMetricPreference(key: ExploreMetricKey) {
-    if (exploreFavoriteMetrics.includes(key)) {
-      return "favorite"
-    }
-
-    return exploreHiddenMetrics.includes(key) ? "hidden" : "normal"
-  }
-
   $: if (exploreSettingsRestored) {
     localStorage.setItem(exploreChartModeSettingKey, exploreChartMode)
     localStorage.setItem(exploreXMetricSettingKey, selectedXMetric)
@@ -2175,16 +2167,21 @@
                   <h4>{group.category}</h4>
                   <div class="metric-preference-chips">
                     {#each group.metrics as metric}
-                      {@const preference = exploreMetricPreference(metric.key)}
+                      {@const isFavorite = exploreFavoriteMetrics.includes(
+                        metric.key
+                      )}
+                      {@const isHidden = exploreHiddenMetrics.includes(
+                        metric.key
+                      )}
                       <button
                         type="button"
-                        class:favorite={preference === "favorite"}
-                        class:hidden-metric={preference === "hidden"}
-                        aria-label={`${metric.label}: ${preference}`}
-                        title={`${metric.label}: ${preference}`}
+                        class:favorite={isFavorite}
+                        class:hidden-metric={isHidden}
+                        aria-label={`${metric.label}: ${isFavorite ? "favorite" : isHidden ? "hidden" : "normal"}`}
+                        title={`${metric.label}: ${isFavorite ? "favorite" : isHidden ? "hidden" : "normal"}`}
                         on:click={() => cycleExploreMetricPreference(metric.key)}
                       >
-                        {#if preference === "favorite"}★{/if}
+                        {#if isFavorite}★{/if}
                         {metric.label}
                       </button>
                     {/each}
