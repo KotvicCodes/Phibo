@@ -1090,7 +1090,7 @@
     requestAnimationFrame(() => {
       document
         .querySelector(`.matching-log .log-row[data-date="${date}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
     })
   }
 
