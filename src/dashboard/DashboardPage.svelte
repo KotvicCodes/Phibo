@@ -1590,16 +1590,16 @@
           </div>
         </div>
 
-        {#if selectedExploreTags.length === 0}
-          <p class="empty-state">Select at least one tag to build an Explore view.</p>
-        {:else if matchingExploreDays.length === 0}
-          <p class="empty-state">No nights match every selected tag yet.</p>
-        {:else if exploreChartMode === "scatter"}
+        {#if exploreChartMode === "scatter"}
           <EChart
             option={scatterOption}
             on:selectDay={(event) => selectExploreDate(event.detail)}
             on:hover={(event) => (hoveredExploreDate = event.detail)}
           />
+        {:else if exploreChartMode === "impact" && selectedExploreTags.length === 0}
+          <p class="empty-state">Select at least one tag to compare metric impacts.</p>
+        {:else if exploreChartMode === "impact" && matchingExploreDays.length === 0}
+          <p class="empty-state">No nights match every selected tag yet.</p>
         {:else if exploreChartMode === "impact"}
           <div class="impact-list">
             {#each groupedExploreImpacts as group}
