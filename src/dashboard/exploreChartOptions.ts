@@ -353,22 +353,50 @@ export function buildScatterOption(
   const xBounds = niceAxisBounds(metricValues(usable, xMetric), xMetric)
   const yBounds = niceAxisBounds(metricValues(usable, yMetric), yMetric)
   const dayByDate = new Map(usable.map((day) => [day.date, day]))
-  const fitPoints = usable.map(
-    (day) =>
-      [
-        day.metric[xMetric.key] as number,
-        day.metric[yMetric.key] as number
-      ] as const
+  // With tags selected, fit tagged and other days separately: diverging
+  // slopes show the tag changing the relationship itself, not just the
+  // averages. Without a selection there is one overall trend.
+  const hasMatches = usable.some((day) => day.matches)
+  const trendGroups = (
+    hasMatches
+      ? [
+          {
+            label: "tagged",
+            days: usable.filter((day) => day.matches),
+            color: matchColor
+          },
+          {
+            label: "other",
+            days: usable.filter((day) => !day.matches),
+            color: textColor
+          }
+        ]
+      : [{ label: "", days: usable, color: textColor }]
   )
-  const fit =
-    fitPoints.length >= minTrendPoints ? linearFit(fitPoints) : null
-  const fitXs = fitPoints.map(([x]) => x)
-  const trendData = fit
-    ? [Math.min(...fitXs), Math.max(...fitXs)].map((x) => [
-        x,
-        fit.intercept + fit.slope * x
-      ])
-    : []
+    .map((group) => {
+      const points = group.days.map(
+        (day) =>
+          [
+            day.metric[xMetric.key] as number,
+            day.metric[yMetric.key] as number
+          ] as const
+      )
+      const fit = points.length >= minTrendPoints ? linearFit(points) : null
+      const xs = points.map(([x]) => x)
+
+      return {
+        ...group,
+        count: points.length,
+        fit,
+        trendData: fit
+          ? [Math.min(...xs), Math.max(...xs)].map((x) => [
+              x,
+              fit.intercept + fit.slope * x
+            ])
+          : []
+      }
+    })
+    .filter((group) => group.fit !== null)
 
   const toDatum = (day: ExploreDay) => ({
     name: day.date,
@@ -398,42 +426,34 @@ export function buildScatterOption(
     },
     xAxis: { ...valueAxis(xMetric, xBounds), nameGap: 30 },
     yAxis: valueAxis(yMetric, yBounds),
-    graphic: fit
-      ? [
-          {
-            type: "text",
-            right: 30,
-            top: 6,
-            silent: true,
-            style: {
-              text: `r = ${fit.r.toFixed(2)} · n = ${fitPoints.length}`,
-              fill: textColor,
-              fontFamily,
-              fontSize: 12,
-              fontWeight: 700
-            }
-          }
-        ]
-      : [],
+    graphic: trendGroups.map((group, index) => ({
+      type: "text",
+      right: 30,
+      top: 6 + index * 17,
+      silent: true,
+      style: {
+        text: `${group.label ? `${group.label}: ` : ""}r = ${group.fit!.r.toFixed(2)} · n = ${group.count}`,
+        fill: group.color,
+        fontFamily,
+        fontSize: 12,
+        fontWeight: 700
+      }
+    })),
     series: [
-      ...(fit
-        ? [
-            {
-              type: "line" as const,
-              name: "Trend",
-              data: trendData,
-              showSymbol: false,
-              silent: true,
-              lineStyle: {
-                color: textColor,
-                width: 2,
-                type: "dashed" as const,
-                opacity: 0.8
-              },
-              z: 1
-            }
-          ]
-        : []),
+      ...trendGroups.map((group) => ({
+        type: "line" as const,
+        name: group.label ? `${group.label} trend` : "Trend",
+        data: group.trendData,
+        showSymbol: false,
+        silent: true,
+        lineStyle: {
+          color: group.color,
+          width: 2,
+          type: "dashed" as const,
+          opacity: 0.8
+        },
+        z: 1
+      })),
       {
         type: "scatter",
         name: "Other days",
