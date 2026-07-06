@@ -2872,9 +2872,17 @@
     cursor: pointer;
   }
 
-  button.log-row:hover,
-  button.log-row.selected {
+  button.log-row:hover {
     background: rgba(255, 252, 246, 0.58);
+  }
+
+  button.log-row.selected {
+    background: rgba(30, 44, 100, 0.09);
+    box-shadow: inset 4px 0 0 #1e2c64;
+  }
+
+  button.log-row.selected .log-date strong {
+    color: #1e2c64;
   }
 
   .log-row strong,
