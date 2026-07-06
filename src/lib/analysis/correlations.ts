@@ -427,13 +427,8 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
     label: "Wake time",
     unit: "h"
   },
-  {
-    category: "Sleep",
-    higherIsBetter: true,
-    key: "sleepScoreDelta",
-    label: "Sleep score delta",
-    unit: "pts"
-  },
+  // sleepScoreDelta stays in the data model but is not offered in Explore:
+  // real exports carry almost no variation in it, so it reads as noise.
   {
     category: "Readiness",
     higherIsBetter: true,

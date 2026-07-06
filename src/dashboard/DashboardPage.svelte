@@ -1578,7 +1578,7 @@
             class:hidden={exploreChartMode === "impact"}
             class="explore-control"
           >
-            <h3>Outcomes</h3>
+            <h3>Metrics</h3>
             <div
               class:single={exploreChartMode !== "scatter"}
               class="metric-selectors"
@@ -2706,13 +2706,32 @@
   }
 
   .metric-selectors select {
+    appearance: none;
     border: 1px solid #cdcfc2;
     border-radius: 8px;
-    background: #fbf7ef;
+    /* Custom sage chevron replaces the native dropdown arrow. */
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%236f786f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+      no-repeat right 0.7rem center / 0.72rem,
+      #fbf7ef;
     color: #17201b;
+    cursor: pointer;
     font: inherit;
+    font-weight: 600;
     min-width: 0;
-    padding: 0.65rem 0.7rem;
+    padding: 0.65rem 2rem 0.65rem 0.7rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .metric-selectors select:hover {
+    border-color: #9ca69a;
+  }
+
+  .metric-selectors select:focus-visible {
+    border-color: #1e2c64;
+    outline: 2px solid rgba(30, 44, 100, 0.25);
+    outline-offset: 1px;
   }
 
   .segmented-control {
