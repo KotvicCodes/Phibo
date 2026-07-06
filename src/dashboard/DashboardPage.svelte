@@ -1700,7 +1700,8 @@
               {#each matchingExploreDays as day}
                 <button
                   type="button"
-                  class:selected={activeExploreDay?.date === day.date}
+                  class:selected={selectedExploreDate === day.date}
+                  class:hovered={hoveredExploreDate === day.date}
                   class="log-row"
                   data-date={day.date}
                   on:mouseenter={() => (hoveredExploreDate = day.date)}
@@ -2873,7 +2874,8 @@
     cursor: pointer;
   }
 
-  button.log-row:hover {
+  button.log-row:hover,
+  button.log-row.hovered {
     background: rgba(255, 252, 246, 0.58);
   }
 
