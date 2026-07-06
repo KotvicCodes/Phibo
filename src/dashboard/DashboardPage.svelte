@@ -134,6 +134,10 @@
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const showTagCountsSettingKey = "phibo.showTagCounts"
+  const exploreChartModeSettingKey = "phibo.exploreChartMode"
+  const exploreXMetricSettingKey = "phibo.exploreXMetric"
+  const exploreYMetricSettingKey = "phibo.exploreYMetric"
+  const exploreTagsSettingKey = "phibo.exploreTags"
   const scoreWeekDays = 7
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
@@ -350,8 +354,55 @@
     createSummary("Readiness", "readinessScore", analysisDailyMetrics),
     createSummary("Activity", "activityScore", analysisDailyMetrics)
   ]
+  // Explore selections are saved reactively, so restoring must finish first
+  // or the initial defaults would overwrite the stored values.
+  let exploreSettingsRestored = false
+
+  function getSavedExploreChartMode(): ChartMode {
+    const savedMode = localStorage.getItem(exploreChartModeSettingKey)
+
+    return chartModes.includes(savedMode as ChartMode)
+      ? (savedMode as ChartMode)
+      : "impact"
+  }
+
+  function getSavedExploreMetric(
+    settingKey: string,
+    fallback: ExploreMetricKey
+  ): ExploreMetricKey {
+    const savedMetric = localStorage.getItem(settingKey)
+
+    return savedMetric &&
+      exploreMetricDefinitions.some(
+        (definition) => definition.key === savedMetric
+      )
+      ? (savedMetric as ExploreMetricKey)
+      : fallback
+  }
+
+  $: if (exploreSettingsRestored) {
+    localStorage.setItem(exploreChartModeSettingKey, exploreChartMode)
+    localStorage.setItem(exploreXMetricSettingKey, selectedXMetric)
+    localStorage.setItem(exploreYMetricSettingKey, selectedYMetric)
+    localStorage.setItem(
+      exploreTagsSettingKey,
+      JSON.stringify(selectedExploreTags)
+    )
+  }
+
   onMount(async () => {
     activeView = getSavedActiveView()
+    exploreChartMode = getSavedExploreChartMode()
+    selectedXMetric = getSavedExploreMetric(
+      exploreXMetricSettingKey,
+      "sleepScore"
+    )
+    selectedYMetric = getSavedExploreMetric(
+      exploreYMetricSettingKey,
+      "readinessScore"
+    )
+    selectedExploreTags = getSavedOptimalTagList(exploreTagsSettingKey)
+    exploreSettingsRestored = true
     excludeUntaggedDays =
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
     showTagCounts = localStorage.getItem(showTagCountsSettingKey) === "true"
@@ -1133,12 +1184,23 @@
       return
     }
 
+    const target = event.target instanceof HTMLElement ? event.target : null
+
+    // Escape backs out of the tag search from anywhere on the view.
+    if (event.key === "Escape") {
+      tagSearch = ""
+
+      if (target === tagSearchInput) {
+        tagSearchInput.blur()
+      }
+
+      return
+    }
+
     // Only printable characters; keeps shortcuts, Tab, and arrows working.
     if (event.key.length !== 1) {
       return
     }
-
-    const target = event.target instanceof HTMLElement ? event.target : null
 
     if (
       target &&
