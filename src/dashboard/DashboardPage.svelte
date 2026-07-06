@@ -2888,6 +2888,14 @@
     color: #1e2c64;
   }
 
+  /* The clicked night expands so its full tag list is readable instead of
+     being cut off with an ellipsis. */
+  button.log-row.selected > span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
   .log-row strong,
   .log-row span {
     align-self: center;
