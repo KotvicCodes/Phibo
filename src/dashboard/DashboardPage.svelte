@@ -138,6 +138,8 @@
   const exploreXMetricSettingKey = "phibo.exploreXMetric"
   const exploreYMetricSettingKey = "phibo.exploreYMetric"
   const exploreTagsSettingKey = "phibo.exploreTags"
+  const exploreFavoriteMetricsSettingKey = "phibo.exploreFavoriteMetrics"
+  const exploreHiddenMetricsSettingKey = "phibo.exploreHiddenMetrics"
   const scoreWeekDays = 7
   const insightComparisonMetrics: Array<
     Pick<InsightComparison, "label" | "metric">
@@ -146,7 +148,7 @@
     { label: "Readiness", metric: "readinessScore" },
     { label: "Activity", metric: "activityScore" }
   ]
-  const exploreMetricGroups = (
+  const exploreMetricCategories = (
     ["Sleep", "Readiness", "Activity", "Health"] as ExploreMetricCategory[]
   )
     .map((category) => ({
@@ -186,10 +188,29 @@
   let selectedExploreTags: string[] = []
   let selectedXMetric: ExploreMetricKey = "sleepScore"
   let selectedYMetric: ExploreMetricKey = "readinessScore"
+  let exploreFavoriteMetrics: ExploreMetricKey[] = []
+  let exploreHiddenMetrics: ExploreMetricKey[] = []
   let startDate = formatInputDate(daysAgo(30))
   let syncMessage = "Connect an Oura key or import an export to begin."
   let tagTimingMode: TagTimingMode = "morning"
   let tagEntries: TagEntryRow[] = []
+
+  // Selector groups honor the user's metric preferences: favorites are
+  // pinned in their own group on top, hidden metrics are left out entirely.
+  $: exploreMetricGroups = [
+    {
+      label: "Favorites",
+      metrics: exploreFavoriteMetrics.map((key) => getExploreMetric(key))
+    },
+    ...exploreMetricCategories.map((group) => ({
+      label: group.category as string,
+      metrics: group.metrics.filter(
+        (metric) =>
+          !exploreHiddenMetrics.includes(metric.key) &&
+          !exploreFavoriteMetrics.includes(metric.key)
+      )
+    }))
+  ].filter((group) => group.metrics.length > 0)
 
   $: hasLocalData = dailyMetrics.length > 0
   $: effectiveTagEntries = getEffectiveTagEntries(tagEntries, tagTimingMode)
@@ -380,6 +401,54 @@
       : fallback
   }
 
+  function getSavedMetricList(settingKey: string): ExploreMetricKey[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(settingKey) ?? "[]")
+
+      return Array.isArray(parsed)
+        ? parsed.filter((key): key is ExploreMetricKey =>
+            exploreMetricDefinitions.some(
+              (definition) => definition.key === key
+            )
+          )
+        : []
+    } catch {
+      return []
+    }
+  }
+
+  // Each click cycles a metric through normal, favorite, and hidden.
+  function cycleExploreMetricPreference(key: ExploreMetricKey) {
+    if (exploreFavoriteMetrics.includes(key)) {
+      exploreFavoriteMetrics = exploreFavoriteMetrics.filter(
+        (metricKey) => metricKey !== key
+      )
+      exploreHiddenMetrics = [...exploreHiddenMetrics, key]
+
+      if (selectedXMetric === key) {
+        selectedXMetric = "sleepScore"
+      }
+
+      if (selectedYMetric === key) {
+        selectedYMetric = "readinessScore"
+      }
+    } else if (exploreHiddenMetrics.includes(key)) {
+      exploreHiddenMetrics = exploreHiddenMetrics.filter(
+        (metricKey) => metricKey !== key
+      )
+    } else {
+      exploreFavoriteMetrics = [...exploreFavoriteMetrics, key]
+    }
+  }
+
+  function exploreMetricPreference(key: ExploreMetricKey) {
+    if (exploreFavoriteMetrics.includes(key)) {
+      return "favorite"
+    }
+
+    return exploreHiddenMetrics.includes(key) ? "hidden" : "normal"
+  }
+
   $: if (exploreSettingsRestored) {
     localStorage.setItem(exploreChartModeSettingKey, exploreChartMode)
     localStorage.setItem(exploreXMetricSettingKey, selectedXMetric)
@@ -387,6 +456,14 @@
     localStorage.setItem(
       exploreTagsSettingKey,
       JSON.stringify(selectedExploreTags)
+    )
+    localStorage.setItem(
+      exploreFavoriteMetricsSettingKey,
+      JSON.stringify(exploreFavoriteMetrics)
+    )
+    localStorage.setItem(
+      exploreHiddenMetricsSettingKey,
+      JSON.stringify(exploreHiddenMetrics)
     )
   }
 
@@ -402,6 +479,19 @@
       "readinessScore"
     )
     selectedExploreTags = getSavedOptimalTagList(exploreTagsSettingKey)
+    exploreFavoriteMetrics = getSavedMetricList(
+      exploreFavoriteMetricsSettingKey
+    )
+    exploreHiddenMetrics = getSavedMetricList(exploreHiddenMetricsSettingKey)
+
+    if (exploreHiddenMetrics.includes(selectedXMetric)) {
+      selectedXMetric = "sleepScore"
+    }
+
+    if (exploreHiddenMetrics.includes(selectedYMetric)) {
+      selectedYMetric = "readinessScore"
+    }
+
     exploreSettingsRestored = true
     excludeUntaggedDays =
       localStorage.getItem(excludeUntaggedDaysSettingKey) !== "false"
@@ -1588,7 +1678,7 @@
                   <span>X axis</span>
                   <select bind:value={selectedXMetric}>
                     {#each exploreMetricGroups as group}
-                      <optgroup label={group.category}>
+                      <optgroup label={group.label}>
                         {#each group.metrics as metric}
                           <option value={metric.key}>{metric.label}</option>
                         {/each}
@@ -1605,7 +1695,7 @@
                   tabindex={exploreChartMode === "impact" ? -1 : 0}
                 >
                   {#each exploreMetricGroups as group}
-                    <optgroup label={group.category}>
+                    <optgroup label={group.label}>
                       {#each group.metrics as metric}
                         <option value={metric.key}>{metric.label}</option>
                       {/each}
@@ -2070,6 +2160,40 @@
             on:change={updateShowTagCounts}
           />
         </label>
+
+        <div class="setting-row metric-preferences-setting">
+          <div>
+            <strong>Explore metrics</strong>
+            <p>
+              Click a metric to cycle its place in the Explore metric pickers:
+              normal, favorite (pinned in a Favorites group on top), or hidden
+              (left out of the pickers entirely).
+            </p>
+            <div class="metric-preferences">
+              {#each exploreMetricCategories as group}
+                <div class="metric-preference-group">
+                  <h4>{group.category}</h4>
+                  <div class="metric-preference-chips">
+                    {#each group.metrics as metric}
+                      {@const preference = exploreMetricPreference(metric.key)}
+                      <button
+                        type="button"
+                        class:favorite={preference === "favorite"}
+                        class:hidden-metric={preference === "hidden"}
+                        aria-label={`${metric.label}: ${preference}`}
+                        title={`${metric.label}: ${preference}`}
+                        on:click={() => cycleExploreMetricPreference(metric.key)}
+                      >
+                        {#if preference === "favorite"}★{/if}
+                        {metric.label}
+                      </button>
+                    {/each}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          </div>
+        </div>
 
         <div class="setting-row tag-timing-setting">
           <div>
@@ -2681,6 +2805,51 @@
   .tag-picker button.active .tag-count {
     background: rgba(248, 243, 234, 0.22);
     color: #f8f3ea;
+  }
+
+  .metric-preferences {
+    display: grid;
+    gap: 0.8rem;
+    margin-top: 0.7rem;
+  }
+
+  .metric-preference-group h4 {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    margin: 0 0 0.35rem;
+    text-transform: uppercase;
+  }
+
+  .metric-preference-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .metric-preference-chips button {
+    appearance: none;
+    background: #f7f1e8;
+    border: 1px solid #d8d8cc;
+    border-radius: 999px;
+    color: #1f2520;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.28rem 0.62rem;
+  }
+
+  .metric-preference-chips button.favorite {
+    background: #1e2c64;
+    border-color: #1e2c64;
+    color: #fbf7ef;
+  }
+
+  .metric-preference-chips button.hidden-metric {
+    background: transparent;
+    color: #9ca69a;
+    text-decoration: line-through;
   }
 
   .metric-selectors {
