@@ -2864,7 +2864,8 @@
     grid-template-columns: 150px minmax(0, 1fr);
     gap: 0.85rem;
     min-height: 44px;
-    padding: 0.5rem 0;
+    /* Left padding keeps text clear of the selected row's accent bar. */
+    padding: 0.5rem 0 0.5rem 0.75rem;
     text-align: left;
   }
 
