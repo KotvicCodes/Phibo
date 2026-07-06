@@ -310,9 +310,14 @@
   $: scatterOption = buildScatterOption(
     exploreDays,
     selectedXDefinition,
-    selectedYDefinition
+    selectedYDefinition,
+    selectedExploreDate
   )
-  $: timelineOption = buildTimelineOption(exploreDays, selectedYDefinition)
+  $: timelineOption = buildTimelineOption(
+    exploreDays,
+    selectedYDefinition,
+    selectedExploreDate
+  )
   $: activeExploreDay =
     exploreDays.find((day) => day.date === (hoveredExploreDate || selectedExploreDate)) ??
     matchingExploreDays[0] ??
@@ -1673,6 +1678,7 @@
 
         <TagCalendar
           selectedTags={selectedExploreTags}
+          selectedDate={selectedExploreDate}
           calendar={exploreTagCalendar}
           options={exploreTagCalendarOptions}
           selectedRange={selectedExploreTagCalendarRange}

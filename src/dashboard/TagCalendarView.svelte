@@ -11,6 +11,7 @@
   export let calendar: ExploreTagCalendar
   export let options: ExploreTagCalendarOption[]
   export let selectedRange: string
+  export let selectedDate = ""
 
   const tagCalendarSquareSize = "0.78rem"
 
@@ -65,6 +66,7 @@
                 <button
                   type="button"
                   class:tagged={cell.taggedTags.length > 0}
+                  class:selected={selectedDate !== "" && day.date === selectedDate}
                   class="tag-calendar-day"
                   aria-label={tagCalendarCellLabel(cell)}
                   title={tagCalendarCellLabel(cell)}
@@ -249,6 +251,11 @@
     appearance: none;
     cursor: pointer;
     font: inherit;
+  }
+
+  .tag-calendar-day.selected {
+    outline: 2px solid #4f8a63;
+    outline-offset: 1px;
   }
 
   .tag-calendar-day.tagged {
