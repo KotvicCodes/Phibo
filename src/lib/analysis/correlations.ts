@@ -86,6 +86,9 @@ export type ExploreMetricCategory = "Activity" | "Health" | "Readiness" | "Sleep
 
 export interface ExploreMetricDefinition {
   category: ExploreMetricCategory
+  // Long durations are stored in minutes but read better as hours (7h 24m).
+  // Short durations like sleep latency stay in plain minutes.
+  displayAsHours?: boolean
   // Hard bounds for chart axes: the axis range never extends past these,
   // regardless of padding or tick rounding. Left unset for signed deltas
   // and past-noon clock hours, which are legitimately unbounded.
@@ -265,6 +268,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "lowActivityMinutes",
@@ -273,6 +277,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: false,
     key: "sedentaryMinutes",
@@ -281,6 +286,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: false,
     key: "nonWearMinutes",
@@ -289,6 +295,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Activity",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "restingMinutes",
@@ -346,6 +353,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "deepSleepMinutes",
@@ -354,6 +362,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "lightSleepMinutes",
@@ -362,6 +371,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "remSleepMinutes",
@@ -370,6 +380,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "totalSleepMinutes",
@@ -378,6 +389,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: false,
     key: "awakeMinutes",
@@ -386,6 +398,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Sleep",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: false,
     key: "timeInBedMinutes",
@@ -615,6 +628,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: false,
     key: "stressHighMinutes",
@@ -623,6 +637,7 @@ export const exploreMetricDefinitions: ExploreMetricDefinition[] = [
   },
   {
     category: "Health",
+    displayAsHours: true,
     domainMin: 0,
     higherIsBetter: true,
     key: "recoveryHighMinutes",
