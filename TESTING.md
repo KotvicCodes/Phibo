@@ -9,17 +9,13 @@ Untested scenarios to verify by hand in the loaded extension
       `enhancedtag.csv` and confirm the tag stays deleted.
 - [ ] If an Oura API key is connected, delete an imported tag and run a sync
       over that date range; confirm the tag stays deleted.
-- [ ] Click a tag in the daily log to cross it out, reload the extension, and
-      confirm it is still crossed out; click it again and confirm it comes back.
-- [ ] Cross out a tag, add the same tag name to that day via the add form, and
-      confirm it restores the crossed entry instead of duplicating it.
 
 ## Tag backup
 
 - [ ] Export tags from Settings and confirm the downloaded
       `phibo-tags-YYYY-MM-DD.json` contains your entries and deletions.
 - [ ] Export, delete all local data in Settings, restore the file, and confirm
-      the counts message and that crossed-out tags are still crossed out.
+      the counts message and that a previously deleted tag stays deleted.
 - [ ] Restore the same backup a second time and confirm it reports 0 restored
       and changes nothing.
 - [ ] Try restoring a non-backup JSON file and confirm the error message is
