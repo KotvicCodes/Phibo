@@ -221,6 +221,7 @@
   let tagsFilterTags: string[] = []
   let isTagPickerOpen = false
   let tagPickerSearch = ""
+  let tagPickerMode: "add" | "rename" = "add"
   let renameTargetTag = ""
   let renameInput = ""
   let renameMessage = ""
@@ -1634,7 +1635,15 @@
   function openTagPicker() {
     isTagPickerOpen = true
     tagPickerSearch = ""
+    setTagPickerMode("add")
     requestAnimationFrame(() => tagPickerSearchInput?.focus())
+  }
+
+  function setTagPickerMode(mode: "add" | "rename") {
+    tagPickerMode = mode
+    renameTargetTag = ""
+    renameInput = ""
+    renameMessage = ""
   }
 
   function closeTagPicker() {
@@ -3073,61 +3082,6 @@
         </div>
       </div>
 
-      <div class="settings-panel tag-manage-panel">
-        <div class="log-heading">
-          <div>
-            <p class="section-kicker">Manage</p>
-            <h3>Rename tags</h3>
-          </div>
-          <span>{allKnownTags.length} tags</span>
-        </div>
-
-        {#if allKnownTags.length === 0}
-          <p class="tag-empty">Import Oura data or add tags first.</p>
-        {:else}
-          <div class="tag-picker">
-            {#each allKnownTags as tag (tag)}
-              <button
-                type="button"
-                class:active={renameTargetTag === tag}
-                on:click={() => selectRenameTarget(tag)}
-              >
-                {formatTagLabel(tag)}
-              </button>
-            {/each}
-          </div>
-
-          {#if renameTargetTag}
-            <form class="tag-rename-form" on:submit|preventDefault={applyTagRename}>
-              <input
-                type="text"
-                aria-label="New tag name"
-                placeholder="New name"
-                bind:value={renameInput}
-              />
-              <button type="submit" disabled={isRenamingTag}>
-                {isRenamingTag ? "Renaming" : "Rename"}
-              </button>
-              <button
-                type="button"
-                class="secondary"
-                on:click={() => selectRenameTarget(renameTargetTag)}
-              >
-                Cancel
-              </button>
-            </form>
-            <p class="tag-rename-note">
-              Renames {formatTagLabel(renameTargetTag)} everywhere, including
-              crossed-out entries. Renaming to an existing tag merges them.
-            </p>
-          {/if}
-        {/if}
-
-        {#if renameMessage}
-          <p class="tag-rename-message" role="status">{renameMessage}</p>
-        {/if}
-      </div>
-
       {#if isTagPickerOpen}
         <div
           class="tag-picker-backdrop"
@@ -3142,8 +3096,32 @@
           >
             <div class="tag-picker-modal-header">
               <div>
-                <p class="section-kicker">Tags for</p>
-                <h2>{formatDate(tagsViewDate)}</h2>
+                <p class="section-kicker">
+                  {tagPickerMode === "add" ? "Tags for" : "Manage"}
+                </p>
+                <h2>
+                  {tagPickerMode === "add"
+                    ? formatDate(tagsViewDate)
+                    : "Rename tags"}
+                </h2>
+              </div>
+              <div class="tag-sort" role="group" aria-label="Picker mode">
+                <button
+                  type="button"
+                  class:active={tagPickerMode === "add"}
+                  aria-pressed={tagPickerMode === "add"}
+                  on:click={() => setTagPickerMode("add")}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  class:active={tagPickerMode === "rename"}
+                  aria-pressed={tagPickerMode === "rename"}
+                  on:click={() => setTagPickerMode("rename")}
+                >
+                  Rename
+                </button>
               </div>
               <button
                 type="button"
@@ -3156,7 +3134,9 @@
             <input
               class="tag-search"
               type="search"
-              placeholder="Search or type a new tag"
+              placeholder={tagPickerMode === "add"
+                ? "Search or type a new tag"
+                : "Search tags"}
               aria-label="Search tags"
               bind:value={tagPickerSearch}
               bind:this={tagPickerSearchInput}
@@ -3166,14 +3146,20 @@
                 {@const key = tag.toLocaleLowerCase()}
                 <button
                   type="button"
-                  class:active={tagPickerActiveKeys.has(key)}
-                  class:crossed={tagPickerDeletedKeys.has(key)}
-                  on:click={() => toggleTagInPicker(tag)}
+                  class:active={tagPickerMode === "add"
+                    ? tagPickerActiveKeys.has(key)
+                    : renameTargetTag === tag}
+                  class:crossed={tagPickerMode === "add" &&
+                    tagPickerDeletedKeys.has(key)}
+                  on:click={() =>
+                    tagPickerMode === "add"
+                      ? toggleTagInPicker(tag)
+                      : selectRenameTarget(tag)}
                 >
                   {formatTagLabel(tag)}
                 </button>
               {/each}
-              {#if tagPickerCreateLabel}
+              {#if tagPickerMode === "add" && tagPickerCreateLabel}
                 <button
                   type="button"
                   class="create"
@@ -3185,6 +3171,38 @@
                 <p class="empty-state">No tags match your search.</p>
               {/if}
             </div>
+
+            {#if tagPickerMode === "rename" && renameTargetTag}
+              <form
+                class="tag-rename-form"
+                on:submit|preventDefault={applyTagRename}
+              >
+                <input
+                  type="text"
+                  aria-label="New tag name"
+                  placeholder="New name"
+                  bind:value={renameInput}
+                />
+                <button type="submit" disabled={isRenamingTag}>
+                  {isRenamingTag ? "Renaming" : "Rename"}
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  on:click={() => selectRenameTarget(renameTargetTag)}
+                >
+                  Cancel
+                </button>
+              </form>
+              <p class="tag-rename-note">
+                Renames {formatTagLabel(renameTargetTag)} everywhere, including
+                crossed-out entries. Renaming to an existing tag merges them.
+              </p>
+            {/if}
+
+            {#if renameMessage}
+              <p class="tag-rename-message" role="status">{renameMessage}</p>
+            {/if}
           </section>
         </div>
       {/if}
@@ -4177,11 +4195,6 @@
     display: grid;
     gap: 0.55rem;
     margin-bottom: 0.4rem;
-  }
-
-  .tag-manage-panel {
-    display: grid;
-    gap: 0.7rem;
   }
 
   .tag-rename-form {
