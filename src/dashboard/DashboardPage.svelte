@@ -39,6 +39,7 @@
     addUserTagEntry,
     deleteTagEntries,
     findDuplicateTagEntryIds,
+    renameTag,
     restoreTagEntries,
     restoreTagEntriesExact,
     resolveUserTagLabel,
@@ -220,6 +221,10 @@
   let tagsFilterTags: string[] = []
   let isTagPickerOpen = false
   let tagPickerSearch = ""
+  let renameTargetTag = ""
+  let renameInput = ""
+  let renameMessage = ""
+  let isRenamingTag = false
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
@@ -1726,6 +1731,70 @@
     }
   }
 
+  function selectRenameTarget(tag: string) {
+    renameTargetTag = renameTargetTag === tag ? "" : tag
+    renameInput = renameTargetTag
+    renameMessage = ""
+  }
+
+  async function applyTagRename() {
+    if (!renameTargetTag) {
+      return
+    }
+
+    const trimmed = renameInput.replace(/\s+/g, " ").trim()
+
+    if (!trimmed) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    // A case-only change keeps the typed casing; anything else adopts an
+    // existing label's casing or canonicalizes like the popup does.
+    const label =
+      trimmed.toLocaleLowerCase() === renameTargetTag.toLocaleLowerCase()
+        ? trimmed
+        : resolveUserTagLabel(trimmed, allKnownTags)
+
+    if (!label) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    if (label === renameTargetTag) {
+      renameMessage = "That is already the tag's name."
+      return
+    }
+
+    const isMerge = allKnownTags.some(
+      (tag) =>
+        tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
+        tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
+    )
+
+    isRenamingTag = true
+
+    try {
+      const renamedCount = await renameTag(renameTargetTag, label)
+
+      // Drop stale filter selections that still carry the old label.
+      tagsFilterTags = tagsFilterTags.filter(
+        (tag) =>
+          tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
+      )
+      await reloadTagEntries()
+      renameMessage = isMerge
+        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.`
+        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
+      renameTargetTag = ""
+      renameInput = ""
+    } catch {
+      renameMessage = "Could not rename that tag. Try again."
+    } finally {
+      isRenamingTag = false
+    }
+  }
+
   async function saveTagComment(group: TagChipGroup, event: Event) {
     const input = event.currentTarget
 
@@ -3004,6 +3073,61 @@
         </div>
       </div>
 
+      <div class="settings-panel tag-manage-panel">
+        <div class="log-heading">
+          <div>
+            <p class="section-kicker">Manage</p>
+            <h3>Rename tags</h3>
+          </div>
+          <span>{allKnownTags.length} tags</span>
+        </div>
+
+        {#if allKnownTags.length === 0}
+          <p class="tag-empty">Import Oura data or add tags first.</p>
+        {:else}
+          <div class="tag-picker">
+            {#each allKnownTags as tag (tag)}
+              <button
+                type="button"
+                class:active={renameTargetTag === tag}
+                on:click={() => selectRenameTarget(tag)}
+              >
+                {formatTagLabel(tag)}
+              </button>
+            {/each}
+          </div>
+
+          {#if renameTargetTag}
+            <form class="tag-rename-form" on:submit|preventDefault={applyTagRename}>
+              <input
+                type="text"
+                aria-label="New tag name"
+                placeholder="New name"
+                bind:value={renameInput}
+              />
+              <button type="submit" disabled={isRenamingTag}>
+                {isRenamingTag ? "Renaming" : "Rename"}
+              </button>
+              <button
+                type="button"
+                class="secondary"
+                on:click={() => selectRenameTarget(renameTargetTag)}
+              >
+                Cancel
+              </button>
+            </form>
+            <p class="tag-rename-note">
+              Renames {formatTagLabel(renameTargetTag)} everywhere, including
+              crossed-out entries. Renaming to an existing tag merges them.
+            </p>
+          {/if}
+        {/if}
+
+        {#if renameMessage}
+          <p class="tag-rename-message" role="status">{renameMessage}</p>
+        {/if}
+      </div>
+
       {#if isTagPickerOpen}
         <div
           class="tag-picker-backdrop"
@@ -4053,6 +4177,68 @@
     display: grid;
     gap: 0.55rem;
     margin-bottom: 0.4rem;
+  }
+
+  .tag-manage-panel {
+    display: grid;
+    gap: 0.7rem;
+  }
+
+  .tag-rename-form {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .tag-rename-form input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .tag-rename-form button {
+    appearance: none;
+    background: #1d2a22;
+    border: 1px solid #1d2a22;
+    border-radius: 8px;
+    color: #f8f3ea;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.5rem 0.9rem;
+    white-space: nowrap;
+  }
+
+  .tag-rename-form button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .tag-rename-form button.secondary {
+    background: #f7f1e8;
+    border-color: #c5cbbd;
+    color: #17201b;
+  }
+
+  .tag-rename-note {
+    color: #6f786f;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .tag-rename-message {
+    color: #17201b;
+    font-weight: 700;
+  }
+
+  @media (max-width: 720px) {
+    .tag-rename-form {
+      grid-template-columns: 1fr;
+    }
   }
 
   .tag-filter-control h3 {
