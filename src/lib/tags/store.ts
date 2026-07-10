@@ -65,7 +65,13 @@ export async function deleteTagEntries(ids: string[]) {
       const entry = await db.tagEntries.get(id)
 
       await db.tagEntries.delete(id)
-      await db.deletedTagIds.put({ id, deletedAt, entry })
+
+      // Tombstones exist so a re-import or resync cannot resurrect deleted
+      // Oura tags. User-created tags never come back from an import, so they
+      // are hard-deleted without leaving a crossed-out entry behind.
+      if (entry?.source !== "user") {
+        await db.deletedTagIds.put({ id, deletedAt, entry })
+      }
     }
   })
 }
