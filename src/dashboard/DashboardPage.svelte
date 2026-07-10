@@ -1453,6 +1453,34 @@
     })
   }
 
+  function selectTagsDayFromStrip(date: string) {
+    selectTagsDay(date)
+    // Bring the day's opened tag menu in the log below into view.
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`.tag-daily-log .log-row[data-date="${date}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+  }
+
+  // Map wheel movement onto the strip's horizontal axis at a reduced rate,
+  // so days glide by instead of flying past.
+  function handleTagStripWheel(event: WheelEvent) {
+    const strip = event.currentTarget
+
+    if (!(strip instanceof HTMLElement)) {
+      return
+    }
+
+    const delta =
+      Math.abs(event.deltaY) > Math.abs(event.deltaX)
+        ? event.deltaY
+        : event.deltaX
+
+    event.preventDefault()
+    strip.scrollLeft += delta * 0.35
+  }
+
   function filterTagsByQuery(tags: string[], search: string) {
     const query = search.trim().toLocaleLowerCase()
 
@@ -2581,7 +2609,11 @@
           </div>
 
           {#if tagStripDays.length > 0}
-            <div class="tag-day-strip" aria-label="Day timeline">
+            <div
+              class="tag-day-strip"
+              aria-label="Day timeline"
+              on:wheel|nonpassive={handleTagStripWheel}
+            >
               {#each tagStripDays as day (day.date)}
                 <button
                   type="button"
@@ -2590,7 +2622,7 @@
                   class:dimmed={day.dimmed}
                   data-strip-date={day.date}
                   title={day.title}
-                  on:click={() => selectTagsDay(day.date)}
+                  on:click={() => selectTagsDayFromStrip(day.date)}
                 >
                   <span class="strip-bar-area">
                     <span
@@ -3504,7 +3536,7 @@
   .tag-day-strip {
     align-items: flex-end;
     display: flex;
-    gap: 2px;
+    gap: 4px;
     margin-bottom: 0.4rem;
     overflow-x: auto;
     padding: 0.4rem 0.1rem 0.2rem;
@@ -3515,13 +3547,16 @@
     appearance: none;
     background: transparent;
     border: 0;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
     display: grid;
     flex: 0 0 auto;
     gap: 0.2rem;
-    padding: 2px 1px 0;
-    width: 14px;
+    /* Keeps wide month labels from stretching their column, which made the
+       month-start bar merge with its neighbor. */
+    min-width: 0;
+    padding: 2px 2px 0;
+    width: 26px;
   }
 
   .strip-day:hover {
@@ -3539,17 +3574,17 @@
   .strip-bar-area {
     align-items: flex-end;
     display: flex;
-    height: 64px;
+    height: 96px;
   }
 
   .strip-bar {
-    border-radius: 3px 3px 0 0;
-    min-height: 6px;
+    border-radius: 5px 5px 0 0;
+    min-height: 9px;
     width: 100%;
   }
 
   .strip-bar.empty {
-    height: 6px;
+    height: 9px;
     opacity: 0.45;
   }
 
