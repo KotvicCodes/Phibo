@@ -215,6 +215,8 @@
   let newTagInput = ""
   let newTagComment = ""
   let tagsMessage = ""
+  let tagsFilterSearch = ""
+  let tagsFilterTags: string[] = []
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
@@ -295,6 +297,17 @@
     (row) => row.entry?.date === tagsViewDate
   )
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
+  $: visibleTagFilterTags = filterTagsByQuery(sortedExploreTags, tagsFilterSearch)
+  $: filteredTagDays =
+    tagsFilterTags.length === 0
+      ? tagDays
+      : tagDays.filter((day) =>
+          tagsFilterTags.every(
+            (tag) =>
+              day.entries.some((entry) => entry.tag === tag) ||
+              day.deleted.some((row) => row.entry?.tag === tag)
+          )
+        )
   $: tagInputSuggestions = getTagInputSuggestions(
     availableTags,
     tagsForSelectedDay,
@@ -1362,6 +1375,26 @@
     tagsMessage = ""
   }
 
+  function filterTagsByQuery(tags: string[], search: string) {
+    const query = search.trim().toLocaleLowerCase()
+
+    if (query.length === 0) {
+      return tags
+    }
+
+    return tags.filter(
+      (tag) =>
+        formatTagLabel(tag).toLocaleLowerCase().includes(query) ||
+        tag.toLocaleLowerCase().includes(query)
+    )
+  }
+
+  function toggleTagsFilterTag(tag: string) {
+    tagsFilterTags = tagsFilterTags.includes(tag)
+      ? tagsFilterTags.filter((item) => item !== tag)
+      : [...tagsFilterTags, tag]
+  }
+
   function applyTagSuggestion(tag: string) {
     newTagInput = tag
   }
@@ -1510,11 +1543,19 @@
   }
 
   let tagSearchInput: HTMLInputElement | null = null
+  let tagsFilterSearchInput: HTMLInputElement | null = null
 
-  // On the Explore view, typing anywhere starts a tag search without having
-  // to click the search box first.
+  // On the Explore and Tags views, typing anywhere starts a tag search
+  // without having to click the search box first.
   function handleGlobalKeydown(event: KeyboardEvent) {
-    if (activeView !== "explore" || !tagSearchInput) {
+    const searchInput =
+      activeView === "explore"
+        ? tagSearchInput
+        : activeView === "tags"
+          ? tagsFilterSearchInput
+          : null
+
+    if (!searchInput) {
       return
     }
 
@@ -1526,10 +1567,14 @@
 
     // Escape backs out of the tag search from anywhere on the view.
     if (event.key === "Escape") {
-      tagSearch = ""
+      if (activeView === "explore") {
+        tagSearch = ""
+      } else {
+        tagsFilterSearch = ""
+      }
 
-      if (target === tagSearchInput) {
-        tagSearchInput.blur()
+      if (target === searchInput) {
+        searchInput.blur()
       }
 
       return
@@ -1555,7 +1600,7 @@
       return
     }
 
-    tagSearchInput.focus()
+    searchInput.focus()
   }
 
 </script>
@@ -2444,22 +2489,80 @@
           <div class="log-heading">
             <div>
               <p class="section-kicker">Daily log</p>
-              <h3>All tagged days</h3>
+              <h3>
+                {tagsFilterTags.length > 0
+                  ? formatTagList(tagsFilterTags, " + ")
+                  : "All tagged days"}
+              </h3>
             </div>
-            <span>{tagDays.length} days</span>
+            <span>
+              {tagsFilterTags.length > 0
+                ? `${filteredTagDays.length} of ${tagDays.length} days`
+                : `${tagDays.length} days`}
+            </span>
+          </div>
+
+          <div class="tag-filter-control">
+            <div class="tag-control-heading">
+              <h3>Filter</h3>
+              <div class="tag-sort" role="group" aria-label="Sort tags">
+                {#each tagSortModes as mode}
+                  <button
+                    type="button"
+                    class:active={tagSortMode === mode.id}
+                    aria-pressed={tagSortMode === mode.id}
+                    on:click={() => setTagSortMode(mode.id)}
+                  >
+                    {mode.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            {#if availableTags.length > 0}
+              <input
+                class="tag-search"
+                type="search"
+                placeholder="Search tags"
+                aria-label="Search tags"
+                bind:value={tagsFilterSearch}
+                bind:this={tagsFilterSearchInput}
+              />
+            {/if}
+            <div class="tag-picker">
+              {#each visibleTagFilterTags as tag}
+                <button
+                  type="button"
+                  class:active={tagsFilterTags.includes(tag)}
+                  on:click={() => toggleTagsFilterTag(tag)}
+                >
+                  {formatTagLabel(tag)}
+                  {#if showTagCounts}
+                    <span class="tag-count">{tagNightCounts.get(tag) ?? 0}</span>
+                  {/if}
+                </button>
+              {:else}
+                <p class="empty-state">
+                  {availableTags.length === 0
+                    ? "Import Oura data or add tags to filter days."
+                    : "No tags match your search."}
+                </p>
+              {/each}
+            </div>
           </div>
 
           {#if tagDays.length === 0}
             <p class="tag-empty">
               Import Oura data or add your first tag above.
             </p>
+          {:else if filteredTagDays.length === 0}
+            <p class="tag-empty">No tagged days match these filters.</p>
           {:else}
             <div class="log-table">
               <div class="log-row header">
                 <span>Date</span>
                 <span>Tags</span>
               </div>
-              {#each tagDays as day (day.date)}
+              {#each filteredTagDays as day (day.date)}
                 {#if tagsViewDate === day.date}
                   <div class="log-row tag-log-row selected" data-date={day.date}>
                     <div class="log-date">
@@ -3291,6 +3394,16 @@
     gap: 0.45rem;
     margin-top: 1rem;
     padding-top: 1rem;
+  }
+
+  .tag-filter-control {
+    display: grid;
+    gap: 0.55rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .tag-filter-control h3 {
+    font-size: 0.95rem;
   }
 
   @media (max-width: 720px) {
