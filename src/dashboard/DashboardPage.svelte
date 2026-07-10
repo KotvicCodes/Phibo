@@ -1840,17 +1840,30 @@
     }
   }
 
-  async function confirmRemoveDuplicates() {
+  async function confirmRemoveDuplicates(withBackup: boolean) {
     isDeduping = true
 
     try {
+      // Back up before touching anything. If the download fails, stop so the
+      // user is never left without the safety net they asked for.
+      if (withBackup) {
+        try {
+          await downloadTagBackup()
+        } catch {
+          dedupeMessage = "Could not save the backup, so nothing was removed."
+          return
+        }
+      }
+
       const result = await deleteTagEntries(duplicateTagIds)
       const removedIds = new Set(result.deletedIds)
 
       tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
       deletedTagRows = [...deletedTagRows, ...result.tombstones]
       lastDedupeIds = result.tombstones.map((tombstone) => tombstone.id)
-      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries. Undo works until you close or reload the dashboard.`
+      dedupeMessage = withBackup
+        ? `Backed up, then removed ${result.deletedIds.length} duplicate tag entries.`
+        : `Removed ${result.deletedIds.length} duplicate tag entries. Undo works until you close or reload the dashboard.`
     } catch {
       dedupeMessage = "Could not remove duplicates. Try again."
     } finally {
@@ -1886,23 +1899,29 @@
   }
 
 
+  async function downloadTagBackup() {
+    const allTagEntries = await db.tagEntries.orderBy("date").toArray()
+    const allDeletedTagIds = await db.deletedTagIds.toArray()
+    const backup = buildTagBackup(allTagEntries, allDeletedTagIds)
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json"
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+
+    link.href = url
+    link.download = `phibo-tags-${formatInputDate(new Date())}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+
+    return allTagEntries.length
+  }
+
   async function exportTagBackup() {
     try {
-      const allTagEntries = await db.tagEntries.orderBy("date").toArray()
-      const allDeletedTagIds = await db.deletedTagIds.toArray()
-      const backup = buildTagBackup(allTagEntries, allDeletedTagIds)
-      const blob = new Blob([JSON.stringify(backup, null, 2)], {
-        type: "application/json"
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
+      const count = await downloadTagBackup()
 
-      link.href = url
-      link.download = `phibo-tags-${formatInputDate(new Date())}.json`
-      link.click()
-      URL.revokeObjectURL(url)
-
-      tagBackupMessage = `Exported ${allTagEntries.length} tag entries.`
+      tagBackupMessage = `Exported ${count} tag entries.`
     } catch {
       tagBackupMessage = "Could not export the tag backup. Try again."
     }
@@ -3472,29 +3491,36 @@
             aria-modal="true"
             aria-label="Remove duplicate tags"
           >
-            <h2>Remove duplicate tags?</h2>
+            <h2>Remove {duplicateTagIds.length} duplicate tag entries?</h2>
             <p>
-              This deletes {duplicateTagIds.length} duplicate tag entries,
-              keeping one of each tag per day. An Undo button appears
-              afterwards, but it works only until you close or reload the
-              dashboard.
+              This keeps one of each tag per day. It cannot be reliably undone
+              once you close the dashboard, so save a backup first. A backup is
+              a small file you can restore later if you change your mind.
             </p>
             <div class="confirm-modal-actions">
               <button
                 type="button"
-                class="delete-data-button armed"
+                class="confirm-button primary"
                 disabled={isDeduping}
-                on:click={confirmRemoveDuplicates}
+                on:click={() => confirmRemoveDuplicates(true)}
               >
-                {isDeduping ? "Removing" : "Remove duplicates"}
+                {isDeduping ? "Working" : "Back up, then remove"}
               </button>
               <button
                 type="button"
-                class="delete-data-cancel"
+                class="confirm-button danger"
+                disabled={isDeduping}
+                on:click={() => confirmRemoveDuplicates(false)}
+              >
+                Remove without a backup
+              </button>
+              <button
+                type="button"
+                class="confirm-button ghost"
                 disabled={isDeduping}
                 on:click={closeDedupeConfirm}
               >
-                Cancel
+                Never mind
               </button>
             </div>
           </section>
@@ -3878,10 +3904,54 @@
   }
 
   .confirm-modal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    justify-content: center;
+    display: grid;
+    gap: 0.5rem;
+    justify-items: center;
+    margin-top: 0.2rem;
+  }
+
+  .confirm-button {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 800;
+    max-width: 20rem;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+    width: 100%;
+  }
+
+  .confirm-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  /* Green pushes the safe path; the no-backup option wears the danger red so
+     it reads as the risky choice. */
+  .confirm-button.primary {
+    background: #4f8a63;
+    border-color: #4f8a63;
+    color: #f8f3ea;
+  }
+
+  .confirm-button.danger {
+    background: transparent;
+    border-color: #d2b5a5;
+    color: #8a3f2f;
+    font-size: 0.82rem;
+    font-weight: 700;
+    min-height: 38px;
+  }
+
+  .confirm-button.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: #6f786f;
+    font-size: 0.82rem;
+    min-height: 34px;
   }
 
   .delete-data-message {
