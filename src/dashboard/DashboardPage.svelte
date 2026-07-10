@@ -41,7 +41,8 @@
     findDuplicateTagEntryIds,
     restoreTagEntries,
     restoreTagEntriesExact,
-    resolveUserTagLabel
+    resolveUserTagLabel,
+    updateTagEntryComment
   } from "../lib/tags/store"
   import {
     buildTagBackup,
@@ -1725,6 +1726,27 @@
     }
   }
 
+  async function saveTagComment(group: TagChipGroup, event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    const comment = input.value.replace(/\s+/g, " ").trim() || null
+    const entryId = group.entries[0].id
+
+    try {
+      await updateTagEntryComment(entryId, comment)
+      tagEntries = tagEntries.map((entry) =>
+        entry.id === entryId ? { ...entry, comment } : entry
+      )
+      tagsMessage = ""
+    } catch {
+      tagsMessage = "Could not save that comment. Try again."
+    }
+  }
+
   async function removeDuplicateTags() {
     if (!dedupeArmed) {
       dedupeArmed = true
@@ -2832,6 +2854,24 @@
                   + Add tags
                 </button>
               </div>
+              {#if selectedTagDay && selectedTagDay.activeGroups.length > 0}
+                <details class="tag-comment-editor">
+                  <summary>Comments</summary>
+                  <div class="tag-comment-rows">
+                    {#each selectedTagDay.activeGroups as group (group.key)}
+                      <label class="tag-comment-row">
+                        <span>{formatTagLabel(group.label)}</span>
+                        <input
+                          type="text"
+                          placeholder="Add a comment"
+                          value={group.entries[0].comment ?? ""}
+                          on:change={(event) => saveTagComment(group, event)}
+                        />
+                      </label>
+                    {/each}
+                  </div>
+                </details>
+              {/if}
             </div>
           {/if}
 
@@ -3886,6 +3926,46 @@
 
   .strip-day-panel .tag-empty {
     padding-block: 0;
+  }
+
+  .tag-comment-editor {
+    grid-column: 1 / -1;
+  }
+
+  .tag-comment-editor summary {
+    color: #6f786f;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .tag-comment-rows {
+    display: grid;
+    gap: 0.45rem;
+    padding-top: 0.55rem;
+  }
+
+  .tag-comment-row {
+    align-items: center;
+    display: grid;
+    gap: 0.7rem;
+    grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
+  }
+
+  .tag-comment-row span {
+    font-size: 0.85rem;
+    font-weight: 750;
+  }
+
+  .tag-comment-row input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 0.85rem;
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
   }
 
   .tag-chip.add {
