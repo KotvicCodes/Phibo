@@ -70,10 +70,6 @@ export async function deleteTagEntries(ids: string[]) {
   })
 }
 
-export async function deleteTagEntry(id: string) {
-  return deleteTagEntries([id])
-}
-
 export async function restoreTagEntries(ids: string[]) {
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
     for (const id of ids) {
@@ -103,8 +99,4 @@ export async function restoreTagEntries(ids: string[]) {
       }
     }
   })
-}
-
-export async function restoreTagEntry(id: string) {
-  return restoreTagEntries([id])
 }
