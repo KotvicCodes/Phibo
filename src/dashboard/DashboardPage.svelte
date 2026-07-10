@@ -298,6 +298,7 @@
     (row) => row.entry?.date === tagsViewDate
   )
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
+  $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
   $: visibleTagFilterTags = filterTagsByQuery(sortedExploreTags, tagsFilterSearch)
   $: filteredTagDays =
     tagsFilterTags.length === 0
@@ -1542,16 +1543,6 @@
     })
   }
 
-  function selectTagsDayFromStrip(date: string) {
-    selectTagsDay(date)
-    // Bring the day's opened tag menu in the log below into view.
-    requestAnimationFrame(() => {
-      document
-        .querySelector(`.tag-daily-log .log-row[data-date="${date}"]`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" })
-    })
-  }
-
   // Map wheel movement onto the strip's horizontal axis at a reduced rate,
   // so days glide by instead of flying past.
   function handleTagStripWheel(event: WheelEvent) {
@@ -2721,7 +2712,7 @@
                   class:dimmed={day.dimmed}
                   data-strip-date={day.date}
                   title={day.title}
-                  on:click={() => selectTagsDayFromStrip(day.date)}
+                  on:click={() => selectTagsDay(day.date)}
                 >
                   <span class="strip-bar-area">
                     <span
@@ -2735,6 +2726,47 @@
                   <small class="strip-label">{day.monthLabel ?? ""}</small>
                 </button>
               {/each}
+            </div>
+          {/if}
+
+          {#if tagsViewDate}
+            <div class="strip-day-panel" aria-label="Selected day tags">
+              <div class="log-date">
+                <strong>{formatDate(tagsViewDate)}</strong>
+                <small>{tagsViewDate}</small>
+              </div>
+              <div class="tag-chip-list">
+                {#if selectedTagDay}
+                  {#each selectedTagDay.activeGroups as group (group.key)}
+                    <button
+                      type="button"
+                      class="tag-chip"
+                      title={group.title}
+                      on:click={() => deleteTagGroup(group)}
+                    >
+                      {formatTagLabel(group.label)}
+                      {#if group.entries.length > 1}
+                        <span class="tag-count">{group.entries.length}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                  {#each selectedTagDay.deletedGroups as group (group.key)}
+                    <button
+                      type="button"
+                      class="tag-chip crossed"
+                      title={group.title}
+                      on:click={() => restoreDeletedTagGroup(group)}
+                    >
+                      {formatTagLabel(group.label)}
+                      {#if group.rows.length > 1}
+                        <span class="tag-count">{group.rows.length}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                {:else}
+                  <p class="tag-empty">No tags on this day yet.</p>
+                {/if}
+              </div>
             </div>
           {/if}
 
@@ -3714,6 +3746,21 @@
     text-align: left;
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .strip-day-panel {
+    align-items: center;
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-bottom: 0.4rem;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .strip-day-panel .tag-empty {
+    padding-block: 0;
   }
 
   .tag-filter-control {
