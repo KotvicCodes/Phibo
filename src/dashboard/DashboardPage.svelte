@@ -1479,17 +1479,17 @@
     const sleepScoreByDate = new Map(
       metrics.map((metric) => [metric.date, metric.sleepScore])
     )
+    // Bars reflect only active tags; deletion tombstones must not inflate
+    // column heights.
     const maxCount = Math.max(
       1,
-      ...days.map((day) => day.activeGroups.length + day.deletedGroups.length)
+      ...days.map((day) => day.activeGroups.length)
     )
     const stripDays: TagStripDay[] = []
 
     for (let date = start; date <= today; date = shiftDate(date, 1)) {
       const day = dayByDate.get(date)
-      const count = day
-        ? day.activeGroups.length + day.deletedGroups.length
-        : 0
+      const count = day ? day.activeGroups.length : 0
 
       stripDays.push({
         date,
