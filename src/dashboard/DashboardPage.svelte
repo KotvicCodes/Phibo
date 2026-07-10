@@ -31,6 +31,11 @@
   import { importOuraFiles, OuraImportError } from "../lib/oura/import"
   import { syncOuraRange } from "../lib/oura/sync"
   import {
+    addUserTagEntry,
+    deleteTagEntry,
+    resolveUserTagLabel
+  } from "../lib/tags/store"
+  import {
     average,
     comparisonWidth,
     daysAgo,
@@ -113,7 +118,7 @@
   }
 
   type ChartMode = "impact" | "scatter" | "timeline"
-  type DashboardView = "explore" | "insights" | "optimal" | "settings"
+  type DashboardView = "explore" | "insights" | "optimal" | "tags" | "settings"
   type InsightComparisonMetric = keyof Pick<
     DailyMetricRow,
     "activityScore" | "readinessScore" | "sleepScore"
@@ -194,6 +199,11 @@
   let syncMessage = "Connect an Oura key or import an export to begin."
   let tagTimingMode: TagTimingMode = "morning"
   let tagEntries: TagEntryRow[] = []
+  let tagsViewDate = formatInputDate(new Date())
+  let newTagInput = ""
+  let newTagComment = ""
+  let tagsMessage = ""
+  let tagDeleteArmedId = ""
 
   // Selector groups honor the user's metric preferences: favorites are
   // pinned in their own group on top, hidden metrics are left out entirely.
@@ -262,6 +272,17 @@
     []
   $: availableTags = sortTagsForDisplay(getAvailableTags(effectiveTagEntries))
   $: tagNightCounts = getTagNightCounts(effectiveTagEntries)
+  // The Tags manager works on the raw stored dates, like import does. The
+  // tag timing shift in effectiveTagEntries only applies to analysis views.
+  $: tagsForSelectedDay = tagEntries.filter(
+    (entry) => entry.date === tagsViewDate
+  )
+  $: tagDays = buildTagDays(tagEntries)
+  $: tagInputSuggestions = getTagInputSuggestions(
+    availableTags,
+    tagsForSelectedDay,
+    newTagInput
+  )
   $: sortedExploreTags =
     tagSortMode === "count"
       ? [...availableTags].sort(
@@ -499,10 +520,10 @@
     const savedTags = await db.tagEntries.orderBy("date").toArray()
 
     savedOuraToken = savedToken ?? null
+    tagEntries = savedTags
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
-      tagEntries = savedTags
       importMessage = `Loaded ${savedMetrics.length} saved Oura days from local storage.`
       syncMessage = `Loaded ${savedMetrics.length} saved Oura days.`
     } else if (savedToken) {
@@ -791,6 +812,7 @@
 
   function setActiveView(view: DashboardView) {
     activeView = view
+    tagDeleteArmedId = ""
     localStorage.setItem(activeViewSettingKey, view)
   }
 
@@ -805,6 +827,7 @@
       value === "explore" ||
       value === "insights" ||
       value === "optimal" ||
+      value === "tags" ||
       value === "settings"
     )
   }
@@ -916,9 +939,10 @@
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
     const savedTags = await db.tagEntries.orderBy("date").toArray()
 
+    tagEntries = savedTags
+
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
-      tagEntries = savedTags
     }
   }
 
@@ -1251,6 +1275,112 @@
     return new Set(entries.map((tag) => tag.date))
   }
 
+  function buildTagDays(entries: typeof tagEntries) {
+    const tagsByDate = new Map<string, string[]>()
+
+    for (const entry of entries) {
+      tagsByDate.set(entry.date, [
+        ...(tagsByDate.get(entry.date) ?? []),
+        entry.tag
+      ])
+    }
+
+    return Array.from(tagsByDate, ([date, tags]) => ({ date, tags })).sort(
+      (left, right) => right.date.localeCompare(left.date)
+    )
+  }
+
+  function getTagInputSuggestions(
+    tags: string[],
+    dayEntries: TagEntryRow[],
+    input: string
+  ) {
+    const query = input.replace(/\s+/g, " ").trim().toLocaleLowerCase()
+    const dayTagKeys = new Set(
+      dayEntries.map((entry) => entry.tag.toLocaleLowerCase())
+    )
+
+    return tags
+      .filter((tag) => !dayTagKeys.has(tag.toLocaleLowerCase()))
+      .filter(
+        (tag) =>
+          query.length === 0 ||
+          tag.toLocaleLowerCase().includes(query) ||
+          formatTagLabel(tag).toLocaleLowerCase().includes(query)
+      )
+      .slice(0, 12)
+  }
+
+  async function reloadTagEntries() {
+    tagEntries = await db.tagEntries.orderBy("date").toArray()
+  }
+
+  function selectTagsDay(date: string) {
+    tagsViewDate = date
+    tagDeleteArmedId = ""
+    tagsMessage = ""
+  }
+
+  function applyTagSuggestion(tag: string) {
+    newTagInput = tag
+  }
+
+  async function addTagToDay() {
+    if (!tagsViewDate) {
+      tagsMessage = "Pick a day first."
+      return
+    }
+
+    const label = resolveUserTagLabel(newTagInput, availableTags)
+
+    if (!label) {
+      tagsMessage = "Type a tag name first."
+      return
+    }
+
+    const isDuplicate = tagsForSelectedDay.some(
+      (entry) => entry.tag.toLocaleLowerCase() === label.toLocaleLowerCase()
+    )
+
+    if (isDuplicate) {
+      tagsMessage = "That tag is already on this day."
+      return
+    }
+
+    const comment = newTagComment.replace(/\s+/g, " ").trim()
+
+    try {
+      await addUserTagEntry({
+        date: tagsViewDate,
+        tag: label,
+        comment: comment || null
+      })
+      newTagInput = ""
+      newTagComment = ""
+      tagsMessage = ""
+      await reloadTagEntries()
+    } catch {
+      tagsMessage = "Could not save that tag. Try again."
+    }
+  }
+
+  async function deleteTag(entry: TagEntryRow) {
+    if (tagDeleteArmedId !== entry.id) {
+      tagDeleteArmedId = entry.id
+      return
+    }
+
+    try {
+      await deleteTagEntry(entry.id)
+      tagsMessage = ""
+      await reloadTagEntries()
+    } catch {
+      tagsMessage = "Could not delete that tag. Try again."
+    } finally {
+      tagDeleteArmedId = ""
+    }
+  }
+
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
@@ -1351,6 +1481,13 @@
       on:click={() => setActiveView("optimal")}
     >
       Optimal
+    </button>
+    <button
+      type="button"
+      class:active={activeView === "tags"}
+      on:click={() => setActiveView("tags")}
+    >
+      Tags
     </button>
     <button
       type="button"
@@ -2117,6 +2254,134 @@
         {/if}
       </div>
     </section>
+  {:else if activeView === "tags"}
+    <section class="settings-workspace" aria-label="Tag manager">
+      <div class="settings-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">Tags</p>
+            <h2>Daily tags</h2>
+          </div>
+          <span>{tagEntries.length} tag entries</span>
+        </div>
+
+        <div class="tag-day-editor">
+          <label class="tag-day-picker">
+            <span>Day</span>
+            <input
+              type="date"
+              bind:value={tagsViewDate}
+              max={formatInputDate(new Date())}
+              on:change={() => {
+                tagDeleteArmedId = ""
+                tagsMessage = ""
+              }}
+            />
+          </label>
+
+          <div class="tag-day-list">
+            {#if tagsForSelectedDay.length === 0}
+              <p class="tag-empty">No tags on this day yet.</p>
+            {:else}
+              {#each tagsForSelectedDay as entry (entry.id)}
+                <div class="tag-day-entry">
+                  <div class="tag-day-entry-text">
+                    <strong>{formatTagLabel(entry.tag)}</strong>
+                    {#if entry.comment}
+                      <p>{entry.comment}</p>
+                    {/if}
+                  </div>
+                  <span class="tag-source-badge">
+                    {entry.source === "user" ? "Added here" : "Oura"}
+                  </span>
+                  <button
+                    type="button"
+                    class="tag-delete-button"
+                    class:armed={tagDeleteArmedId === entry.id}
+                    on:click={() => deleteTag(entry)}
+                  >
+                    {tagDeleteArmedId === entry.id ? "Confirm" : "Delete"}
+                  </button>
+                </div>
+              {/each}
+            {/if}
+          </div>
+
+          <form class="tag-add-form" on:submit|preventDefault={addTagToDay}>
+            <input
+              type="text"
+              placeholder="Tag name"
+              aria-label="Tag name"
+              bind:value={newTagInput}
+            />
+            <input
+              type="text"
+              placeholder="Comment (optional)"
+              aria-label="Tag comment"
+              bind:value={newTagComment}
+            />
+            <button type="submit">Add tag</button>
+          </form>
+
+          {#if tagsMessage}
+            <p class="tags-message" role="status">{tagsMessage}</p>
+          {/if}
+
+          {#if tagInputSuggestions.length > 0}
+            <div class="tag-picker" aria-label="Tag suggestions">
+              {#each tagInputSuggestions as tag (tag)}
+                <button type="button" on:click={() => applyTagSuggestion(tag)}>
+                  {formatTagLabel(tag)}
+                </button>
+              {/each}
+            </div>
+          {/if}
+
+          <p class="tag-editor-note">
+            Tags are stored on the Oura date shown here. The tag timing setting
+            only shifts dates in the analysis views.
+          </p>
+        </div>
+
+        <div class="tag-daily-log" aria-label="Tagged days">
+          <div class="log-heading">
+            <div>
+              <p class="section-kicker">Daily log</p>
+              <h3>All tagged days</h3>
+            </div>
+            <span>{tagDays.length} days</span>
+          </div>
+
+          {#if tagDays.length === 0}
+            <p class="tag-empty">
+              Import Oura data or add your first tag above.
+            </p>
+          {:else}
+            <div class="log-table">
+              <div class="log-row header">
+                <span>Date</span>
+                <span>Tags</span>
+              </div>
+              {#each tagDays as day (day.date)}
+                <button
+                  type="button"
+                  class="log-row"
+                  class:selected={tagsViewDate === day.date}
+                  data-date={day.date}
+                  on:click={() => selectTagsDay(day.date)}
+                >
+                  <div class="log-date">
+                    <strong>{formatDate(day.date)}</strong>
+                    <small>{day.date}</small>
+                  </div>
+                  <span>{formatTagList(day.tags)}</span>
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+    </section>
   {:else}
     <section class="settings-workspace">
       <div class="settings-panel">
@@ -2686,6 +2951,159 @@
     font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
+  }
+
+  .tag-day-editor {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .tag-day-picker {
+    align-items: center;
+    display: flex;
+    gap: 0.6rem;
+  }
+
+  .tag-day-picker span {
+    color: #6f786f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .tag-day-picker input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    padding: 0.45rem 0.6rem;
+  }
+
+  .tag-day-list {
+    border-top: 1px solid #d8d8cc;
+    display: grid;
+  }
+
+  .tag-day-entry {
+    align-items: center;
+    border-bottom: 1px solid #d8d8cc;
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding: 0.55rem 0;
+  }
+
+  .tag-day-entry-text strong {
+    display: block;
+    font-size: 0.95rem;
+  }
+
+  .tag-day-entry-text p {
+    color: #6f786f;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    margin-top: 0.15rem;
+  }
+
+  .tag-source-badge {
+    background: rgba(31, 37, 32, 0.08);
+    border-radius: 999px;
+    color: #6f786f;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.14rem 0.5rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .tag-delete-button {
+    appearance: none;
+    background: #fbf7ef;
+    border: 1px solid #d2b5a5;
+    border-radius: 8px;
+    color: #8a3f2f;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    padding: 0.35rem 0.6rem;
+    white-space: nowrap;
+  }
+
+  .tag-delete-button.armed {
+    background: #8a3f2f;
+    border-color: #8a3f2f;
+    color: #f8f3ea;
+  }
+
+  .tag-add-form {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  }
+
+  .tag-add-form input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .tag-add-form button {
+    appearance: none;
+    background: #1d2a22;
+    border: 1px solid #1d2a22;
+    border-radius: 8px;
+    color: #f8f3ea;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.5rem 0.9rem;
+    white-space: nowrap;
+  }
+
+  .tags-message {
+    color: #8a3f2f;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .tag-empty {
+    color: #6f786f;
+    font-size: 0.9rem;
+    padding-block: 0.6rem;
+  }
+
+  .tag-editor-note {
+    color: #6f786f;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .tag-daily-log {
+    border-top: 1px solid #d8d8cc;
+    display: grid;
+    gap: 0.45rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+  }
+
+  @media (max-width: 720px) {
+    .tag-add-form {
+      grid-template-columns: 1fr;
+    }
+
+    .tag-day-entry {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .tag-day-entry .tag-source-badge {
+      justify-self: start;
+      order: 3;
+    }
   }
 
   .explore-builder {
