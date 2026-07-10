@@ -229,7 +229,7 @@
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
-  let dedupeArmed = false
+  let isDedupeConfirmOpen = false
   let isDeduping = false
   let dedupeMessage = ""
   // Ids of the tombstones written by the last cleanup run; enables a
@@ -1825,13 +1825,22 @@
     }
   }
 
-  async function removeDuplicateTags() {
-    if (!dedupeArmed) {
-      dedupeArmed = true
-      dedupeMessage = `This deletes ${duplicateTagIds.length} duplicate tag entries, keeping one of each tag per day. Click Confirm remove to continue.`
-      return
-    }
+  function openDedupeConfirm() {
+    isDedupeConfirmOpen = true
+    dedupeMessage = ""
+  }
 
+  function closeDedupeConfirm() {
+    isDedupeConfirmOpen = false
+  }
+
+  function handleDedupeBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget && !isDeduping) {
+      closeDedupeConfirm()
+    }
+  }
+
+  async function confirmRemoveDuplicates() {
     isDeduping = true
 
     try {
@@ -1845,8 +1854,8 @@
     } catch {
       dedupeMessage = "Could not remove duplicates. Try again."
     } finally {
-      dedupeArmed = false
       isDeduping = false
+      isDedupeConfirmOpen = false
     }
   }
 
@@ -1876,10 +1885,6 @@
     }
   }
 
-  function cancelDedupe() {
-    dedupeArmed = false
-    dedupeMessage = ""
-  }
 
   async function exportTagBackup() {
     try {
@@ -1958,6 +1963,14 @@
   // On the Explore and Tags views, typing anywhere starts a tag search
   // without having to click the search box first.
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape" && isDedupeConfirmOpen) {
+      if (!isDeduping) {
+        closeDedupeConfirm()
+      }
+
+      return
+    }
+
     const searchInput =
       activeView === "explore"
         ? tagSearchInput
@@ -3358,7 +3371,7 @@
           </div>
         </div>
 
-        <div class="setting-row delete-data-setting">
+        <div class="setting-row dedupe-setting">
           <div>
             <strong>Remove duplicate tags</strong>
             <p>
@@ -3375,28 +3388,16 @@
             <button
               type="button"
               class="delete-data-button"
-              class:armed={dedupeArmed}
               disabled={isDeduping || duplicateTagIds.length === 0}
-              on:click={removeDuplicateTags}
+              on:click={openDedupeConfirm}
             >
               {isDeduping
                 ? "Removing"
-                : dedupeArmed
-                  ? "Confirm remove"
-                  : duplicateTagIds.length === 0
-                    ? "No duplicates"
-                    : `Remove ${duplicateTagIds.length} duplicates`}
+                : duplicateTagIds.length === 0
+                  ? "No duplicates"
+                  : `Remove ${duplicateTagIds.length} duplicates`}
             </button>
-            {#if dedupeArmed && !isDeduping}
-              <button
-                type="button"
-                class="delete-data-cancel"
-                on:click={cancelDedupe}
-              >
-                Cancel
-              </button>
-            {/if}
-            {#if lastDedupeIds.length > 0 && !dedupeArmed && !isDeduping}
+            {#if lastDedupeIds.length > 0 && !isDeduping}
               <button
                 type="button"
                 class="delete-data-cancel"
@@ -3458,6 +3459,46 @@
           </div>
         </div>
       </div>
+
+      {#if isDedupeConfirmOpen}
+        <div
+          class="tag-picker-backdrop"
+          role="presentation"
+          on:click={handleDedupeBackdropClick}
+        >
+          <section
+            class="confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Remove duplicate tags"
+          >
+            <h2>Remove duplicate tags?</h2>
+            <p>
+              This deletes {duplicateTagIds.length} duplicate tag entries,
+              keeping one of each tag per day. Undo stays available until you
+              close this page.
+            </p>
+            <div class="confirm-modal-actions">
+              <button
+                type="button"
+                class="delete-data-button armed"
+                disabled={isDeduping}
+                on:click={confirmRemoveDuplicates}
+              >
+                {isDeduping ? "Removing" : "Remove duplicates"}
+              </button>
+              <button
+                type="button"
+                class="delete-data-cancel"
+                disabled={isDeduping}
+                on:click={closeDedupeConfirm}
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        </div>
+      {/if}
     </section>
   {/if}
 </main>
@@ -3807,6 +3848,38 @@
     align-items: start;
     border-top: 1px solid #d8d8cc;
     margin-top: 0.4rem;
+  }
+
+  .setting-row.dedupe-setting {
+    align-items: start;
+    border-top: 0;
+  }
+
+  .confirm-modal {
+    background: #fbf7ef;
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(23, 32, 27, 0.28);
+    display: grid;
+    gap: 0.7rem;
+    max-width: 460px;
+    padding: 1rem;
+    width: 100%;
+  }
+
+  .confirm-modal h2 {
+    font-size: 1.15rem;
+  }
+
+  .confirm-modal p {
+    color: #6f786f;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .confirm-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
   }
 
   .delete-data-message {
