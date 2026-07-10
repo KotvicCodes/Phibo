@@ -1,4 +1,5 @@
 import { db } from "../db"
+import { filterTombstonedTagEntries, getDeletedTagIdSet } from "../tags/store"
 import { fetchOuraCollection } from "./client"
 import {
   mapTagEntries,
@@ -69,15 +70,29 @@ export async function syncOuraRange(
     })
     const tagEntries = mapTagEntries(tags)
 
-    await db.transaction("rw", db.dailyMetrics, db.tagEntries, db.importRuns, async () => {
-      await db.dailyMetrics.bulkPut(dailyMetrics)
-      await db.tagEntries.bulkPut(tagEntries)
-      await db.importRuns.update(importRunId, {
-        finishedAt: new Date().toISOString(),
-        status: "success",
-        recordsSynced: dailyMetrics.length + tagEntries.length
-      })
-    })
+    await db.transaction(
+      "rw",
+      db.dailyMetrics,
+      db.tagEntries,
+      db.deletedTagIds,
+      db.importRuns,
+      async () => {
+        await db.dailyMetrics.bulkPut(dailyMetrics)
+
+        // Skip tags the user deleted in the app so a resync does not
+        // resurrect them.
+        const deletedIds = await getDeletedTagIdSet()
+
+        await db.tagEntries.bulkPut(
+          filterTombstonedTagEntries(tagEntries, deletedIds)
+        )
+        await db.importRuns.update(importRunId, {
+          finishedAt: new Date().toISOString(),
+          status: "success",
+          recordsSynced: dailyMetrics.length + tagEntries.length
+        })
+      }
+    )
 
     return {
       dailyMetrics,
