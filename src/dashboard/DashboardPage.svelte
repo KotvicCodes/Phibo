@@ -40,6 +40,7 @@
     deleteTagEntries,
     findDuplicateTagEntryIds,
     restoreTagEntries,
+    restoreTagEntriesExact,
     resolveUserTagLabel
   } from "../lib/tags/store"
   import {
@@ -224,6 +225,9 @@
   let dedupeArmed = false
   let isDeduping = false
   let dedupeMessage = ""
+  // Ids of the tombstones written by the last cleanup run; enables a
+  // session-level undo until the page is closed.
+  let lastDedupeIds: string[] = []
 
   // Selector groups honor the user's metric preferences: favorites are
   // pinned in their own group on top, hidden metrics are left out entirely.
@@ -1724,11 +1728,38 @@
 
       tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
       deletedTagRows = [...deletedTagRows, ...result.tombstones]
-      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries.`
+      lastDedupeIds = result.tombstones.map((tombstone) => tombstone.id)
+      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries. Undo stays available until you close this page.`
     } catch {
       dedupeMessage = "Could not remove duplicates. Try again."
     } finally {
       dedupeArmed = false
+      isDeduping = false
+    }
+  }
+
+  async function undoRemoveDuplicates() {
+    if (lastDedupeIds.length === 0) {
+      return
+    }
+
+    isDeduping = true
+
+    try {
+      const result = await restoreTagEntriesExact(lastDedupeIds)
+      const removedTombstoneIds = new Set(result.removedTombstoneIds)
+
+      deletedTagRows = deletedTagRows.filter(
+        (row) => !removedTombstoneIds.has(row.id)
+      )
+      tagEntries = [...tagEntries, ...result.restoredEntries].sort(
+        (left, right) => left.date.localeCompare(right.date)
+      )
+      lastDedupeIds = []
+      dedupeMessage = `Restored ${result.restoredEntries.length} duplicate tag entries.`
+    } catch {
+      dedupeMessage = "Could not undo the removal. Try again."
+    } finally {
       isDeduping = false
     }
   }
@@ -3167,6 +3198,15 @@
                 on:click={cancelDedupe}
               >
                 Cancel
+              </button>
+            {/if}
+            {#if lastDedupeIds.length > 0 && !dedupeArmed && !isDeduping}
+              <button
+                type="button"
+                class="delete-data-cancel"
+                on:click={undoRemoveDuplicates}
+              >
+                Undo
               </button>
             {/if}
           </div>
