@@ -39,7 +39,6 @@
     addUserTagEntry,
     deleteTagEntries,
     restoreTagEntries,
-    restoreTagEntry,
     resolveUserTagLabel
   } from "../lib/tags/store"
   import {
@@ -213,8 +212,6 @@
   let tagTimingMode: TagTimingMode = "morning"
   let tagEntries: TagEntryRow[] = []
   let tagsViewDate = formatInputDate(new Date())
-  let newTagInput = ""
-  let newTagComment = ""
   let tagsMessage = ""
   let tagsFilterSearch = ""
   let tagsFilterTags: string[] = []
@@ -293,12 +290,6 @@
   $: tagNightCounts = getTagNightCounts(effectiveTagEntries)
   // The Tags manager works on the raw stored dates, like import does. The
   // tag timing shift in effectiveTagEntries only applies to analysis views.
-  $: tagsForSelectedDay = tagEntries.filter(
-    (entry) => entry.date === tagsViewDate
-  )
-  $: deletedForSelectedDay = deletedTagRows.filter(
-    (row) => row.entry?.date === tagsViewDate
-  )
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
   // The picker offers every label ever seen, including fully deleted ones,
@@ -335,11 +326,6 @@
               day.deleted.some((row) => row.entry?.tag === tag)
           )
         )
-  $: tagInputSuggestions = getTagInputSuggestions(
-    availableTags,
-    tagsForSelectedDay,
-    newTagInput
-  )
   $: tagStripDays = buildTagStripDays(
     dailyMetrics,
     tagDays,
@@ -1452,27 +1438,6 @@
     )
   }
 
-  function getTagInputSuggestions(
-    tags: string[],
-    dayEntries: TagEntryRow[],
-    input: string
-  ) {
-    const query = input.replace(/\s+/g, " ").trim().toLocaleLowerCase()
-    const dayTagKeys = new Set(
-      dayEntries.map((entry) => entry.tag.toLocaleLowerCase())
-    )
-
-    return tags
-      .filter((tag) => !dayTagKeys.has(tag.toLocaleLowerCase()))
-      .filter(
-        (tag) =>
-          query.length === 0 ||
-          tag.toLocaleLowerCase().includes(query) ||
-          formatTagLabel(tag).toLocaleLowerCase().includes(query)
-      )
-      .slice(0, 12)
-  }
-
   async function reloadTagEntries() {
     tagEntries = await db.tagEntries.orderBy("date").toArray()
     deletedTagRows = await db.deletedTagIds.toArray()
@@ -1693,62 +1658,6 @@
     tagPickerSearch = ""
   }
 
-  function applyTagSuggestion(tag: string) {
-    newTagInput = tag
-  }
-
-  async function addTagToDay() {
-    if (!tagsViewDate) {
-      tagsMessage = "Pick a day first."
-      return
-    }
-
-    const label = resolveUserTagLabel(newTagInput, availableTags)
-
-    if (!label) {
-      tagsMessage = "Type a tag name first."
-      return
-    }
-
-    const isDuplicate = tagsForSelectedDay.some(
-      (entry) => entry.tag.toLocaleLowerCase() === label.toLocaleLowerCase()
-    )
-
-    if (isDuplicate) {
-      tagsMessage = "That tag is already on this day."
-      return
-    }
-
-    // Adding a tag that sits crossed out on this day restores it instead of
-    // creating a second entry.
-    const crossedMatch = deletedForSelectedDay.find(
-      (row) => row.entry?.tag.toLocaleLowerCase() === label.toLocaleLowerCase()
-    )
-
-    if (crossedMatch) {
-      newTagInput = ""
-      newTagComment = ""
-      await restoreDeletedTag(crossedMatch)
-      return
-    }
-
-    const comment = newTagComment.replace(/\s+/g, " ").trim()
-
-    try {
-      await addUserTagEntry({
-        date: tagsViewDate,
-        tag: label,
-        comment: comment || null
-      })
-      newTagInput = ""
-      newTagComment = ""
-      tagsMessage = ""
-      await reloadTagEntries()
-    } catch {
-      tagsMessage = "Could not save that tag. Try again."
-    }
-  }
-
   async function deleteTagGroup(group: TagChipGroup) {
     try {
       await deleteTagEntries(group.entries.map((entry) => entry.id))
@@ -1762,16 +1671,6 @@
   async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
     try {
       await restoreTagEntries(group.rows.map((row) => row.id))
-      tagsMessage = ""
-      await reloadTagEntries()
-    } catch {
-      tagsMessage = "Could not restore that tag. Try again."
-    }
-  }
-
-  async function restoreDeletedTag(row: DeletedTagIdRow) {
-    try {
-      await restoreTagEntry(row.id)
       tagsMessage = ""
       await reloadTagEntries()
     } catch {
@@ -2739,65 +2638,6 @@
   {:else if activeView === "tags"}
     <section class="settings-workspace" aria-label="Tag manager">
       <div class="settings-panel">
-        <div class="panel-heading">
-          <div>
-            <p class="section-kicker">Tags</p>
-            <h2>Daily tags</h2>
-          </div>
-          <span>{tagEntries.length} tag entries</span>
-        </div>
-
-        <div class="tag-day-editor">
-          <label class="tag-day-picker">
-            <span>Day</span>
-            <input
-              type="date"
-              bind:value={tagsViewDate}
-              max={formatInputDate(new Date())}
-              on:change={() => {
-                tagsMessage = ""
-              }}
-            />
-          </label>
-
-          <form class="tag-add-form" on:submit|preventDefault={addTagToDay}>
-            <input
-              type="text"
-              placeholder="Tag name"
-              aria-label="Tag name"
-              bind:value={newTagInput}
-            />
-            <input
-              type="text"
-              placeholder="Comment (optional)"
-              aria-label="Tag comment"
-              bind:value={newTagComment}
-            />
-            <button type="submit">Add tag</button>
-          </form>
-
-          {#if tagsMessage}
-            <p class="tags-message" role="status">{tagsMessage}</p>
-          {/if}
-
-          {#if tagInputSuggestions.length > 0}
-            <div class="tag-picker" aria-label="Tag suggestions">
-              {#each tagInputSuggestions as tag (tag)}
-                <button type="button" on:click={() => applyTagSuggestion(tag)}>
-                  {formatTagLabel(tag)}
-                </button>
-              {/each}
-            </div>
-          {/if}
-
-          <p class="tag-editor-note">
-            Tags are stored on the Oura date shown here. The tag timing setting
-            only shifts dates in the analysis views. Click a day below to open
-            it: clicking a tag crosses it out and deletes it, clicking a
-            crossed-out tag brings it back.
-          </p>
-        </div>
-
         <div class="tag-daily-log" aria-label="Tagged days">
           <div class="log-heading">
             <div>
@@ -2890,6 +2730,10 @@
                 </button>
               </div>
             </div>
+          {/if}
+
+          {#if tagsMessage}
+            <p class="tags-message" role="status">{tagsMessage}</p>
           {/if}
 
           <div class="tag-filter-control">
@@ -3721,32 +3565,6 @@
     text-transform: uppercase;
   }
 
-  .tag-day-editor {
-    display: grid;
-    gap: 0.75rem;
-  }
-
-  .tag-day-picker {
-    align-items: center;
-    display: flex;
-    gap: 0.6rem;
-  }
-
-  .tag-day-picker span {
-    color: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .tag-day-picker input {
-    background: #fbf7ef;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    font: inherit;
-    padding: 0.45rem 0.6rem;
-  }
-
   .tag-log-row {
     align-items: start;
   }
@@ -3801,35 +3619,6 @@
     color: #1e2c64;
   }
 
-  .tag-add-form {
-    display: grid;
-    gap: 0.55rem;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
-  }
-
-  .tag-add-form input {
-    background: #fbf7ef;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    font: inherit;
-    min-width: 0;
-    padding: 0.5rem 0.65rem;
-  }
-
-  .tag-add-form button {
-    appearance: none;
-    background: #1d2a22;
-    border: 1px solid #1d2a22;
-    border-radius: 8px;
-    color: #f8f3ea;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    padding: 0.5rem 0.9rem;
-    white-space: nowrap;
-  }
-
   .tags-message {
     color: #8a3f2f;
     font-size: 0.9rem;
@@ -3842,18 +3631,9 @@
     padding-block: 0.6rem;
   }
 
-  .tag-editor-note {
-    color: #6f786f;
-    font-size: 0.8rem;
-    line-height: 1.4;
-  }
-
   .tag-daily-log {
-    border-top: 1px solid #d8d8cc;
     display: grid;
     gap: 0.45rem;
-    margin-top: 1rem;
-    padding-top: 1rem;
   }
 
   .tag-day-strip {
@@ -4042,12 +3822,6 @@
 
   .tag-filter-control h3 {
     font-size: 0.95rem;
-  }
-
-  @media (max-width: 720px) {
-    .tag-add-form {
-      grid-template-columns: 1fr;
-    }
   }
 
   .explore-builder {
