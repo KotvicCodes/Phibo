@@ -1641,9 +1641,16 @@
     }
 
     try {
-      await addUserTagEntry({ date: tagsViewDate, tag, comment: null })
+      const entry = await addUserTagEntry({
+        date: tagsViewDate,
+        tag,
+        comment: null
+      })
+
+      tagEntries = [...tagEntries, entry].sort((left, right) =>
+        left.date.localeCompare(right.date)
+      )
       tagsMessage = ""
-      await reloadTagEntries()
     } catch {
       tagsMessage = "Could not save that tag. Try again."
     }
@@ -1658,11 +1665,19 @@
     tagPickerSearch = ""
   }
 
+  // Chip clicks patch the in-memory state with what the store reports back
+  // instead of re-reading both tables, so toggles do not re-render every
+  // chip or hit IndexedDB for the full history on each click.
   async function deleteTagGroup(group: TagChipGroup) {
     try {
-      await deleteTagEntries(group.entries.map((entry) => entry.id))
+      const result = await deleteTagEntries(
+        group.entries.map((entry) => entry.id)
+      )
+      const removedIds = new Set(result.deletedIds)
+
+      tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
+      deletedTagRows = [...deletedTagRows, ...result.tombstones]
       tagsMessage = ""
-      await reloadTagEntries()
     } catch {
       tagsMessage = "Could not delete that tag. Try again."
     }
@@ -1670,9 +1685,20 @@
 
   async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
     try {
-      await restoreTagEntries(group.rows.map((row) => row.id))
+      const result = await restoreTagEntries(group.rows.map((row) => row.id))
+      const removedTombstoneIds = new Set(result.removedTombstoneIds)
+
+      deletedTagRows = deletedTagRows.filter(
+        (row) => !removedTombstoneIds.has(row.id)
+      )
+
+      if (result.restoredEntries.length > 0) {
+        tagEntries = [...tagEntries, ...result.restoredEntries].sort(
+          (left, right) => left.date.localeCompare(right.date)
+        )
+      }
+
       tagsMessage = ""
-      await reloadTagEntries()
     } catch {
       tagsMessage = "Could not restore that tag. Try again."
     }

@@ -1,5 +1,5 @@
 import { db } from "../db"
-import type { TagEntryRow } from "../db/types"
+import type { DeletedTagIdRow, TagEntryRow } from "../db/types"
 import { normalizeTagLabel } from "../oura/normalizer"
 
 export async function getDeletedTagIdSet() {
@@ -58,6 +58,8 @@ export async function addUserTagEntry(input: {
 }
 
 export async function deleteTagEntries(ids: string[]) {
+  const tombstones: DeletedTagIdRow[] = []
+
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
     const deletedAt = new Date().toISOString()
 
@@ -70,13 +72,20 @@ export async function deleteTagEntries(ids: string[]) {
       // Oura tags. User-created tags never come back from an import, so they
       // are hard-deleted without leaving a crossed-out entry behind.
       if (entry?.source !== "user") {
-        await db.deletedTagIds.put({ id, deletedAt, entry })
+        const tombstone = { id, deletedAt, entry }
+
+        await db.deletedTagIds.put(tombstone)
+        tombstones.push(tombstone)
       }
     }
   })
+
+  return { deletedIds: ids, tombstones }
 }
 
 export async function restoreTagEntries(ids: string[]) {
+  const restoredEntries: TagEntryRow[] = []
+
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
     for (const id of ids) {
       const tombstone = await db.deletedTagIds.get(id)
@@ -102,7 +111,10 @@ export async function restoreTagEntries(ids: string[]) {
 
       if (!hasDuplicate) {
         await db.tagEntries.put(entry)
+        restoredEntries.push(entry)
       }
     }
   })
+
+  return { removedTombstoneIds: ids, restoredEntries }
 }
