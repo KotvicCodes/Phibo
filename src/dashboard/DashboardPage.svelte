@@ -1520,15 +1520,30 @@
     return stripDays
   }
 
+  // The strip starts positioned on the selected day without animating past
+  // every prior day; only later selections glide smoothly.
+  let tagStripHasPositioned = false
+
+  $: if (activeView !== "tags") {
+    tagStripHasPositioned = false
+  }
+
   function scrollTagStripToDate(date: string) {
     requestAnimationFrame(() => {
-      document
-        .querySelector(`.tag-day-strip [data-strip-date="${date}"]`)
-        ?.scrollIntoView({
-          behavior: "smooth",
-          inline: "center",
-          block: "nearest"
-        })
+      const target = document.querySelector(
+        `.tag-day-strip [data-strip-date="${date}"]`
+      )
+
+      if (!target) {
+        return
+      }
+
+      target.scrollIntoView({
+        behavior: tagStripHasPositioned ? "smooth" : "auto",
+        inline: "center",
+        block: "nearest"
+      })
+      tagStripHasPositioned = true
     })
   }
 
