@@ -78,6 +78,13 @@ export function findDuplicateTagEntryIds(entries: TagEntryRow[]) {
   return duplicateIds
 }
 
+export async function updateTagEntryComment(
+  id: string,
+  comment: string | null
+) {
+  await db.tagEntries.update(id, { comment })
+}
+
 export async function deleteTagEntries(ids: string[]) {
   const tombstones: DeletedTagIdRow[] = []
 
