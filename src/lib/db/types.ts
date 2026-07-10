@@ -104,8 +104,14 @@ export interface TagEntryRow {
   date: string
   tag: string
   comment: string | null
+  source?: "oura" | "user"
   sourceUpdatedAt: string | null
   syncedAt: string
+}
+
+export interface DeletedTagIdRow {
+  id: string
+  deletedAt: string
 }
 
 export interface ImportRunRow {

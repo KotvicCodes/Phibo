@@ -438,6 +438,7 @@ export function mapTagEntries(tags: OuraTag[]) {
         date,
         tag: label,
         comment: getString(tag, "comment", "Comment", "text") ?? null,
+        source: "oura",
         sourceUpdatedAt:
           getString(tag, "updated_at", "UpdatedAt", "InsertedDate") ?? null,
         syncedAt
@@ -785,7 +786,7 @@ function parseOuraObjectLiteral(value: string) {
   }
 }
 
-function normalizeTagLabel(value: string | null) {
+export function normalizeTagLabel(value: string | null) {
   if (!value) {
     return null
   }

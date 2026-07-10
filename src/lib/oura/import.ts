@@ -2,6 +2,7 @@ import JSZip from "jszip"
 import Papa from "papaparse"
 import { db } from "../db"
 import type { DailyMetricRow } from "../db/types"
+import { filterTombstonedTagEntries, getDeletedTagIdSet } from "../tags/store"
 import {
   mapTagEntries,
   mergeDailyMetrics,
@@ -133,34 +134,47 @@ export async function importOuraFiles(files: File[]) {
 
     const [startDate, endDate] = getImportDateRange(dailyMetrics, tagEntries)
 
-    await db.transaction("rw", db.dailyMetrics, db.tagEntries, db.importRuns, async () => {
-      if (dailyMetrics.length > 0) {
-        // Merge into any previously stored rows so importing a subset of
-        // files (for example only workout.csv) does not null out metrics
-        // that came from an earlier import.
-        const storedRows = await db.dailyMetrics.bulkGet(
-          dailyMetrics.map((metric) => metric.date)
-        )
-
-        await db.dailyMetrics.bulkPut(
-          dailyMetrics.map((metric, index) =>
-            mergeWithStoredRow(storedRows[index], metric)
+    await db.transaction(
+      "rw",
+      db.dailyMetrics,
+      db.tagEntries,
+      db.deletedTagIds,
+      db.importRuns,
+      async () => {
+        if (dailyMetrics.length > 0) {
+          // Merge into any previously stored rows so importing a subset of
+          // files (for example only workout.csv) does not null out metrics
+          // that came from an earlier import.
+          const storedRows = await db.dailyMetrics.bulkGet(
+            dailyMetrics.map((metric) => metric.date)
           )
-        )
-      }
 
-      if (tagEntries.length > 0) {
-        await db.tagEntries.bulkPut(tagEntries)
-      }
+          await db.dailyMetrics.bulkPut(
+            dailyMetrics.map((metric, index) =>
+              mergeWithStoredRow(storedRows[index], metric)
+            )
+          )
+        }
 
-      await db.importRuns.update(importRunId, {
-        endDate,
-        finishedAt: new Date().toISOString(),
-        recordsSynced: dailyMetrics.length + tagEntries.length,
-        startDate,
-        status: "success"
-      })
-    })
+        if (tagEntries.length > 0) {
+          // Skip tags the user deleted in the app so a re-import of the
+          // same export does not resurrect them.
+          const deletedIds = await getDeletedTagIdSet()
+
+          await db.tagEntries.bulkPut(
+            filterTombstonedTagEntries(tagEntries, deletedIds)
+          )
+        }
+
+        await db.importRuns.update(importRunId, {
+          endDate,
+          finishedAt: new Date().toISOString(),
+          recordsSynced: dailyMetrics.length + tagEntries.length,
+          startDate,
+          status: "success"
+        })
+      }
+    )
 
     return {
       dailyMetrics,

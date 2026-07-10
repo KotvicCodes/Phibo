@@ -2,6 +2,7 @@ import Dexie, { type Table } from "dexie"
 import type {
   AuthTokenRow,
   DailyMetricRow,
+  DeletedTagIdRow,
   ImportRunRow,
   TagEntryRow
 } from "./types"
@@ -9,6 +10,7 @@ import type {
 export class PhiboDb extends Dexie {
   authTokens!: Table<AuthTokenRow, string>
   dailyMetrics!: Table<DailyMetricRow, string>
+  deletedTagIds!: Table<DeletedTagIdRow, string>
   importRuns!: Table<ImportRunRow, string>
   tagEntries!: Table<TagEntryRow, string>
 
@@ -28,6 +30,25 @@ export class PhiboDb extends Dexie {
       metrics: null,
       sessions: null
     })
+
+    this.version(3)
+      .stores({
+        authTokens: "id",
+        dailyMetrics: "date",
+        deletedTagIds: "id",
+        importRuns: "id, startedAt, finishedAt, status",
+        tagEntries: "id, date, tag"
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table<TagEntryRow>("tagEntries")
+          .toCollection()
+          .modify((entry) => {
+            if (!entry.source) {
+              entry.source = "oura"
+            }
+          })
+      })
   }
 }
 

@@ -885,10 +885,12 @@
         "rw",
         db.dailyMetrics,
         db.tagEntries,
+        db.deletedTagIds,
         db.importRuns,
         async () => {
           await db.dailyMetrics.clear()
           await db.tagEntries.clear()
+          await db.deletedTagIds.clear()
           await db.importRuns.clear()
         }
       )
