@@ -218,6 +218,8 @@
   let tagsMessage = ""
   let tagsFilterSearch = ""
   let tagsFilterTags: string[] = []
+  let isTagPickerOpen = false
+  let tagPickerSearch = ""
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
@@ -299,6 +301,29 @@
   )
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
+  // The picker offers every label ever seen, including fully deleted ones,
+  // so a tag whose last instance was deleted stays one click away.
+  $: allKnownTags = buildAllKnownTags(tagEntries, deletedTagRows)
+  $: visibleTagPickerTags = filterTagsByQuery(allKnownTags, tagPickerSearch)
+  $: tagPickerActiveKeys = new Set(
+    selectedTagDay?.activeGroups.map((group) => group.key) ?? []
+  )
+  $: tagPickerDeletedKeys = new Set(
+    selectedTagDay?.deletedGroups.map((group) => group.key) ?? []
+  )
+  $: tagPickerCreateLabel = (() => {
+    const label = resolveUserTagLabel(tagPickerSearch, allKnownTags)
+
+    if (!label) {
+      return null
+    }
+
+    const key = label.toLocaleLowerCase()
+
+    return allKnownTags.some((tag) => tag.toLocaleLowerCase() === key)
+      ? null
+      : label
+  })()
   $: visibleTagFilterTags = filterTagsByQuery(sortedExploreTags, tagsFilterSearch)
   $: filteredTagDays =
     tagsFilterTags.length === 0
@@ -1581,6 +1606,93 @@
       : [...tagsFilterTags, tag]
   }
 
+  function buildAllKnownTags(
+    entries: TagEntryRow[],
+    deletedRows: DeletedTagIdRow[]
+  ) {
+    const labelsByKey = new Map<string, string>()
+
+    for (const entry of entries) {
+      const key = entry.tag.toLocaleLowerCase()
+
+      if (!labelsByKey.has(key)) {
+        labelsByKey.set(key, entry.tag)
+      }
+    }
+
+    for (const row of deletedRows) {
+      const label = row.entry?.tag
+
+      if (!label) {
+        continue
+      }
+
+      const key = label.toLocaleLowerCase()
+
+      if (!labelsByKey.has(key)) {
+        labelsByKey.set(key, label)
+      }
+    }
+
+    return sortTagsForDisplay(Array.from(labelsByKey.values()))
+  }
+
+  let tagPickerSearchInput: HTMLInputElement | null = null
+
+  function openTagPicker() {
+    isTagPickerOpen = true
+    tagPickerSearch = ""
+    requestAnimationFrame(() => tagPickerSearchInput?.focus())
+  }
+
+  function closeTagPicker() {
+    isTagPickerOpen = false
+  }
+
+  function handleTagPickerBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeTagPicker()
+    }
+  }
+
+  async function toggleTagInPicker(tag: string) {
+    const key = tag.toLocaleLowerCase()
+    const activeGroup = selectedTagDay?.activeGroups.find(
+      (group) => group.key === key
+    )
+
+    if (activeGroup) {
+      await deleteTagGroup(activeGroup)
+      return
+    }
+
+    const deletedGroup = selectedTagDay?.deletedGroups.find(
+      (group) => group.key === key
+    )
+
+    if (deletedGroup) {
+      await restoreDeletedTagGroup(deletedGroup)
+      return
+    }
+
+    try {
+      await addUserTagEntry({ date: tagsViewDate, tag, comment: null })
+      tagsMessage = ""
+      await reloadTagEntries()
+    } catch {
+      tagsMessage = "Could not save that tag. Try again."
+    }
+  }
+
+  async function createTagFromPicker() {
+    if (!tagPickerCreateLabel) {
+      return
+    }
+
+    await toggleTagInPicker(tagPickerCreateLabel)
+    tagPickerSearch = ""
+  }
+
   function applyTagSuggestion(tag: string) {
     newTagInput = tag
   }
@@ -1748,7 +1860,9 @@
       activeView === "explore"
         ? tagSearchInput
         : activeView === "tags"
-          ? tagsFilterSearchInput
+          ? isTagPickerOpen
+            ? tagPickerSearchInput
+            : tagsFilterSearchInput
           : null
 
     if (!searchInput) {
@@ -1761,10 +1875,13 @@
 
     const target = event.target instanceof HTMLElement ? event.target : null
 
-    // Escape backs out of the tag search from anywhere on the view.
+    // Escape closes the tag picker popup, or backs out of the tag search.
     if (event.key === "Escape") {
       if (activeView === "explore") {
         tagSearch = ""
+      } else if (isTagPickerOpen) {
+        closeTagPicker()
+        return
       } else {
         tagsFilterSearch = ""
       }
@@ -2763,9 +2880,14 @@
                       {/if}
                     </button>
                   {/each}
-                {:else}
-                  <p class="tag-empty">No tags on this day yet.</p>
                 {/if}
+                <button
+                  type="button"
+                  class="tag-chip add"
+                  on:click={openTagPicker}
+                >
+                  + Add tags
+                </button>
               </div>
             </div>
           {/if}
@@ -2864,6 +2986,13 @@
                           {/if}
                         </button>
                       {/each}
+                      <button
+                        type="button"
+                        class="tag-chip add"
+                        on:click={openTagPicker}
+                      >
+                        + Add tags
+                      </button>
                     </div>
                   </div>
                 {:else}
@@ -2887,6 +3016,67 @@
           {/if}
         </div>
       </div>
+
+      {#if isTagPickerOpen}
+        <div
+          class="tag-picker-backdrop"
+          role="presentation"
+          on:click={handleTagPickerBackdropClick}
+        >
+          <section
+            class="tag-picker-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add tags"
+          >
+            <div class="tag-picker-modal-header">
+              <div>
+                <p class="section-kicker">Tags for</p>
+                <h2>{formatDate(tagsViewDate)}</h2>
+              </div>
+              <button
+                type="button"
+                class="tag-picker-close"
+                on:click={closeTagPicker}
+              >
+                Close
+              </button>
+            </div>
+            <input
+              class="tag-search"
+              type="search"
+              placeholder="Search or type a new tag"
+              aria-label="Search tags"
+              bind:value={tagPickerSearch}
+              bind:this={tagPickerSearchInput}
+            />
+            <div class="tag-picker">
+              {#each visibleTagPickerTags as tag (tag)}
+                {@const key = tag.toLocaleLowerCase()}
+                <button
+                  type="button"
+                  class:active={tagPickerActiveKeys.has(key)}
+                  class:crossed={tagPickerDeletedKeys.has(key)}
+                  on:click={() => toggleTagInPicker(tag)}
+                >
+                  {formatTagLabel(tag)}
+                </button>
+              {/each}
+              {#if tagPickerCreateLabel}
+                <button
+                  type="button"
+                  class="create"
+                  on:click={createTagFromPicker}
+                >
+                  Add "{formatTagLabel(tagPickerCreateLabel)}"
+                </button>
+              {:else if visibleTagPickerTags.length === 0}
+                <p class="empty-state">No tags match your search.</p>
+              {/if}
+            </div>
+          </section>
+        </div>
+      {/if}
     </section>
   {:else}
     <section class="settings-workspace">
@@ -3761,6 +3951,87 @@
 
   .strip-day-panel .tag-empty {
     padding-block: 0;
+  }
+
+  .tag-chip.add {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+  }
+
+  .tag-chip.add:hover {
+    border-color: #1e2c64;
+    color: #1e2c64;
+    text-decoration: none;
+  }
+
+  .tag-picker-backdrop {
+    align-items: center;
+    background: rgba(23, 32, 27, 0.45);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    padding: 1rem;
+    position: fixed;
+    z-index: 20;
+  }
+
+  .tag-picker-modal {
+    background: #fbf7ef;
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(23, 32, 27, 0.28);
+    display: grid;
+    gap: 0.7rem;
+    max-height: min(80vh, 640px);
+    max-width: 640px;
+    overflow-y: auto;
+    padding: 1rem;
+    width: 100%;
+  }
+
+  .tag-picker-modal-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+
+  .tag-picker-modal-header h2 {
+    font-size: 1.15rem;
+  }
+
+  .tag-picker-close {
+    appearance: none;
+    background: #f7f1e8;
+    border: 1px solid #c5cbbd;
+    border-radius: 8px;
+    color: #17201b;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.45rem 0.7rem;
+  }
+
+  /* Day state chips inside the picker: navy for tags already on the day,
+     crossed out for deleted ones, matching the settings metric chips. */
+  .tag-picker-modal .tag-picker button.active {
+    background: #1e2c64;
+    border-color: #1e2c64;
+    color: #fbf7ef;
+  }
+
+  .tag-picker-modal .tag-picker button.crossed {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+    text-decoration: line-through;
+  }
+
+  .tag-picker-modal .tag-picker button.create {
+    background: transparent;
+    border-style: dashed;
+    color: #1e2c64;
   }
 
   .tag-filter-control {
