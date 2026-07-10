@@ -107,7 +107,6 @@
 
   type ScoreRangeTone =
     | "score-excellent"
-    | "score-fair"
     | "score-good"
     | "score-neutral"
     | "score-poor"
@@ -1049,12 +1048,8 @@
       return "score-excellent"
     }
 
-    if (displayedScore >= 78) {
-      return "score-good"
-    }
-
     if (displayedScore >= 70) {
-      return "score-fair"
+      return "score-good"
     }
 
     return "score-poor"
@@ -3259,16 +3254,12 @@
     border-top: 4px solid #4f8a63;
   }
 
-  .metric-card.score-fair {
-    border-top: 4px solid #b46b3f;
-  }
-
   .metric-card.score-poor {
     border-top: 4px solid #a8423e;
   }
 
   .metric-card.score-neutral {
-    border-top: 4px solid #587a96;
+    border-top: 4px solid #9ca69a;
   }
 
   .metric-card.dimmed {
@@ -3706,16 +3697,12 @@
     background: #4f8a63;
   }
 
-  .strip-bar.score-fair {
-    background: #b46b3f;
-  }
-
   .strip-bar.score-poor {
     background: #a8423e;
   }
 
   .strip-bar.score-neutral {
-    background: #587a96;
+    background: #9ca69a;
   }
 
   .strip-label {
@@ -4145,7 +4132,7 @@
   }
 
   .impact-fill.positive {
-    background: #3f7b54;
+    background: #4f8a63;
   }
 
   .impact-fill.neutral {
@@ -4153,7 +4140,7 @@
   }
 
   .impact-fill.warning {
-    background: #b46b3f;
+    background: #a8423e;
   }
 
   .impact-fill.negative {
@@ -4410,7 +4397,7 @@
   }
 
   .score-impact.positive b {
-    color: #3f7b54;
+    color: #4f8a63;
   }
 
   .score-impact.neutral b {
@@ -4418,7 +4405,7 @@
   }
 
   .score-impact.warning b {
-    color: #b46b3f;
+    color: #a8423e;
   }
 
   .score-impact.negative b {
@@ -4477,7 +4464,7 @@
   }
 
   .optimal-tag-value.positive {
-    color: #3f7b54;
+    color: #4f8a63;
   }
 
   .optimal-tag-value.neutral {
@@ -4485,7 +4472,7 @@
   }
 
   .optimal-tag-value.warning {
-    color: #b46b3f;
+    color: #a8423e;
   }
 
   .optimal-tag-value.negative {
@@ -4559,7 +4546,7 @@
   }
 
   .metric-card .optimal-vs {
-    color: #3f7b54;
+    color: #4f8a63;
     display: block;
     font-size: 0.78rem;
     font-weight: 800;
