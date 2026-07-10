@@ -57,43 +57,54 @@ export async function addUserTagEntry(input: {
   return entry
 }
 
-export async function deleteTagEntry(id: string) {
+export async function deleteTagEntries(ids: string[]) {
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
-    const entry = await db.tagEntries.get(id)
+    const deletedAt = new Date().toISOString()
 
-    await db.tagEntries.delete(id)
-    await db.deletedTagIds.put({
-      id,
-      deletedAt: new Date().toISOString(),
-      entry
-    })
+    for (const id of ids) {
+      const entry = await db.tagEntries.get(id)
+
+      await db.tagEntries.delete(id)
+      await db.deletedTagIds.put({ id, deletedAt, entry })
+    }
+  })
+}
+
+export async function deleteTagEntry(id: string) {
+  return deleteTagEntries([id])
+}
+
+export async function restoreTagEntries(ids: string[]) {
+  await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
+    for (const id of ids) {
+      const tombstone = await db.deletedTagIds.get(id)
+
+      await db.deletedTagIds.delete(id)
+
+      const entry = tombstone?.entry
+
+      if (!entry) {
+        continue
+      }
+
+      // If the same tag is already active on the day, dropping the tombstone
+      // is enough; re-adding would duplicate it. This also collapses a
+      // restored group of identical tags into a single active entry.
+      const dayEntries = await db.tagEntries
+        .where("date")
+        .equals(entry.date)
+        .toArray()
+      const hasDuplicate = dayEntries.some(
+        (dayEntry) => dayEntry.tag.toLowerCase() === entry.tag.toLowerCase()
+      )
+
+      if (!hasDuplicate) {
+        await db.tagEntries.put(entry)
+      }
+    }
   })
 }
 
 export async function restoreTagEntry(id: string) {
-  await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
-    const tombstone = await db.deletedTagIds.get(id)
-
-    await db.deletedTagIds.delete(id)
-
-    const entry = tombstone?.entry
-
-    if (!entry) {
-      return
-    }
-
-    // If the same tag was re-added to the day while this one sat deleted,
-    // dropping the tombstone is enough; re-adding would duplicate it.
-    const dayEntries = await db.tagEntries
-      .where("date")
-      .equals(entry.date)
-      .toArray()
-    const hasDuplicate = dayEntries.some(
-      (dayEntry) => dayEntry.tag.toLowerCase() === entry.tag.toLowerCase()
-    )
-
-    if (!hasDuplicate) {
-      await db.tagEntries.put(entry)
-    }
-  })
+  return restoreTagEntries([id])
 }
