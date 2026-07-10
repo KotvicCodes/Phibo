@@ -55,6 +55,7 @@
     formatDate,
     formatDelta,
     formatInputDate,
+    formatMonth,
     formatMetricDelta,
     formatNullableDelta,
     formatScoreTrend,
@@ -313,6 +314,15 @@
     tagsForSelectedDay,
     newTagInput
   )
+  $: tagStripDays = buildTagStripDays(
+    dailyMetrics,
+    tagDays,
+    filteredTagDays,
+    tagsFilterTags.length > 0
+  )
+  $: if (activeView === "tags" && tagsViewDate && tagStripDays.length > 0) {
+    scrollTagStripToDate(tagsViewDate)
+  }
   $: sortedExploreTags =
     tagSortMode === "count"
       ? [...availableTags].sort(
@@ -1373,6 +1383,74 @@
   function selectTagsDay(date: string) {
     tagsViewDate = date
     tagsMessage = ""
+  }
+
+  interface TagStripDay {
+    date: string
+    monthLabel: string | null
+    tagCount: number
+    barHeight: number
+    tone: ScoreRangeTone
+    dimmed: boolean
+    title: string
+  }
+
+  function buildTagStripDays(
+    metrics: DailyMetricRow[],
+    days: TagDay[],
+    filteredDays: TagDay[],
+    filterActive: boolean
+  ): TagStripDay[] {
+    const today = formatInputDate(new Date())
+    const startCandidates = [metrics[0]?.date, days.at(-1)?.date]
+      .filter((date): date is string => Boolean(date))
+      .sort()
+    const start = startCandidates[0]
+
+    if (!start || start > today) {
+      return []
+    }
+
+    const dayByDate = new Map(days.map((day) => [day.date, day]))
+    const filteredDates = new Set(filteredDays.map((day) => day.date))
+    const sleepScoreByDate = new Map(
+      metrics.map((metric) => [metric.date, metric.sleepScore])
+    )
+    const maxCount = Math.max(
+      1,
+      ...days.map((day) => day.entries.length + day.deleted.length)
+    )
+    const stripDays: TagStripDay[] = []
+
+    for (let date = start; date <= today; date = shiftDate(date, 1)) {
+      const day = dayByDate.get(date)
+      const count = day ? day.entries.length + day.deleted.length : 0
+
+      stripDays.push({
+        date,
+        monthLabel: date.endsWith("-01") ? formatMonth(date) : null,
+        tagCount: count,
+        barHeight:
+          count === 0 ? 0 : Math.max(18, Math.round((count / maxCount) * 100)),
+        tone: scoreRangeTone(sleepScoreByDate.get(date) ?? null),
+        dimmed: filterActive && !filteredDates.has(date),
+        title: `${formatDate(date)} · ${count} ${count === 1 ? "tag" : "tags"}`
+      })
+    }
+
+    return stripDays
+  }
+
+  function scrollTagStripToDate(date: string) {
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`.tag-day-strip [data-strip-date="${date}"]`)
+        ?.scrollIntoView({
+          behavior: "smooth",
+          inline: "center",
+          block: "nearest"
+        })
+    })
   }
 
   function filterTagsByQuery(tags: string[], search: string) {
@@ -2502,6 +2580,33 @@
             </span>
           </div>
 
+          {#if tagStripDays.length > 0}
+            <div class="tag-day-strip" aria-label="Day timeline">
+              {#each tagStripDays as day (day.date)}
+                <button
+                  type="button"
+                  class="strip-day"
+                  class:selected={tagsViewDate === day.date}
+                  class:dimmed={day.dimmed}
+                  data-strip-date={day.date}
+                  title={day.title}
+                  on:click={() => selectTagsDay(day.date)}
+                >
+                  <span class="strip-bar-area">
+                    <span
+                      class="strip-bar {day.tone}"
+                      class:empty={day.tagCount === 0}
+                      style={day.tagCount === 0
+                        ? ""
+                        : `height: ${day.barHeight}%`}
+                    ></span>
+                  </span>
+                  <small class="strip-label">{day.monthLabel ?? ""}</small>
+                </button>
+              {/each}
+            </div>
+          {/if}
+
           <div class="tag-filter-control">
             <div class="tag-control-heading">
               <h3>Filter</h3>
@@ -3394,6 +3499,89 @@
     gap: 0.45rem;
     margin-top: 1rem;
     padding-top: 1rem;
+  }
+
+  .tag-day-strip {
+    align-items: flex-end;
+    display: flex;
+    gap: 2px;
+    margin-bottom: 0.4rem;
+    overflow-x: auto;
+    padding: 0.4rem 0.1rem 0.2rem;
+    scrollbar-width: thin;
+  }
+
+  .strip-day {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: grid;
+    flex: 0 0 auto;
+    gap: 0.2rem;
+    padding: 2px 1px 0;
+    width: 14px;
+  }
+
+  .strip-day:hover {
+    background: rgba(31, 37, 32, 0.08);
+  }
+
+  .strip-day.selected {
+    background: rgba(30, 44, 100, 0.14);
+  }
+
+  .strip-day.dimmed {
+    opacity: 0.25;
+  }
+
+  .strip-bar-area {
+    align-items: flex-end;
+    display: flex;
+    height: 64px;
+  }
+
+  .strip-bar {
+    border-radius: 3px 3px 0 0;
+    min-height: 6px;
+    width: 100%;
+  }
+
+  .strip-bar.empty {
+    height: 6px;
+    opacity: 0.45;
+  }
+
+  .strip-bar.score-excellent {
+    background: #1e2c64;
+  }
+
+  .strip-bar.score-good {
+    background: #4f8a63;
+  }
+
+  .strip-bar.score-fair {
+    background: #b46b3f;
+  }
+
+  .strip-bar.score-poor {
+    background: #a8423e;
+  }
+
+  .strip-bar.score-neutral {
+    background: #587a96;
+  }
+
+  .strip-label {
+    color: #6f786f;
+    font-size: 0.58rem;
+    font-weight: 800;
+    height: 0.8rem;
+    overflow: visible;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
   .tag-filter-control {
