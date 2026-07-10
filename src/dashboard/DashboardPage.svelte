@@ -1850,7 +1850,7 @@
       tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
       deletedTagRows = [...deletedTagRows, ...result.tombstones]
       lastDedupeIds = result.tombstones.map((tombstone) => tombstone.id)
-      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries. Undo stays available until you close this page.`
+      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries. Undo works until you close or reload the dashboard.`
     } catch {
       dedupeMessage = "Could not remove duplicates. Try again."
     } finally {
@@ -3475,8 +3475,9 @@
             <h2>Remove duplicate tags?</h2>
             <p>
               This deletes {duplicateTagIds.length} duplicate tag entries,
-              keeping one of each tag per day. Undo stays available until you
-              close this page.
+              keeping one of each tag per day. An Undo button appears
+              afterwards, but it works only until you close or reload the
+              dashboard.
             </p>
             <div class="confirm-modal-actions">
               <button
@@ -3880,6 +3881,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
+    justify-content: center;
   }
 
   .delete-data-message {
