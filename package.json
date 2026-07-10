@@ -1,8 +1,8 @@
 {
   "name": "phibo",
   "displayName": "Phibo",
-  "version": "0.3.12",
-  "description": "Minimal Plasmo browser extension with a popup and dashboard page.",
+  "version": "0.3.13",
+  "description": "Local-first Oura dashboard for exploring how your daily tags relate to sleep, readiness, and activity.",
   "private": true,
   "scripts": {
     "dev": "plasmo dev",
