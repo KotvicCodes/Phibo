@@ -324,7 +324,19 @@
       ? null
       : label
   })()
-  $: visibleTagFilterTags = filterTagsByQuery(sortedExploreTags, tagsFilterSearch)
+  // The filter offers every known label, including fully deleted ones, since
+  // day matching already counts crossed-out tags.
+  $: sortedTagFilterTags =
+    tagSortMode === "count"
+      ? [...allKnownTags].sort(
+          (left, right) =>
+            (tagNightCounts.get(right) ?? 0) - (tagNightCounts.get(left) ?? 0)
+        )
+      : allKnownTags
+  $: visibleTagFilterTags = filterTagsByQuery(
+    sortedTagFilterTags,
+    tagsFilterSearch
+  )
   $: filteredTagDays =
     tagsFilterTags.length === 0
       ? tagDays
@@ -3145,10 +3157,12 @@
             <button
               type="button"
               class="tag-backup-button"
-              disabled={tagEntries.length === 0}
+              disabled={tagEntries.length === 0 && deletedTagRows.length === 0}
               on:click={exportTagBackup}
             >
-              {tagEntries.length === 0 ? "No tags yet" : "Export tags"}
+              {tagEntries.length === 0 && deletedTagRows.length === 0
+                ? "No tags yet"
+                : "Export tags"}
             </button>
             <label class="tag-backup-button" class:disabled={isRestoringTagBackup}>
               {isRestoringTagBackup ? "Restoring" : "Restore tags"}
