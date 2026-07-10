@@ -103,11 +103,16 @@ export async function renameTag(fromLabel: string, toLabel: string) {
   return renamedCount
 }
 
-export async function updateTagEntryComment(
-  id: string,
-  comment: string | null
-) {
-  await db.tagEntries.update(id, { comment })
+// Oura keeps the app's single per-day note on the enhanced tag rows of that
+// day (there is no separate day-note store), so the day note is written to
+// every tag entry of the day, matching what an Oura-native export looks like.
+export async function updateDayComment(date: string, comment: string | null) {
+  await db.tagEntries
+    .where("date")
+    .equals(date)
+    .modify((entry) => {
+      entry.comment = comment
+    })
 }
 
 export async function deleteTagEntries(ids: string[]) {

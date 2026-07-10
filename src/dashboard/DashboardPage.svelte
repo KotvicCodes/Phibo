@@ -43,7 +43,7 @@
     restoreTagEntries,
     restoreTagEntriesExact,
     resolveUserTagLabel,
-    updateTagEntryComment
+    updateDayComment
   } from "../lib/tags/store"
   import {
     buildTagBackup,
@@ -307,6 +307,15 @@
   // tag timing shift in effectiveTagEntries only applies to analysis views.
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
+  // Oura keeps one note per day, duplicated across the day's tag rows;
+  // distinct values only appear in odd data, so they are joined for display.
+  $: selectedDayComment = Array.from(
+    new Set(
+      (selectedTagDay?.entries ?? [])
+        .map((entry) => entry.comment)
+        .filter((comment): comment is string => Boolean(comment))
+    )
+  ).join("; ")
   $: duplicateTagIds = findDuplicateTagEntryIds(tagEntries)
   // The picker offers every label ever seen, including fully deleted ones,
   // so a tag whose last instance was deleted stays one click away.
@@ -1804,7 +1813,7 @@
     }
   }
 
-  async function saveTagComment(group: TagChipGroup, event: Event) {
+  async function saveDayComment(event: Event) {
     const input = event.currentTarget
 
     if (!(input instanceof HTMLInputElement)) {
@@ -1812,16 +1821,15 @@
     }
 
     const comment = input.value.replace(/\s+/g, " ").trim() || null
-    const entryId = group.entries[0].id
 
     try {
-      await updateTagEntryComment(entryId, comment)
+      await updateDayComment(tagsViewDate, comment)
       tagEntries = tagEntries.map((entry) =>
-        entry.id === entryId ? { ...entry, comment } : entry
+        entry.date === tagsViewDate ? { ...entry, comment } : entry
       )
       tagsMessage = ""
     } catch {
-      tagsMessage = "Could not save that comment. Try again."
+      tagsMessage = "Could not save that note. Try again."
     }
   }
 
@@ -2965,20 +2973,16 @@
                 </button>
               </div>
               {#if selectedTagDay && selectedTagDay.activeGroups.length > 0}
-                <details class="tag-comment-editor">
-                  <summary>Comments</summary>
+                <details class="tag-comment-editor" open={Boolean(selectedDayComment)}>
+                  <summary>Day note</summary>
                   <div class="tag-comment-rows">
-                    {#each selectedTagDay.activeGroups as group (group.key)}
-                      <label class="tag-comment-row">
-                        <span>{formatTagLabel(group.label)}</span>
-                        <input
-                          type="text"
-                          placeholder="Add a comment"
-                          value={group.entries[0].comment ?? ""}
-                          on:change={(event) => saveTagComment(group, event)}
-                        />
-                      </label>
-                    {/each}
+                    <input
+                      type="text"
+                      aria-label="Day note"
+                      placeholder="Add a note for this day"
+                      value={selectedDayComment}
+                      on:change={saveDayComment}
+                    />
                   </div>
                 </details>
               {/if}
@@ -4233,19 +4237,7 @@
     padding-top: 0.55rem;
   }
 
-  .tag-comment-row {
-    align-items: center;
-    display: grid;
-    gap: 0.7rem;
-    grid-template-columns: minmax(110px, auto) minmax(0, 1fr);
-  }
-
-  .tag-comment-row span {
-    font-size: 0.85rem;
-    font-weight: 750;
-  }
-
-  .tag-comment-row input {
+  .tag-comment-rows input {
     background: #fbf7ef;
     border: 1px solid #cdcfc2;
     border-radius: 8px;
@@ -4253,6 +4245,7 @@
     font-size: 0.85rem;
     min-width: 0;
     padding: 0.4rem 0.6rem;
+    width: 100%;
   }
 
   .tag-chip.add {
