@@ -137,12 +137,15 @@ function parseDeletedTagIdRow(row: unknown): DeletedTagIdRow | null {
     return null
   }
 
+  const entry = parseTagEntryRow(record.entry)
+
   return {
     id: record.id,
     deletedAt:
       typeof record.deletedAt === "string"
         ? record.deletedAt
-        : new Date().toISOString()
+        : new Date().toISOString(),
+    ...(entry ? { entry } : {})
   }
 }
 

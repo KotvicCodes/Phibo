@@ -112,6 +112,9 @@ export interface TagEntryRow {
 export interface DeletedTagIdRow {
   id: string
   deletedAt: string
+  // Snapshot of the deleted row so an accidental deletion can be restored
+  // from the UI. Unindexed, so no schema version bump is needed.
+  entry?: TagEntryRow
 }
 
 export interface ImportRunRow {

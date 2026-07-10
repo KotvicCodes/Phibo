@@ -26,13 +26,19 @@
     type ScoreCategory
   } from "../lib/analysis/optimal"
   import { db } from "../lib/db"
-  import type { AuthTokenRow, DailyMetricRow, TagEntryRow } from "../lib/db/types"
+  import type {
+    AuthTokenRow,
+    DailyMetricRow,
+    DeletedTagIdRow,
+    TagEntryRow
+  } from "../lib/db/types"
   import { OuraApiError, validateOuraToken } from "../lib/oura/client"
   import { importOuraFiles, OuraImportError } from "../lib/oura/import"
   import { syncOuraRange } from "../lib/oura/sync"
   import {
     addUserTagEntry,
     deleteTagEntry,
+    restoreTagEntry,
     resolveUserTagLabel
   } from "../lib/tags/store"
   import {
@@ -209,7 +215,7 @@
   let newTagInput = ""
   let newTagComment = ""
   let tagsMessage = ""
-  let tagDeleteArmedId = ""
+  let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
 
@@ -285,7 +291,10 @@
   $: tagsForSelectedDay = tagEntries.filter(
     (entry) => entry.date === tagsViewDate
   )
-  $: tagDays = buildTagDays(tagEntries)
+  $: deletedForSelectedDay = deletedTagRows.filter(
+    (row) => row.entry?.date === tagsViewDate
+  )
+  $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: tagInputSuggestions = getTagInputSuggestions(
     availableTags,
     tagsForSelectedDay,
@@ -529,6 +538,7 @@
 
     savedOuraToken = savedToken ?? null
     tagEntries = savedTags
+    deletedTagRows = await db.deletedTagIds.toArray()
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
@@ -820,7 +830,6 @@
 
   function setActiveView(view: DashboardView) {
     activeView = view
-    tagDeleteArmedId = ""
     localStorage.setItem(activeViewSettingKey, view)
   }
 
@@ -928,6 +937,7 @@
 
       dailyMetrics = []
       tagEntries = []
+      deletedTagRows = []
       importMessage = "Import your Oura personal data export to begin."
       deleteDataMessage = "All imported Oura data was deleted from this device."
     } catch {
@@ -948,6 +958,7 @@
     const savedTags = await db.tagEntries.orderBy("date").toArray()
 
     tagEntries = savedTags
+    deletedTagRows = await db.deletedTagIds.toArray()
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
@@ -1283,18 +1294,40 @@
     return new Set(entries.map((tag) => tag.date))
   }
 
-  function buildTagDays(entries: typeof tagEntries) {
-    const tagsByDate = new Map<string, string[]>()
+  interface TagDay {
+    date: string
+    entries: TagEntryRow[]
+    deleted: DeletedTagIdRow[]
+  }
 
-    for (const entry of entries) {
-      tagsByDate.set(entry.date, [
-        ...(tagsByDate.get(entry.date) ?? []),
-        entry.tag
-      ])
+  function buildTagDays(
+    entries: TagEntryRow[],
+    deletedRows: DeletedTagIdRow[]
+  ) {
+    const days = new Map<string, TagDay>()
+    const getDay = (date: string) => {
+      let day = days.get(date)
+
+      if (!day) {
+        day = { date, entries: [], deleted: [] }
+        days.set(date, day)
+      }
+
+      return day
     }
 
-    return Array.from(tagsByDate, ([date, tags]) => ({ date, tags })).sort(
-      (left, right) => right.date.localeCompare(left.date)
+    for (const entry of entries) {
+      getDay(entry.date).entries.push(entry)
+    }
+
+    for (const row of deletedRows) {
+      if (row.entry) {
+        getDay(row.entry.date).deleted.push(row)
+      }
+    }
+
+    return Array.from(days.values()).sort((left, right) =>
+      right.date.localeCompare(left.date)
     )
   }
 
@@ -1321,11 +1354,11 @@
 
   async function reloadTagEntries() {
     tagEntries = await db.tagEntries.orderBy("date").toArray()
+    deletedTagRows = await db.deletedTagIds.toArray()
   }
 
   function selectTagsDay(date: string) {
     tagsViewDate = date
-    tagDeleteArmedId = ""
     tagsMessage = ""
   }
 
@@ -1355,6 +1388,19 @@
       return
     }
 
+    // Adding a tag that sits crossed out on this day restores it instead of
+    // creating a second entry.
+    const crossedMatch = deletedForSelectedDay.find(
+      (row) => row.entry?.tag.toLocaleLowerCase() === label.toLocaleLowerCase()
+    )
+
+    if (crossedMatch) {
+      newTagInput = ""
+      newTagComment = ""
+      await restoreDeletedTag(crossedMatch)
+      return
+    }
+
     const comment = newTagComment.replace(/\s+/g, " ").trim()
 
     try {
@@ -1373,19 +1419,22 @@
   }
 
   async function deleteTag(entry: TagEntryRow) {
-    if (tagDeleteArmedId !== entry.id) {
-      tagDeleteArmedId = entry.id
-      return
-    }
-
     try {
       await deleteTagEntry(entry.id)
       tagsMessage = ""
       await reloadTagEntries()
     } catch {
       tagsMessage = "Could not delete that tag. Try again."
-    } finally {
-      tagDeleteArmedId = ""
+    }
+  }
+
+  async function restoreDeletedTag(row: DeletedTagIdRow) {
+    try {
+      await restoreTagEntry(row.id)
+      tagsMessage = ""
+      await reloadTagEntries()
+    } catch {
+      tagsMessage = "Could not restore that tag. Try again."
     }
   }
 
@@ -2348,39 +2397,10 @@
               bind:value={tagsViewDate}
               max={formatInputDate(new Date())}
               on:change={() => {
-                tagDeleteArmedId = ""
                 tagsMessage = ""
               }}
             />
           </label>
-
-          <div class="tag-day-list">
-            {#if tagsForSelectedDay.length === 0}
-              <p class="tag-empty">No tags on this day yet.</p>
-            {:else}
-              {#each tagsForSelectedDay as entry (entry.id)}
-                <div class="tag-day-entry">
-                  <div class="tag-day-entry-text">
-                    <strong>{formatTagLabel(entry.tag)}</strong>
-                    {#if entry.comment}
-                      <p>{entry.comment}</p>
-                    {/if}
-                  </div>
-                  <span class="tag-source-badge">
-                    {entry.source === "user" ? "Added here" : "Oura"}
-                  </span>
-                  <button
-                    type="button"
-                    class="tag-delete-button"
-                    class:armed={tagDeleteArmedId === entry.id}
-                    on:click={() => deleteTag(entry)}
-                  >
-                    {tagDeleteArmedId === entry.id ? "Confirm" : "Delete"}
-                  </button>
-                </div>
-              {/each}
-            {/if}
-          </div>
 
           <form class="tag-add-form" on:submit|preventDefault={addTagToDay}>
             <input
@@ -2414,7 +2434,9 @@
 
           <p class="tag-editor-note">
             Tags are stored on the Oura date shown here. The tag timing setting
-            only shifts dates in the analysis views.
+            only shifts dates in the analysis views. Click a day below to open
+            it: clicking a tag crosses it out and deletes it, clicking a
+            crossed-out tag brings it back.
           </p>
         </div>
 
@@ -2438,19 +2460,51 @@
                 <span>Tags</span>
               </div>
               {#each tagDays as day (day.date)}
-                <button
-                  type="button"
-                  class="log-row"
-                  class:selected={tagsViewDate === day.date}
-                  data-date={day.date}
-                  on:click={() => selectTagsDay(day.date)}
-                >
-                  <div class="log-date">
-                    <strong>{formatDate(day.date)}</strong>
-                    <small>{day.date}</small>
+                {#if tagsViewDate === day.date}
+                  <div class="log-row tag-log-row selected" data-date={day.date}>
+                    <div class="log-date">
+                      <strong>{formatDate(day.date)}</strong>
+                      <small>{day.date}</small>
+                    </div>
+                    <div class="tag-chip-list">
+                      {#each day.entries as entry (entry.id)}
+                        <button
+                          type="button"
+                          class="tag-chip"
+                          title={entry.comment ?? ""}
+                          on:click={() => deleteTag(entry)}
+                        >
+                          {formatTagLabel(entry.tag)}
+                        </button>
+                      {/each}
+                      {#each day.deleted as row (row.id)}
+                        <button
+                          type="button"
+                          class="tag-chip crossed"
+                          title={row.entry?.comment ?? ""}
+                          on:click={() => restoreDeletedTag(row)}
+                        >
+                          {formatTagLabel(row.entry?.tag ?? "")}
+                        </button>
+                      {/each}
+                    </div>
                   </div>
-                  <span>{formatTagList(day.tags)}</span>
-                </button>
+                {:else}
+                  <button
+                    type="button"
+                    class="log-row"
+                    data-date={day.date}
+                    on:click={() => selectTagsDay(day.date)}
+                  >
+                    <div class="log-date">
+                      <strong>{formatDate(day.date)}</strong>
+                      <small>{day.date}</small>
+                    </div>
+                    <span>
+                      {formatTagList(day.entries.map((entry) => entry.tag))}
+                    </span>
+                  </button>
+                {/if}
               {/each}
             </div>
           {/if}
@@ -3130,61 +3184,58 @@
     padding: 0.45rem 0.6rem;
   }
 
-  .tag-day-list {
-    border-top: 1px solid #d8d8cc;
-    display: grid;
+  .tag-log-row {
+    align-items: start;
   }
 
-  .tag-day-entry {
-    align-items: center;
-    border-bottom: 1px solid #d8d8cc;
-    display: grid;
-    gap: 0.85rem;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    padding: 0.55rem 0;
+  .tag-log-row.selected {
+    background: rgba(30, 44, 100, 0.09);
+    box-shadow: inset 4px 0 0 #1e2c64;
   }
 
-  .tag-day-entry-text strong {
-    display: block;
-    font-size: 0.95rem;
+  .tag-log-row.selected .log-date strong {
+    color: #1e2c64;
   }
 
-  .tag-day-entry-text p {
-    color: #6f786f;
-    font-size: 0.85rem;
-    line-height: 1.35;
-    margin-top: 0.15rem;
+  .tag-chip-list {
+    align-content: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-block: 0.15rem;
   }
 
-  .tag-source-badge {
-    background: rgba(31, 37, 32, 0.08);
-    border-radius: 999px;
-    color: #6f786f;
-    font-size: 0.68rem;
-    font-weight: 800;
-    padding: 0.14rem 0.5rem;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .tag-delete-button {
+  .tag-chip {
     appearance: none;
-    background: #fbf7ef;
-    border: 1px solid #d2b5a5;
-    border-radius: 8px;
-    color: #8a3f2f;
+    align-items: center;
+    background: #f7f1e8;
+    border: 1px solid #d8d8cc;
+    border-radius: 999px;
+    color: inherit;
     cursor: pointer;
+    display: inline-flex;
     font: inherit;
-    font-size: 0.78rem;
-    font-weight: 800;
-    padding: 0.35rem 0.6rem;
-    white-space: nowrap;
+    font-size: 0.8rem;
+    font-weight: 750;
+    padding: 0.32rem 0.62rem;
   }
 
-  .tag-delete-button.armed {
-    background: #8a3f2f;
+  .tag-chip:hover {
     border-color: #8a3f2f;
-    color: #f8f3ea;
+    color: #8a3f2f;
+    text-decoration: line-through;
+  }
+
+  .tag-chip.crossed {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+    text-decoration: line-through;
+  }
+
+  .tag-chip.crossed:hover {
+    border-color: #1e2c64;
+    color: #1e2c64;
   }
 
   .tag-add-form {
@@ -3245,15 +3296,6 @@
   @media (max-width: 720px) {
     .tag-add-form {
       grid-template-columns: 1fr;
-    }
-
-    .tag-day-entry {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .tag-day-entry .tag-source-badge {
-      justify-self: start;
-      order: 3;
     }
   }
 
