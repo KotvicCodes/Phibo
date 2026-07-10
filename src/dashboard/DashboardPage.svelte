@@ -37,7 +37,8 @@
   import { syncOuraRange } from "../lib/oura/sync"
   import {
     addUserTagEntry,
-    deleteTagEntry,
+    deleteTagEntries,
+    restoreTagEntries,
     restoreTagEntry,
     resolveUserTagLabel
   } from "../lib/tags/store"
@@ -1317,10 +1318,82 @@
     return new Set(entries.map((tag) => tag.date))
   }
 
+  interface TagChipGroup {
+    key: string
+    label: string
+    entries: TagEntryRow[]
+    title: string
+  }
+
+  interface DeletedTagChipGroup {
+    key: string
+    label: string
+    rows: DeletedTagIdRow[]
+    title: string
+  }
+
   interface TagDay {
     date: string
     entries: TagEntryRow[]
     deleted: DeletedTagIdRow[]
+    activeGroups: TagChipGroup[]
+    deletedGroups: DeletedTagChipGroup[]
+  }
+
+  // The Oura export can log the same tag several times on one day. Chips are
+  // grouped by label so each tag shows once; acting on a chip covers every
+  // entry in its group.
+  function buildDayChipGroups(day: TagDay) {
+    const active = new Map<string, TagChipGroup>()
+
+    for (const entry of day.entries) {
+      const key = entry.tag.toLocaleLowerCase()
+      const group = active.get(key)
+
+      if (group) {
+        group.entries.push(entry)
+      } else {
+        active.set(key, { key, label: entry.tag, entries: [entry], title: "" })
+      }
+    }
+
+    const deleted = new Map<string, DeletedTagChipGroup>()
+
+    for (const row of day.deleted) {
+      const label = row.entry?.tag ?? ""
+      const key = label.toLocaleLowerCase()
+
+      // Labels that still have an active entry show as a normal chip; their
+      // tombstones surface as one crossed chip only once all are deleted.
+      if (active.has(key)) {
+        continue
+      }
+
+      const group = deleted.get(key)
+
+      if (group) {
+        group.rows.push(row)
+      } else {
+        deleted.set(key, { key, label, rows: [row], title: "" })
+      }
+    }
+
+    for (const group of active.values()) {
+      group.title = group.entries
+        .map((entry) => entry.comment)
+        .filter((comment): comment is string => Boolean(comment))
+        .join("; ")
+    }
+
+    for (const group of deleted.values()) {
+      group.title = group.rows
+        .map((row) => row.entry?.comment)
+        .filter((comment): comment is string => Boolean(comment))
+        .join("; ")
+    }
+
+    day.activeGroups = Array.from(active.values())
+    day.deletedGroups = Array.from(deleted.values())
   }
 
   function buildTagDays(
@@ -1332,7 +1405,7 @@
       let day = days.get(date)
 
       if (!day) {
-        day = { date, entries: [], deleted: [] }
+        day = { date, entries: [], deleted: [], activeGroups: [], deletedGroups: [] }
         days.set(date, day)
       }
 
@@ -1347,6 +1420,10 @@
       if (row.entry) {
         getDay(row.entry.date).deleted.push(row)
       }
+    }
+
+    for (const day of days.values()) {
+      buildDayChipGroups(day)
     }
 
     return Array.from(days.values()).sort((left, right) =>
@@ -1418,13 +1495,15 @@
     )
     const maxCount = Math.max(
       1,
-      ...days.map((day) => day.entries.length + day.deleted.length)
+      ...days.map((day) => day.activeGroups.length + day.deletedGroups.length)
     )
     const stripDays: TagStripDay[] = []
 
     for (let date = start; date <= today; date = shiftDate(date, 1)) {
       const day = dayByDate.get(date)
-      const count = day ? day.entries.length + day.deleted.length : 0
+      const count = day
+        ? day.activeGroups.length + day.deletedGroups.length
+        : 0
 
       stripDays.push({
         date,
@@ -1557,13 +1636,23 @@
     }
   }
 
-  async function deleteTag(entry: TagEntryRow) {
+  async function deleteTagGroup(group: TagChipGroup) {
     try {
-      await deleteTagEntry(entry.id)
+      await deleteTagEntries(group.entries.map((entry) => entry.id))
       tagsMessage = ""
       await reloadTagEntries()
     } catch {
       tagsMessage = "Could not delete that tag. Try again."
+    }
+  }
+
+  async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
+    try {
+      await restoreTagEntries(group.rows.map((row) => row.id))
+      tagsMessage = ""
+      await reloadTagEntries()
+    } catch {
+      tagsMessage = "Could not restore that tag. Try again."
     }
   }
 
@@ -2707,24 +2796,30 @@
                       <small>{day.date}</small>
                     </div>
                     <div class="tag-chip-list">
-                      {#each day.entries as entry (entry.id)}
+                      {#each day.activeGroups as group (group.key)}
                         <button
                           type="button"
                           class="tag-chip"
-                          title={entry.comment ?? ""}
-                          on:click={() => deleteTag(entry)}
+                          title={group.title}
+                          on:click={() => deleteTagGroup(group)}
                         >
-                          {formatTagLabel(entry.tag)}
+                          {formatTagLabel(group.label)}
+                          {#if group.entries.length > 1}
+                            <span class="tag-count">{group.entries.length}</span>
+                          {/if}
                         </button>
                       {/each}
-                      {#each day.deleted as row (row.id)}
+                      {#each day.deletedGroups as group (group.key)}
                         <button
                           type="button"
                           class="tag-chip crossed"
-                          title={row.entry?.comment ?? ""}
-                          on:click={() => restoreDeletedTag(row)}
+                          title={group.title}
+                          on:click={() => restoreDeletedTagGroup(group)}
                         >
-                          {formatTagLabel(row.entry?.tag ?? "")}
+                          {formatTagLabel(group.label)}
+                          {#if group.rows.length > 1}
+                            <span class="tag-count">{group.rows.length}</span>
+                          {/if}
                         </button>
                       {/each}
                     </div>
@@ -2741,7 +2836,7 @@
                       <small>{day.date}</small>
                     </div>
                     <span>
-                      {formatTagList(day.entries.map((entry) => entry.tag))}
+                      {formatTagList(day.activeGroups.map((group) => group.label))}
                     </span>
                   </button>
                 {/if}
