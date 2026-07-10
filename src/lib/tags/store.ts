@@ -57,6 +57,27 @@ export async function addUserTagEntry(input: {
   return entry
 }
 
+// Extra same-day instances of a tag, keeping the first entry of each tag per
+// day. Used by the opt-in duplicate cleanup in Settings; some users log the
+// same tag several times a day on purpose, so this must never run
+// automatically.
+export function findDuplicateTagEntryIds(entries: TagEntryRow[]) {
+  const seenKeys = new Set<string>()
+  const duplicateIds: string[] = []
+
+  for (const entry of entries) {
+    const key = `${entry.date}|${entry.tag.toLocaleLowerCase()}`
+
+    if (seenKeys.has(key)) {
+      duplicateIds.push(entry.id)
+    } else {
+      seenKeys.add(key)
+    }
+  }
+
+  return duplicateIds
+}
+
 export async function deleteTagEntries(ids: string[]) {
   const tombstones: DeletedTagIdRow[] = []
 

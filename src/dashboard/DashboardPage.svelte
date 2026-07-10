@@ -38,6 +38,7 @@
   import {
     addUserTagEntry,
     deleteTagEntries,
+    findDuplicateTagEntryIds,
     restoreTagEntries,
     resolveUserTagLabel
   } from "../lib/tags/store"
@@ -220,6 +221,9 @@
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
+  let dedupeArmed = false
+  let isDeduping = false
+  let dedupeMessage = ""
 
   // Selector groups honor the user's metric preferences: favorites are
   // pinned in their own group on top, hidden metrics are left out entirely.
@@ -292,6 +296,7 @@
   // tag timing shift in effectiveTagEntries only applies to analysis views.
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
+  $: duplicateTagIds = findDuplicateTagEntryIds(tagEntries)
   // The picker offers every label ever seen, including fully deleted ones,
   // so a tag whose last instance was deleted stays one click away.
   $: allKnownTags = buildAllKnownTags(tagEntries, deletedTagRows)
@@ -1704,6 +1709,35 @@
     }
   }
 
+  async function removeDuplicateTags() {
+    if (!dedupeArmed) {
+      dedupeArmed = true
+      dedupeMessage = `This deletes ${duplicateTagIds.length} duplicate tag entries, keeping one of each tag per day. Click Confirm remove to continue.`
+      return
+    }
+
+    isDeduping = true
+
+    try {
+      const result = await deleteTagEntries(duplicateTagIds)
+      const removedIds = new Set(result.deletedIds)
+
+      tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
+      deletedTagRows = [...deletedTagRows, ...result.tombstones]
+      dedupeMessage = `Removed ${result.deletedIds.length} duplicate tag entries.`
+    } catch {
+      dedupeMessage = "Could not remove duplicates. Try again."
+    } finally {
+      dedupeArmed = false
+      isDeduping = false
+    }
+  }
+
+  function cancelDedupe() {
+    dedupeArmed = false
+    dedupeMessage = ""
+  }
+
   async function exportTagBackup() {
     try {
       const allTagEntries = await db.tagEntries.orderBy("date").toArray()
@@ -3094,6 +3128,47 @@
                 on:change={restoreTagBackupFile}
               />
             </label>
+          </div>
+        </div>
+
+        <div class="setting-row delete-data-setting">
+          <div>
+            <strong>Remove duplicate tags</strong>
+            <p>
+              Delete extra copies when the same tag appears several times on
+              one day, keeping one of each. Leave duplicates alone if you log
+              the same tag repeatedly on purpose, for example to track times.
+              Removed copies stay removed after a re-import.
+            </p>
+            {#if dedupeMessage}
+              <p class="delete-data-message" role="status">{dedupeMessage}</p>
+            {/if}
+          </div>
+          <div class="delete-data-actions">
+            <button
+              type="button"
+              class="delete-data-button"
+              class:armed={dedupeArmed}
+              disabled={isDeduping || duplicateTagIds.length === 0}
+              on:click={removeDuplicateTags}
+            >
+              {isDeduping
+                ? "Removing"
+                : dedupeArmed
+                  ? "Confirm remove"
+                  : duplicateTagIds.length === 0
+                    ? "No duplicates"
+                    : `Remove ${duplicateTagIds.length} duplicates`}
+            </button>
+            {#if dedupeArmed && !isDeduping}
+              <button
+                type="button"
+                class="delete-data-cancel"
+                on:click={cancelDedupe}
+              >
+                Cancel
+              </button>
+            {/if}
           </div>
         </div>
 
