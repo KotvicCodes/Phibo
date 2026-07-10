@@ -78,6 +78,31 @@ export function findDuplicateTagEntryIds(entries: TagEntryRow[]) {
   return duplicateIds
 }
 
+// Renames every entry carrying a label, including deletion tombstone
+// snapshots so crossed-out tags follow the rename. Renaming onto an existing
+// label merges the two tags.
+export async function renameTag(fromLabel: string, toLabel: string) {
+  const fromKey = fromLabel.toLocaleLowerCase()
+  let renamedCount = 0
+
+  await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
+    await db.tagEntries.toCollection().modify((entry) => {
+      if (entry.tag.toLocaleLowerCase() === fromKey) {
+        entry.tag = toLabel
+        renamedCount += 1
+      }
+    })
+
+    await db.deletedTagIds.toCollection().modify((row) => {
+      if (row.entry && row.entry.tag.toLocaleLowerCase() === fromKey) {
+        row.entry.tag = toLabel
+      }
+    })
+  })
+
+  return renamedCount
+}
+
 export async function updateTagEntryComment(
   id: string,
   comment: string | null
