@@ -36,6 +36,12 @@
     resolveUserTagLabel
   } from "../lib/tags/store"
   import {
+    buildTagBackup,
+    parseTagBackup,
+    restoreTagBackup,
+    TagBackupError
+  } from "../lib/tags/backup"
+  import {
     average,
     comparisonWidth,
     daysAgo,
@@ -204,6 +210,8 @@
   let newTagComment = ""
   let tagsMessage = ""
   let tagDeleteArmedId = ""
+  let tagBackupMessage = ""
+  let isRestoringTagBackup = false
 
   // Selector groups honor the user's metric preferences: favorites are
   // pinned in their own group on top, hidden metrics are left out entirely.
@@ -1381,6 +1389,73 @@
     }
   }
 
+  async function exportTagBackup() {
+    try {
+      const allTagEntries = await db.tagEntries.orderBy("date").toArray()
+      const allDeletedTagIds = await db.deletedTagIds.toArray()
+      const backup = buildTagBackup(allTagEntries, allDeletedTagIds)
+      const blob = new Blob([JSON.stringify(backup, null, 2)], {
+        type: "application/json"
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+
+      link.href = url
+      link.download = `phibo-tags-${formatInputDate(new Date())}.json`
+      link.click()
+      URL.revokeObjectURL(url)
+
+      tagBackupMessage = `Exported ${allTagEntries.length} tag entries.`
+    } catch {
+      tagBackupMessage = "Could not export the tag backup. Try again."
+    }
+  }
+
+  async function restoreTagBackupFile(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    const file = input.files?.[0]
+
+    // Allow picking the same file again after a failed attempt.
+    input.value = ""
+
+    if (!file) {
+      return
+    }
+
+    isRestoringTagBackup = true
+
+    try {
+      const { backup, invalidRows } = parseTagBackup(await file.text())
+      const result = await restoreTagBackup(backup)
+
+      await reloadTagEntries()
+
+      const parts = [
+        `Restored ${result.added} tags`,
+        `skipped ${result.skipped} already present`,
+        `applied ${result.deleted} deletions`
+      ]
+
+      if (invalidRows > 0) {
+        parts.push(`ignored ${invalidRows} invalid rows`)
+      }
+
+      tagBackupMessage = `${parts.join(", ")}.`
+    } catch (error) {
+      tagBackupMessage =
+        error instanceof TagBackupError
+          ? error.message
+          : "Could not restore that backup file."
+    } finally {
+      isRestoringTagBackup = false
+    }
+  }
+
   function selectInsight(item: TagInsight) {
     selectedInsightKey = insightKey(item)
   }
@@ -2498,6 +2573,39 @@
           </div>
         </div>
 
+        <div class="setting-row tag-backup-setting">
+          <div>
+            <strong>Tag backup</strong>
+            <p>
+              Save all tags and tag deletions to a JSON file on this device, or
+              restore a previous backup. Restoring never overwrites tags you
+              already have.
+            </p>
+            {#if tagBackupMessage}
+              <p class="tag-backup-message" role="status">{tagBackupMessage}</p>
+            {/if}
+          </div>
+          <div class="tag-backup-actions">
+            <button
+              type="button"
+              class="tag-backup-button"
+              disabled={tagEntries.length === 0}
+              on:click={exportTagBackup}
+            >
+              {tagEntries.length === 0 ? "No tags yet" : "Export tags"}
+            </button>
+            <label class="tag-backup-button" class:disabled={isRestoringTagBackup}>
+              {isRestoringTagBackup ? "Restoring" : "Restore tags"}
+              <input
+                type="file"
+                accept=".json,application/json"
+                disabled={isRestoringTagBackup}
+                on:change={restoreTagBackupFile}
+              />
+            </label>
+          </div>
+        </div>
+
         <div class="setting-summary">
           <span>Current sample</span>
           <strong>{analysisDailyMetrics.length} of {dailyMetrics.length} days</strong>
@@ -2944,6 +3052,49 @@
   .delete-data-cancel {
     border-color: #c5cbbd;
     color: #17201b;
+  }
+
+  .setting-row.tag-backup-setting {
+    align-items: start;
+  }
+
+  .tag-backup-message {
+    color: #17201b;
+    font-weight: 700;
+  }
+
+  .tag-backup-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .tag-backup-button {
+    appearance: none;
+    background: #fbf7ef;
+    border: 1px solid #c5cbbd;
+    border-radius: 8px;
+    color: #17201b;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    min-height: 42px;
+    padding: 0.58rem 0.72rem;
+    white-space: nowrap;
+  }
+
+  .tag-backup-button:disabled,
+  .tag-backup-button.disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .tag-backup-button input {
+    display: none;
   }
 
   .setting-summary span {
