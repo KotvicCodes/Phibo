@@ -139,3 +139,27 @@ export async function restoreTagEntries(ids: string[]) {
 
   return { removedTombstoneIds: ids, restoredEntries }
 }
+
+// Restores rows exactly as they were, even when the same tag is already
+// active on that day. Used by the duplicate cleanup undo, where every
+// restored row is by definition a duplicate of a surviving entry.
+export async function restoreTagEntriesExact(ids: string[]) {
+  const restoredEntries: TagEntryRow[] = []
+
+  await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
+    for (const id of ids) {
+      const tombstone = await db.deletedTagIds.get(id)
+
+      await db.deletedTagIds.delete(id)
+
+      const entry = tombstone?.entry
+
+      if (entry) {
+        await db.tagEntries.put(entry)
+        restoredEntries.push(entry)
+      }
+    }
+  })
+
+  return { removedTombstoneIds: ids, restoredEntries }
+}
