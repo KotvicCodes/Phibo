@@ -25,8 +25,26 @@ it is done rather than checking it off.
 
 ## Tags UI
 
-5. Rename entry point feels misplaced. The tag picker popup carries an
-   Add/Rename mode toggle in its header even when opened from "+ Add tags",
-   so the Rename control shows up in an add-focused flow. Reconsider where
-   tag renaming lives, for example a separate entry point, or opening the
-   popup in a pure add state and surfacing rename somewhere of its own.
+5. Move tag renaming completely out of the tag picker popup. Decided on
+   2026-07-11: the Add/Rename mode toggle does not belong in an add-focused
+   popup at all. The destination is still undecided; pick one before
+   building (candidates worth weighing: a dedicated manage section on the
+   Tags view, a small dialog of its own, or a Settings row).
+
+## Loose ends from the extraction review (2026-07-11)
+
+6. ImportModal has no focus trap. The a11y pass covered the tag picker and
+   the dedupe dialog; apply the trapFocus action from
+   src/dashboard/focusTrap.ts to ImportModal.svelte as well.
+7. Review the view-switch state resets introduced by the component split:
+   Explore forgets its selected day, hover, and expanded impact groups when
+   leaving the view; Insights forgets the selected insight; Settings
+   messages clear. Persisted settings survive. If any reset annoys in
+   practice, each is one bind: to the parent to fix.
+8. Discoveries anchor date falls back to the sync form's end date
+   (InsightsView gets endDate as a prop just for this). Falling back to
+   today's date instead would cut the odd coupling.
+9. "Delete local data" wipes IndexedDB but not localStorage: Optimal
+   overrides, Explore tag selections, and filter settings survive the wipe
+   and silently re-apply to re-imported data. Decide whether the wipe
+   should clear those too.
