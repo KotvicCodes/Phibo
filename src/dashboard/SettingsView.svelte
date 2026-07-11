@@ -20,6 +20,7 @@
   import { exploreMetricCategories } from "./exploreCharts"
   import { trapFocus } from "./focusTrap"
   import { formatInputDate } from "./format"
+  import type { TagTimingMode } from "./tagDays"
 
   // The data tables are bound so backup restores, duplicate cleanups, and
   // the local data wipe update the whole dashboard in place.
@@ -35,7 +36,7 @@
   // renders the controls and reports interactions back.
   export let excludeUntaggedDays: boolean
   export let showTagCounts: boolean
-  export let tagTimingMode: "morning" | "sameDay"
+  export let tagTimingMode: TagTimingMode
   export let exploreFavoriteMetrics: ExploreMetricKey[]
   export let exploreHiddenMetrics: ExploreMetricKey[]
   export let analysisDayCount: number

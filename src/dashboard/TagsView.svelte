@@ -29,6 +29,7 @@
     tagSortModes,
     type TagSortMode
   } from "./tagLabels"
+  import { handleTypeToSearchKeydown } from "./typeToSearch"
 
   // Tag data is owned by DashboardPage (the analysis views read it too);
   // edits here flow back up through the bound props. The selected day and
@@ -389,58 +390,21 @@
   // Typing anywhere starts a tag search without clicking the search box
   // first. Only mounted while the Tags view is open, so this never fights
   // the parent's handler for the Explore view.
+  // Escape closes the tag picker popup, or backs out of the tag search.
   function handleTagsKeydown(event: KeyboardEvent) {
-    const searchInput = isTagPickerOpen
-      ? tagPickerSearchInput
-      : tagsFilterSearchInput
+    handleTypeToSearchKeydown(
+      event,
+      isTagPickerOpen ? tagPickerSearchInput : tagsFilterSearchInput,
+      () => {
+        if (isTagPickerOpen) {
+          closeTagPicker()
+          return "consumed"
+        }
 
-    if (!searchInput) {
-      return
-    }
-
-    if (event.metaKey || event.ctrlKey || event.altKey) {
-      return
-    }
-
-    const target = event.target instanceof HTMLElement ? event.target : null
-
-    // Escape closes the tag picker popup, or backs out of the tag search.
-    if (event.key === "Escape") {
-      if (isTagPickerOpen) {
-        closeTagPicker()
-        return
+        tagsFilterSearch = ""
+        return "clear"
       }
-
-      tagsFilterSearch = ""
-
-      if (target === searchInput) {
-        searchInput.blur()
-      }
-
-      return
-    }
-
-    // Only printable characters; keeps shortcuts, Tab, and arrows working.
-    if (event.key.length !== 1) {
-      return
-    }
-
-    if (
-      target &&
-      (target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        target.isContentEditable)
-    ) {
-      return
-    }
-
-    // Space on a focused button should still activate that button.
-    if (event.key === " " && target instanceof HTMLButtonElement) {
-      return
-    }
-
-    searchInput.focus()
+    )
   }
 </script>
 

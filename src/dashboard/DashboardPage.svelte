@@ -21,7 +21,11 @@
   import { exploreMetricCategories } from "./exploreCharts"
   import { renameOptimalOverrideTags } from "./optimalOverrides"
   import { sortTagsForDisplay, type TagSortMode } from "./tagLabels"
-  import { getTaggedMetricDates } from "./tagDays"
+  import {
+    getEffectiveTagEntries,
+    getTaggedMetricDates,
+    type TagTimingMode
+  } from "./tagDays"
   import ImportModal from "./ImportModal.svelte"
   import ExploreView from "./ExploreView.svelte"
   import InsightsView from "./InsightsView.svelte"
@@ -32,7 +36,6 @@
   import "./shared.css"
 
   type DashboardView = "explore" | "insights" | "optimal" | "tags" | "settings"
-  type TagTimingMode = "morning" | "sameDay"
 
   const activeViewSettingKey = "phibo.activeView"
   const tagSortModeSettingKey = "phibo.tagSortMode"
@@ -458,19 +461,6 @@
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
     }
-  }
-
-  function getEffectiveTagEntries(
-    entries: typeof tagEntries,
-    timingMode: TagTimingMode
-  ) {
-    return entries.map((entry) => ({
-      ...entry,
-      date:
-        timingMode === "sameDay"
-          ? shiftDate(entry.date, 1)
-          : entry.date
-    }))
   }
 
 

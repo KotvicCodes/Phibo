@@ -54,6 +54,24 @@ export function getTaggedMetricDates(entries: TagEntryRow[]) {
   return new Set(entries.map((tag) => tag.date))
 }
 
+export type TagTimingMode = "morning" | "sameDay"
+
+// Oura sleep dates refer to the morning the night ended. Same-day tagging
+// means the user tags during the day before sleep, so the entry applies to
+// the following Oura sleep date.
+export function getEffectiveTagEntries(
+  entries: TagEntryRow[],
+  timingMode: TagTimingMode
+) {
+  return entries.map((entry) => ({
+    ...entry,
+    date:
+      timingMode === "sameDay"
+        ? shiftDate(entry.date, 1)
+        : entry.date
+  }))
+}
+
 // The Oura export can log the same tag several times on one day. Chips are
 // grouped by label so each tag shows once; acting on a chip covers every
 // entry in its group.
