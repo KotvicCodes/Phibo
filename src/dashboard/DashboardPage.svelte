@@ -62,7 +62,13 @@
     metricPlainLabel,
     shiftDate
   } from "./format"
-  import { formatAverage, formatExploreDelta } from "./exploreCharts"
+  import { exploreMetricCategories, formatAverage, formatExploreDelta } from "./exploreCharts"
+  import {
+    insightComparisonMetrics,
+    type InsightComparison,
+    type InsightComparisonMetric,
+    type MetricComparison
+  } from "./comparisons"
   import {
     buildScatterOption,
     buildTimelineOption
@@ -108,18 +114,6 @@
     value: string
   }
 
-  interface MetricComparison {
-    baselineAverage: number | null
-    delta: number | null
-    taggedAverage: number | null
-  }
-
-  interface InsightComparison {
-    comparison: MetricComparison
-    label: string
-    metric: InsightComparisonMetric
-  }
-
   interface InsightStat {
     helper: string
     label: string
@@ -129,10 +123,6 @@
 
   type ChartMode = "impact" | "scatter" | "timeline"
   type DashboardView = "explore" | "insights" | "optimal" | "tags" | "settings"
-  type InsightComparisonMetric = keyof Pick<
-    DailyMetricRow,
-    "activityScore" | "readinessScore" | "sleepScore"
-  >
   type TagTimingMode = "morning" | "sameDay"
 
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
@@ -151,23 +141,6 @@
   const exploreFavoriteMetricsSettingKey = "phibo.exploreFavoriteMetrics"
   const exploreHiddenMetricsSettingKey = "phibo.exploreHiddenMetrics"
   const scoreWeekDays = 7
-  const insightComparisonMetrics: Array<
-    Pick<InsightComparison, "label" | "metric">
-  > = [
-    { label: "Sleep", metric: "sleepScore" },
-    { label: "Readiness", metric: "readinessScore" },
-    { label: "Activity", metric: "activityScore" }
-  ]
-  const exploreMetricCategories = (
-    ["Sleep", "Readiness", "Activity", "Health"] as ExploreMetricCategory[]
-  )
-    .map((category) => ({
-      category,
-      metrics: exploreMetricDefinitions.filter(
-        (metric) => metric.category === category
-      )
-    }))
-    .filter((group) => group.metrics.length > 0)
 
   let accessToken = ""
   let activeView: DashboardView = "insights"
@@ -3244,20 +3217,6 @@
     border-color: #9ca69a;
   }
 
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.45rem;
-    max-width: 22rem;
-  }
-
-  .segmented-control button {
-    min-height: 3rem;
-    min-width: 0;
-    padding-block: 0.78rem;
-    text-align: center;
-  }
-
   .chart-panel {
     display: grid;
     gap: 0.85rem;
@@ -3457,21 +3416,6 @@
     gap: 0.45rem;
   }
 
-  .panel-heading {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .panel-heading > span {
-    color: #6f786f;
-    font-size: 0.85rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
   .insight-layout {
     display: grid;
     gap: 0.9rem;
@@ -3565,48 +3509,6 @@
   .correlation-card > strong {
     line-height: 1;
     white-space: nowrap;
-  }
-
-  .score-impact {
-    align-items: baseline;
-    display: inline-flex;
-    gap: 0.38rem;
-    justify-content: flex-end;
-    white-space: nowrap;
-  }
-
-  .score-impact span {
-    color: #6f786f;
-    font-size: 0.78rem;
-    font-weight: 800;
-    letter-spacing: 0;
-    text-transform: uppercase;
-  }
-
-  .score-impact b {
-    font-size: 1.9rem;
-    line-height: 1;
-    paint-order: stroke fill;
-  }
-
-  .score-impact.excellent b {
-    color: #1e2c64;
-  }
-
-  .score-impact.positive b {
-    color: #4f8a63;
-  }
-
-  .score-impact.neutral b {
-    color: #17201b;
-  }
-
-  .score-impact.warning b {
-    color: #a8423e;
-  }
-
-  .score-impact.negative b {
-    color: #a8423e;
   }
 
   .optimal-tag-list {
@@ -3754,10 +3656,6 @@
     color: #a8423e;
   }
 
-  .panel-heading.compact {
-    margin-bottom: 0.7rem;
-  }
-
   .discovery-list {
     display: grid;
     gap: 0.5rem;
@@ -3829,85 +3727,9 @@
     white-space: nowrap;
   }
 
-  .discovery-meta .score-impact b {
-    font-size: 1.15rem;
-  }
-
-  .discovery-meta .score-impact span {
-    font-size: 0.68rem;
-  }
-
-  .comparison-chart {
-    display: grid;
-    gap: 0.7rem;
-    margin-bottom: 0.8rem;
-  }
-
-  .comparison-chart article {
-    border: 1px solid #d8d8cc;
-    border-radius: 8px;
-    background-color: #fbf7ef;
-    display: grid;
-    gap: 0.55rem;
-    padding: 0.8rem;
-  }
-
   .explore-score-comparison {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     margin-bottom: 0;
-  }
-
-  .comparison-heading,
-  .bar-row {
-    display: grid;
-    grid-template-columns: 72px minmax(0, 1fr) 42px;
-    gap: 0.6rem;
-    align-items: center;
-  }
-
-  .comparison-heading {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .comparison-heading span {
-    color: #4f5f53;
-    font-weight: 800;
-    white-space: nowrap;
-  }
-
-  .bar-row > span {
-    color: #6f786f;
-    font-size: 0.78rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .bar-row > strong {
-    text-align: right;
-  }
-
-  .bar-track {
-    background: #ebe7dd;
-    border-radius: 999px;
-    height: 0.6rem;
-    overflow: hidden;
-  }
-
-  .bar-fill {
-    display: block;
-    height: 100%;
-  }
-
-  .bar-fill.tagged {
-    background: #4f8a63;
-  }
-
-  .bar-fill.baseline {
-    background: #9ca69a;
-  }
-
-  .bar-fill.harmful {
-    background: #a8423e;
   }
 
   .detail-stats {
@@ -4022,10 +3844,6 @@
 
     .optimal-tag-row {
       grid-template-columns: minmax(0, 1fr) 52px 1.7rem;
-    }
-
-    .optimal-tag-row .bar-track {
-      display: none;
     }
 
     .setting-row,

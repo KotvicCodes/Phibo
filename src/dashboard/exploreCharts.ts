@@ -1,8 +1,23 @@
-import type {
-  ExploreMetricDefinition,
-  ExploreMetricImpact
+import {
+  exploreMetricDefinitions,
+  type ExploreMetricCategory,
+  type ExploreMetricDefinition,
+  type ExploreMetricImpact
 } from "../lib/analysis/correlations"
 import { formatDelta } from "./format"
+
+// Metric definitions grouped by category, used by the Explore metric
+// selectors and the Settings metric preference chips.
+export const exploreMetricCategories = (
+  ["Sleep", "Readiness", "Activity", "Health"] as ExploreMetricCategory[]
+)
+  .map((category) => ({
+    category,
+    metrics: exploreMetricDefinitions.filter(
+      (metric) => metric.category === category
+    )
+  }))
+  .filter((group) => group.metrics.length > 0)
 
 export function metricAxisLabel(metric: ExploreMetricDefinition) {
   // Scores have no meaningful unit and bedtime hours render as clock times,
