@@ -1667,6 +1667,7 @@
   }
 
   let tagPickerSearchInput: HTMLInputElement | null = null
+  let renameNameInput: HTMLInputElement | null = null
 
   // Keeps Tab cycling inside an open dialog and returns focus to the
   // element that opened it when the dialog closes.
@@ -1842,6 +1843,12 @@
     renameTargetTag = renameTargetTag === tag ? "" : tag
     renameInput = renameTargetTag
     renameMessage = ""
+
+    // Jump into the name field; focusing also scrolls the form into view
+    // when the picked chip sat deep in the grid.
+    if (renameTargetTag) {
+      requestAnimationFrame(() => renameNameInput?.focus())
+    }
   }
 
   async function applyTagRename() {
@@ -3273,6 +3280,42 @@
               bind:value={tagPickerSearch}
               bind:this={tagPickerSearchInput}
             />
+
+            <!-- The rename form sits above the chip grid so it stays in view
+                 after picking a tag; large tag sets push anything below the
+                 grid out of the scrollable modal. -->
+            {#if tagPickerMode === "rename" && renameTargetTag}
+              <form
+                class="tag-rename-form"
+                on:submit|preventDefault={applyTagRename}
+              >
+                <input
+                  type="text"
+                  aria-label="New tag name"
+                  placeholder="New name"
+                  bind:value={renameInput}
+                  bind:this={renameNameInput}
+                />
+                <button type="submit" disabled={isRenamingTag}>
+                  {isRenamingTag ? "Renaming" : "Rename"}
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  on:click={() => selectRenameTarget(renameTargetTag)}
+                >
+                  Cancel
+                </button>
+              </form>
+              <p class="tag-rename-note">
+                Renames {formatTagLabel(renameTargetTag)} everywhere, including
+                crossed-out entries. Renaming to an existing tag merges them.
+              </p>
+            {/if}
+
+            {#if renameMessage}
+              <p class="tag-rename-message" role="status">{renameMessage}</p>
+            {/if}
             <div class="tag-picker">
               {#each visibleTagPickerTags as tag (tag)}
                 {@const key = tag.toLocaleLowerCase()}
@@ -3304,37 +3347,6 @@
               {/if}
             </div>
 
-            {#if tagPickerMode === "rename" && renameTargetTag}
-              <form
-                class="tag-rename-form"
-                on:submit|preventDefault={applyTagRename}
-              >
-                <input
-                  type="text"
-                  aria-label="New tag name"
-                  placeholder="New name"
-                  bind:value={renameInput}
-                />
-                <button type="submit" disabled={isRenamingTag}>
-                  {isRenamingTag ? "Renaming" : "Rename"}
-                </button>
-                <button
-                  type="button"
-                  class="secondary"
-                  on:click={() => selectRenameTarget(renameTargetTag)}
-                >
-                  Cancel
-                </button>
-              </form>
-              <p class="tag-rename-note">
-                Renames {formatTagLabel(renameTargetTag)} everywhere, including
-                crossed-out entries. Renaming to an existing tag merges them.
-              </p>
-            {/if}
-
-            {#if renameMessage}
-              <p class="tag-rename-message" role="status">{renameMessage}</p>
-            {/if}
           </section>
         </div>
       {/if}
