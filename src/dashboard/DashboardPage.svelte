@@ -36,14 +36,9 @@
   import { importOuraFiles, OuraImportError } from "../lib/oura/import"
   import { syncOuraRange } from "../lib/oura/sync"
   import {
-    addUserTagEntry,
     deleteTagEntries,
     findDuplicateTagEntryIds,
-    renameTag,
-    restoreTagEntries,
-    restoreTagEntriesExact,
-    resolveUserTagLabel,
-    updateDayComment
+    restoreTagEntriesExact
   } from "../lib/tags/store"
   import {
     buildTagBackup,
@@ -59,7 +54,6 @@
     formatDate,
     formatDelta,
     formatInputDate,
-    formatMonth,
     formatMetricDelta,
     formatNullableDelta,
     formatScoreTrend,
@@ -76,8 +70,13 @@
   import {
     formatTagLabel,
     formatTagList,
-    sortTagsForDisplay
+    sortTagsForDisplay,
+    tagSortModes,
+    type TagSortMode
   } from "./tagLabels"
+  import { trapFocus } from "./focusTrap"
+  import { scoreRangeTone, type ScoreRangeTone } from "./scoreTones"
+  import { buildTagsByDate, getTaggedMetricDates } from "./tagDays"
   import {
     buildExploreTagCalendar,
     buildExploreTagCalendarOptions
@@ -97,6 +96,7 @@
   import EChart from "./EChart.svelte"
   import TagCalendar from "./TagCalendarView.svelte"
   import ImportModal from "./ImportModal.svelte"
+  import TagsView from "./TagsView.svelte"
   import logoUrl from "../../assets/phibo-mark.svg"
   import "./shared.css"
 
@@ -107,12 +107,6 @@
     tone: ScoreRangeTone
     value: string
   }
-
-  type ScoreRangeTone =
-    | "score-excellent"
-    | "score-good"
-    | "score-neutral"
-    | "score-poor"
 
   interface MetricComparison {
     baselineAverage: number | null
@@ -140,13 +134,8 @@
     "activityScore" | "readinessScore" | "sleepScore"
   >
   type TagTimingMode = "morning" | "sameDay"
-  type TagSortMode = "alpha" | "count"
 
   const chartModes: ChartMode[] = ["impact", "scatter", "timeline"]
-  const tagSortModes: { id: TagSortMode; label: string }[] = [
-    { id: "alpha", label: "A–Z" },
-    { id: "count", label: "Most tagged" }
-  ]
   const activeViewSettingKey = "phibo.activeView"
   const tagSortModeSettingKey = "phibo.tagSortMode"
   const optimalTargetSettingKey = "phibo.optimalTarget"
@@ -216,16 +205,8 @@
   let tagTimingMode: TagTimingMode = "morning"
   let tagEntries: TagEntryRow[] = []
   let tagsViewDate = formatInputDate(new Date())
-  let tagsMessage = ""
   let tagsFilterSearch = ""
   let tagsFilterTags: string[] = []
-  let isTagPickerOpen = false
-  let tagPickerSearch = ""
-  let tagPickerMode: "add" | "rename" = "add"
-  let renameTargetTag = ""
-  let renameInput = ""
-  let renameMessage = ""
-  let isRenamingTag = false
   let deletedTagRows: DeletedTagIdRow[] = []
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
@@ -334,69 +315,7 @@
     []
   $: availableTags = sortTagsForDisplay(getAvailableTags(effectiveTagEntries))
   $: tagNightCounts = getTagNightCounts(effectiveTagEntries)
-  // The Tags manager works on the raw stored dates, like import does. The
-  // tag timing shift in effectiveTagEntries only applies to analysis views.
-  $: tagDays = buildTagDays(tagEntries, deletedTagRows)
-  $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
-  // Oura keeps one note per day, duplicated across the day's tag rows.
-  $: selectedDayComment =
-    selectedTagDay?.entries.find((entry) => entry.comment)?.comment ?? ""
   $: duplicateTagIds = findDuplicateTagEntryIds(tagEntries)
-  // The picker offers every label ever seen, including fully deleted ones,
-  // so a tag whose last instance was deleted stays one click away.
-  $: allKnownTags = buildAllKnownTags(tagEntries, deletedTagRows)
-  $: visibleTagPickerTags = filterTagsByQuery(allKnownTags, tagPickerSearch)
-  $: tagPickerActiveKeys = new Set(
-    selectedTagDay?.activeGroups.map((group) => group.key) ?? []
-  )
-  $: tagPickerDeletedKeys = new Set(
-    selectedTagDay?.deletedGroups.map((group) => group.key) ?? []
-  )
-  $: tagPickerCreateLabel = (() => {
-    const label = resolveUserTagLabel(tagPickerSearch, allKnownTags)
-
-    if (!label) {
-      return null
-    }
-
-    const key = label.toLocaleLowerCase()
-
-    return allKnownTags.some((tag) => tag.toLocaleLowerCase() === key)
-      ? null
-      : label
-  })()
-  // The filter offers every known label, including fully deleted ones, since
-  // day matching already counts crossed-out tags.
-  $: sortedTagFilterTags =
-    tagSortMode === "count"
-      ? [...allKnownTags].sort(
-          (left, right) =>
-            (tagNightCounts.get(right) ?? 0) - (tagNightCounts.get(left) ?? 0)
-        )
-      : allKnownTags
-  $: visibleTagFilterTags = filterTagsByQuery(
-    sortedTagFilterTags,
-    tagsFilterSearch
-  )
-  $: filteredTagDays =
-    tagsFilterTags.length === 0
-      ? tagDays
-      : tagDays.filter((day) =>
-          tagsFilterTags.every(
-            (tag) =>
-              day.entries.some((entry) => entry.tag === tag) ||
-              day.deleted.some((row) => row.entry?.tag === tag)
-          )
-        )
-  $: tagStripDays = buildTagStripDays(
-    dailyMetrics,
-    tagDays,
-    filteredTagDays,
-    tagsFilterTags.length > 0
-  )
-  $: if (activeView === "tags" && tagsViewDate && tagStripDays.length > 0) {
-    scrollTagStripToDate(tagsViewDate)
-  }
   $: sortedExploreTags =
     tagSortMode === "count"
       ? [...availableTags].sort(
@@ -1143,26 +1062,6 @@
     return Math.round((currentAverage - previousAverage) * 10) / 10
   }
 
-  // Tone thresholds compare the same rounded value the card displays, so a
-  // shown 85 is always blue even when the raw estimate is 84.6.
-  function scoreRangeTone(value: number | null): ScoreRangeTone {
-    if (value === null) {
-      return "score-neutral"
-    }
-
-    const displayedScore = Math.round(value)
-
-    if (displayedScore >= 85) {
-      return "score-excellent"
-    }
-
-    if (displayedScore >= 70) {
-      return "score-good"
-    }
-
-    return "score-poor"
-  }
-
   function createInsightStats(
     item: TagInsight,
     metrics: DailyMetricRow[]
@@ -1407,566 +1306,9 @@
       : [...selectedExploreTags, tag]
   }
 
-  function buildTagsByDate(entries: typeof tagEntries) {
-    return entries.reduce(
-      (groups, tag) => {
-        groups[tag.date] = [...(groups[tag.date] ?? []), tag.tag]
-
-        return groups
-      },
-      {} as Record<string, string[]>
-    )
-  }
-
-  function getTaggedMetricDates(entries: typeof tagEntries) {
-    return new Set(entries.map((tag) => tag.date))
-  }
-
-  interface TagChipGroup {
-    key: string
-    label: string
-    entries: TagEntryRow[]
-    title: string
-  }
-
-  interface DeletedTagChipGroup {
-    key: string
-    label: string
-    rows: DeletedTagIdRow[]
-    title: string
-  }
-
-  interface TagDay {
-    date: string
-    entries: TagEntryRow[]
-    deleted: DeletedTagIdRow[]
-    activeGroups: TagChipGroup[]
-    deletedGroups: DeletedTagChipGroup[]
-  }
-
-  // The Oura export can log the same tag several times on one day. Chips are
-  // grouped by label so each tag shows once; acting on a chip covers every
-  // entry in its group.
-  function buildDayChipGroups(day: TagDay) {
-    const active = new Map<string, TagChipGroup>()
-
-    for (const entry of day.entries) {
-      const key = entry.tag.toLocaleLowerCase()
-      const group = active.get(key)
-
-      if (group) {
-        group.entries.push(entry)
-      } else {
-        active.set(key, { key, label: entry.tag, entries: [entry], title: "" })
-      }
-    }
-
-    const deleted = new Map<string, DeletedTagChipGroup>()
-
-    for (const row of day.deleted) {
-      const label = row.entry?.tag ?? ""
-      const key = label.toLocaleLowerCase()
-
-      // Labels that still have an active entry show as a normal chip; their
-      // tombstones surface as one crossed chip only once all are deleted.
-      if (active.has(key)) {
-        continue
-      }
-
-      const group = deleted.get(key)
-
-      if (group) {
-        group.rows.push(row)
-      } else {
-        deleted.set(key, { key, label, rows: [row], title: "" })
-      }
-    }
-
-    for (const group of active.values()) {
-      group.title = group.entries
-        .map((entry) => entry.comment)
-        .filter((comment): comment is string => Boolean(comment))
-        .join("; ")
-    }
-
-    for (const group of deleted.values()) {
-      group.title = group.rows
-        .map((row) => row.entry?.comment)
-        .filter((comment): comment is string => Boolean(comment))
-        .join("; ")
-    }
-
-    day.activeGroups = Array.from(active.values())
-    day.deletedGroups = Array.from(deleted.values())
-  }
-
-  function buildTagDays(
-    entries: TagEntryRow[],
-    deletedRows: DeletedTagIdRow[]
-  ) {
-    const days = new Map<string, TagDay>()
-    const getDay = (date: string) => {
-      let day = days.get(date)
-
-      if (!day) {
-        day = { date, entries: [], deleted: [], activeGroups: [], deletedGroups: [] }
-        days.set(date, day)
-      }
-
-      return day
-    }
-
-    for (const entry of entries) {
-      getDay(entry.date).entries.push(entry)
-    }
-
-    for (const row of deletedRows) {
-      if (row.entry) {
-        getDay(row.entry.date).deleted.push(row)
-      }
-    }
-
-    for (const day of days.values()) {
-      buildDayChipGroups(day)
-    }
-
-    return Array.from(days.values()).sort((left, right) =>
-      right.date.localeCompare(left.date)
-    )
-  }
-
   async function reloadTagEntries() {
     tagEntries = await db.tagEntries.orderBy("date").toArray()
     deletedTagRows = await db.deletedTagIds.toArray()
-  }
-
-  function selectTagsDay(date: string) {
-    tagsViewDate = date
-    tagsMessage = ""
-  }
-
-  interface TagStripDay {
-    date: string
-    monthLabel: string | null
-    tagCount: number
-    barHeight: number
-    tone: ScoreRangeTone
-    dimmed: boolean
-    title: string
-  }
-
-  function buildTagStripDays(
-    metrics: DailyMetricRow[],
-    days: TagDay[],
-    filteredDays: TagDay[],
-    filterActive: boolean
-  ): TagStripDay[] {
-    const today = formatInputDate(new Date())
-    const startCandidates = [metrics[0]?.date, days.at(-1)?.date]
-      .filter((date): date is string => Boolean(date))
-      .sort()
-    const start = startCandidates[0]
-
-    if (!start || start > today) {
-      return []
-    }
-
-    const dayByDate = new Map(days.map((day) => [day.date, day]))
-    const filteredDates = new Set(filteredDays.map((day) => day.date))
-    const sleepScoreByDate = new Map(
-      metrics.map((metric) => [metric.date, metric.sleepScore])
-    )
-    // Bars reflect only active tags; deletion tombstones must not inflate
-    // column heights.
-    const maxCount = Math.max(
-      1,
-      ...days.map((day) => day.activeGroups.length)
-    )
-    const stripDays: TagStripDay[] = []
-
-    for (let date = start; date <= today; date = shiftDate(date, 1)) {
-      const day = dayByDate.get(date)
-      const count = day ? day.activeGroups.length : 0
-
-      stripDays.push({
-        date,
-        monthLabel: date.endsWith("-01") ? formatMonth(date) : null,
-        tagCount: count,
-        barHeight:
-          count === 0 ? 0 : Math.max(18, Math.round((count / maxCount) * 100)),
-        tone: scoreRangeTone(sleepScoreByDate.get(date) ?? null),
-        dimmed: filterActive && !filteredDates.has(date),
-        title: `${formatDate(date)} · ${count} ${count === 1 ? "tag" : "tags"}`
-      })
-    }
-
-    return stripDays
-  }
-
-  // The strip starts positioned on the selected day without animating past
-  // every prior day; only later selections glide smoothly.
-  let tagStripHasPositioned = false
-
-  $: if (activeView !== "tags") {
-    tagStripHasPositioned = false
-  }
-
-  function scrollTagStripToDate(date: string) {
-    requestAnimationFrame(() => {
-      const target = document.querySelector(
-        `.tag-day-strip [data-strip-date="${date}"]`
-      )
-
-      if (!target) {
-        return
-      }
-
-      target.scrollIntoView({
-        behavior: tagStripHasPositioned ? "smooth" : "auto",
-        inline: "center",
-        block: "nearest"
-      })
-      tagStripHasPositioned = true
-    })
-  }
-
-  // Map wheel movement onto the strip's horizontal axis at a reduced rate,
-  // so days glide by instead of flying past.
-  function handleTagStripWheel(event: WheelEvent) {
-    const strip = event.currentTarget
-
-    if (!(strip instanceof HTMLElement)) {
-      return
-    }
-
-    const delta =
-      Math.abs(event.deltaY) > Math.abs(event.deltaX)
-        ? event.deltaY
-        : event.deltaX
-
-    event.preventDefault()
-    strip.scrollLeft += delta * 0.35
-  }
-
-  function filterTagsByQuery(tags: string[], search: string) {
-    const query = search.trim().toLocaleLowerCase()
-
-    if (query.length === 0) {
-      return tags
-    }
-
-    return tags.filter(
-      (tag) =>
-        formatTagLabel(tag).toLocaleLowerCase().includes(query) ||
-        tag.toLocaleLowerCase().includes(query)
-    )
-  }
-
-  function toggleTagsFilterTag(tag: string) {
-    tagsFilterTags = tagsFilterTags.includes(tag)
-      ? tagsFilterTags.filter((item) => item !== tag)
-      : [...tagsFilterTags, tag]
-  }
-
-  function buildAllKnownTags(
-    entries: TagEntryRow[],
-    deletedRows: DeletedTagIdRow[]
-  ) {
-    const labelsByKey = new Map<string, string>()
-
-    for (const entry of entries) {
-      const key = entry.tag.toLocaleLowerCase()
-
-      if (!labelsByKey.has(key)) {
-        labelsByKey.set(key, entry.tag)
-      }
-    }
-
-    for (const row of deletedRows) {
-      const label = row.entry?.tag
-
-      if (!label) {
-        continue
-      }
-
-      const key = label.toLocaleLowerCase()
-
-      if (!labelsByKey.has(key)) {
-        labelsByKey.set(key, label)
-      }
-    }
-
-    return sortTagsForDisplay(Array.from(labelsByKey.values()))
-  }
-
-  let tagPickerSearchInput: HTMLInputElement | null = null
-  let renameNameInput: HTMLInputElement | null = null
-
-  // Keeps Tab cycling inside an open dialog and returns focus to the
-  // element that opened it when the dialog closes.
-  function trapFocus(node: HTMLElement) {
-    const previous =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-
-    const getFocusable = () =>
-      Array.from(
-        node.querySelectorAll<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-      ).filter(
-        (element) =>
-          !element.hasAttribute("disabled") && element.offsetParent !== null
-      )
-
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key !== "Tab") {
-        return
-      }
-
-      const focusable = getFocusable()
-
-      if (focusable.length === 0) {
-        return
-      }
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      const active = document.activeElement
-
-      if (event.shiftKey) {
-        if (active === first || !node.contains(active)) {
-          event.preventDefault()
-          last.focus()
-        }
-      } else if (active === last || !node.contains(active)) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    node.addEventListener("keydown", handleKeydown)
-
-    // Focus the dialog's first control unless something inside already
-    // grabbed focus, like the picker search box.
-    requestAnimationFrame(() => {
-      if (!node.contains(document.activeElement)) {
-        getFocusable()[0]?.focus()
-      }
-    })
-
-    return {
-      destroy() {
-        node.removeEventListener("keydown", handleKeydown)
-        previous?.focus()
-      }
-    }
-  }
-
-  function openTagPicker() {
-    isTagPickerOpen = true
-    tagPickerSearch = ""
-    setTagPickerMode("add")
-    requestAnimationFrame(() => tagPickerSearchInput?.focus())
-  }
-
-  function setTagPickerMode(mode: "add" | "rename") {
-    tagPickerMode = mode
-    renameTargetTag = ""
-    renameInput = ""
-    renameMessage = ""
-  }
-
-  function closeTagPicker() {
-    isTagPickerOpen = false
-  }
-
-  function handleTagPickerBackdropClick(event: MouseEvent) {
-    if (event.target === event.currentTarget) {
-      closeTagPicker()
-    }
-  }
-
-  async function toggleTagInPicker(tag: string) {
-    const key = tag.toLocaleLowerCase()
-    const activeGroup = selectedTagDay?.activeGroups.find(
-      (group) => group.key === key
-    )
-
-    if (activeGroup) {
-      await deleteTagGroup(activeGroup)
-      return
-    }
-
-    const deletedGroup = selectedTagDay?.deletedGroups.find(
-      (group) => group.key === key
-    )
-
-    if (deletedGroup) {
-      await restoreDeletedTagGroup(deletedGroup)
-      return
-    }
-
-    try {
-      const entry = await addUserTagEntry({
-        date: tagsViewDate,
-        tag,
-        comment: null
-      })
-
-      tagEntries = [...tagEntries, entry].sort((left, right) =>
-        left.date.localeCompare(right.date)
-      )
-      tagsMessage = ""
-    } catch {
-      tagsMessage = "Could not save that tag. Try again."
-    }
-  }
-
-  async function createTagFromPicker() {
-    if (!tagPickerCreateLabel) {
-      return
-    }
-
-    await toggleTagInPicker(tagPickerCreateLabel)
-    tagPickerSearch = ""
-  }
-
-  // Chip clicks patch the in-memory state with what the store reports back
-  // instead of re-reading both tables, so toggles do not re-render every
-  // chip or hit IndexedDB for the full history on each click.
-  async function deleteTagGroup(group: TagChipGroup) {
-    try {
-      const result = await deleteTagEntries(
-        group.entries.map((entry) => entry.id)
-      )
-      const removedIds = new Set(result.deletedIds)
-
-      tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
-      deletedTagRows = [...deletedTagRows, ...result.tombstones]
-      tagsMessage = ""
-    } catch {
-      tagsMessage = "Could not delete that tag. Try again."
-    }
-  }
-
-  async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
-    try {
-      const result = await restoreTagEntries(group.rows.map((row) => row.id))
-      const removedTombstoneIds = new Set(result.removedTombstoneIds)
-
-      deletedTagRows = deletedTagRows.filter(
-        (row) => !removedTombstoneIds.has(row.id)
-      )
-
-      if (result.restoredEntries.length > 0) {
-        tagEntries = [...tagEntries, ...result.restoredEntries].sort(
-          (left, right) => left.date.localeCompare(right.date)
-        )
-      }
-
-      tagsMessage = ""
-    } catch {
-      tagsMessage = "Could not restore that tag. Try again."
-    }
-  }
-
-  function selectRenameTarget(tag: string) {
-    renameTargetTag = renameTargetTag === tag ? "" : tag
-    renameInput = renameTargetTag
-    renameMessage = ""
-
-    // Jump into the name field; focusing also scrolls the form into view
-    // when the picked chip sat deep in the grid.
-    if (renameTargetTag) {
-      requestAnimationFrame(() => renameNameInput?.focus())
-    }
-  }
-
-  async function applyTagRename() {
-    if (!renameTargetTag) {
-      return
-    }
-
-    const trimmed = renameInput.replace(/\s+/g, " ").trim()
-
-    if (!trimmed) {
-      renameMessage = "Type a new tag name first."
-      return
-    }
-
-    // A case-only change keeps the typed casing; anything else adopts an
-    // existing label's casing or canonicalizes like the popup does.
-    const label =
-      trimmed.toLocaleLowerCase() === renameTargetTag.toLocaleLowerCase()
-        ? trimmed
-        : resolveUserTagLabel(trimmed, allKnownTags)
-
-    if (!label) {
-      renameMessage = "Type a new tag name first."
-      return
-    }
-
-    if (label === renameTargetTag) {
-      renameMessage = "That is already the tag's name."
-      return
-    }
-
-    const isMerge = allKnownTags.some(
-      (tag) =>
-        tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
-        tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
-    )
-
-    isRenamingTag = true
-
-    try {
-      const { renamedCount, mergedCount } = await renameTag(
-        renameTargetTag,
-        label
-      )
-
-      // Drop stale filter selections that still carry the old label.
-      tagsFilterTags = tagsFilterTags.filter(
-        (tag) =>
-          tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
-      )
-      renameOptimalOverrideTags(renameTargetTag, label)
-      await reloadTagEntries()
-      renameMessage = isMerge
-        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
-          (mergedCount > 0
-            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
-            : "")
-        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
-      renameTargetTag = ""
-      renameInput = ""
-    } catch {
-      renameMessage = "Could not rename that tag. Try again."
-    } finally {
-      isRenamingTag = false
-    }
-  }
-
-  async function saveDayComment(event: Event) {
-    const input = event.currentTarget
-
-    if (!(input instanceof HTMLInputElement)) {
-      return
-    }
-
-    const comment = input.value.replace(/\s+/g, " ").trim() || null
-
-    try {
-      await updateDayComment(tagsViewDate, comment)
-      tagEntries = tagEntries.map((entry) =>
-        entry.date === tagsViewDate ? { ...entry, comment } : entry
-      )
-      tagsMessage = ""
-    } catch {
-      tagsMessage = "Could not save that note. Try again."
-    }
   }
 
   function openDedupeConfirm() {
@@ -2121,10 +1463,10 @@
   }
 
   let tagSearchInput: HTMLInputElement | null = null
-  let tagsFilterSearchInput: HTMLInputElement | null = null
 
-  // On the Explore and Tags views, typing anywhere starts a tag search
-  // without having to click the search box first.
+  // On the Explore view, typing anywhere starts a tag search without
+  // having to click the search box first. The Tags view has its own handler
+  // inside TagsView.
   function handleGlobalKeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && isDedupeConfirmOpen) {
       if (!isDeduping) {
@@ -2134,14 +1476,7 @@
       return
     }
 
-    const searchInput =
-      activeView === "explore"
-        ? tagSearchInput
-        : activeView === "tags"
-          ? isTagPickerOpen
-            ? tagPickerSearchInput
-            : tagsFilterSearchInput
-          : null
+    const searchInput = activeView === "explore" ? tagSearchInput : null
 
     if (!searchInput) {
       return
@@ -2153,16 +1488,9 @@
 
     const target = event.target instanceof HTMLElement ? event.target : null
 
-    // Escape closes the tag picker popup, or backs out of the tag search.
+    // Escape backs out of the tag search.
     if (event.key === "Escape") {
-      if (activeView === "explore") {
-        tagSearch = ""
-      } else if (isTagPickerOpen) {
-        closeTagPicker()
-        return
-      } else {
-        tagsFilterSearch = ""
-      }
+      tagSearch = ""
 
       if (target === searchInput) {
         searchInput.blur()
@@ -3015,376 +2343,20 @@
       </div>
     </section>
   {:else if activeView === "tags"}
-    <section class="settings-workspace" aria-label="Tag manager">
-      <div class="settings-panel">
-        <div class="tag-daily-log" aria-label="Tagged days">
-          <div class="log-heading">
-            <div>
-              <p class="section-kicker">Daily log</p>
-              <h3>
-                {tagsFilterTags.length > 0
-                  ? formatTagList(tagsFilterTags, " + ")
-                  : "All tagged days"}
-              </h3>
-            </div>
-            <span>
-              {tagsFilterTags.length > 0
-                ? `${filteredTagDays.length} of ${tagDays.length} days`
-                : `${tagDays.length} days`}
-            </span>
-          </div>
-
-          {#if tagStripDays.length > 0}
-            <div
-              class="tag-day-strip"
-              aria-label="Day timeline"
-              on:wheel|nonpassive={handleTagStripWheel}
-            >
-              {#each tagStripDays as day (day.date)}
-                <button
-                  type="button"
-                  class="strip-day"
-                  class:selected={tagsViewDate === day.date}
-                  class:dimmed={day.dimmed}
-                  data-strip-date={day.date}
-                  title={day.title}
-                  on:click={() => selectTagsDay(day.date)}
-                >
-                  <span class="strip-bar-area">
-                    <span
-                      class="strip-bar {day.tone}"
-                      class:empty={day.tagCount === 0}
-                      style={day.tagCount === 0
-                        ? ""
-                        : `height: ${day.barHeight}%`}
-                    ></span>
-                  </span>
-                  <small class="strip-label">{day.monthLabel ?? ""}</small>
-                </button>
-              {/each}
-            </div>
-          {/if}
-
-          {#if tagsViewDate}
-            <div class="strip-day-panel" aria-label="Selected day tags">
-              <div class="log-date">
-                <strong>{formatDate(tagsViewDate)}</strong>
-                <small>{tagsViewDate}</small>
-              </div>
-              <div class="tag-chip-list">
-                {#if selectedTagDay}
-                  {#each selectedTagDay.activeGroups as group (group.key)}
-                    <button
-                      type="button"
-                      class="tag-chip"
-                      title={group.title}
-                      on:click={() => deleteTagGroup(group)}
-                    >
-                      {formatTagLabel(group.label)}
-                      {#if group.entries.length > 1}
-                        <span class="tag-count">{group.entries.length}</span>
-                      {/if}
-                    </button>
-                  {/each}
-                  {#each selectedTagDay.deletedGroups as group (group.key)}
-                    <button
-                      type="button"
-                      class="tag-chip crossed"
-                      title={group.title}
-                      on:click={() => restoreDeletedTagGroup(group)}
-                    >
-                      {formatTagLabel(group.label)}
-                      {#if group.rows.length > 1}
-                        <span class="tag-count">{group.rows.length}</span>
-                      {/if}
-                    </button>
-                  {/each}
-                {/if}
-                <button
-                  type="button"
-                  class="tag-chip add"
-                  on:click={openTagPicker}
-                >
-                  + Add tags
-                </button>
-              </div>
-              {#if selectedTagDay && selectedTagDay.activeGroups.length > 0}
-                <details class="tag-comment-editor" open={Boolean(selectedDayComment)}>
-                  <summary>Day note</summary>
-                  <div class="tag-comment-rows">
-                    <input
-                      type="text"
-                      aria-label="Day note"
-                      placeholder="Add a note for this day"
-                      value={selectedDayComment}
-                      on:change={saveDayComment}
-                    />
-                  </div>
-                </details>
-              {/if}
-            </div>
-          {/if}
-
-          {#if tagsMessage}
-            <p class="tags-message" role="status">{tagsMessage}</p>
-          {/if}
-
-          <div class="tag-filter-control">
-            <div class="tag-control-heading">
-              <h3>Filter</h3>
-              <div class="tag-sort" role="group" aria-label="Sort tags">
-                {#each tagSortModes as mode}
-                  <button
-                    type="button"
-                    class:active={tagSortMode === mode.id}
-                    aria-pressed={tagSortMode === mode.id}
-                    on:click={() => setTagSortMode(mode.id)}
-                  >
-                    {mode.label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-            {#if availableTags.length > 0}
-              <input
-                class="tag-search"
-                type="search"
-                placeholder="Search tags"
-                aria-label="Search tags"
-                bind:value={tagsFilterSearch}
-                bind:this={tagsFilterSearchInput}
-              />
-            {/if}
-            <div class="tag-picker">
-              {#each visibleTagFilterTags as tag}
-                <button
-                  type="button"
-                  class:active={tagsFilterTags.includes(tag)}
-                  on:click={() => toggleTagsFilterTag(tag)}
-                >
-                  {formatTagLabel(tag)}
-                  {#if showTagCounts}
-                    <span class="tag-count">{tagNightCounts.get(tag) ?? 0}</span>
-                  {/if}
-                </button>
-              {:else}
-                <p class="empty-state">
-                  {availableTags.length === 0
-                    ? "Import Oura data or add tags to filter days."
-                    : "No tags match your search."}
-                </p>
-              {/each}
-            </div>
-          </div>
-
-          {#if tagDays.length === 0}
-            <p class="tag-empty">
-              Import Oura data or add your first tag above.
-            </p>
-          {:else if filteredTagDays.length === 0}
-            <p class="tag-empty">No tagged days match these filters.</p>
-          {:else}
-            <div class="log-table">
-              <div class="log-row header">
-                <span>Date</span>
-                <span>Tags</span>
-              </div>
-              {#each filteredTagDays as day (day.date)}
-                {#if tagsViewDate === day.date}
-                  <div class="log-row tag-log-row selected" data-date={day.date}>
-                    <div class="log-date">
-                      <strong>{formatDate(day.date)}</strong>
-                      <small>{day.date}</small>
-                    </div>
-                    <div class="tag-chip-list">
-                      {#each day.activeGroups as group (group.key)}
-                        <button
-                          type="button"
-                          class="tag-chip"
-                          title={group.title}
-                          on:click={() => deleteTagGroup(group)}
-                        >
-                          {formatTagLabel(group.label)}
-                          {#if group.entries.length > 1}
-                            <span class="tag-count">{group.entries.length}</span>
-                          {/if}
-                        </button>
-                      {/each}
-                      {#each day.deletedGroups as group (group.key)}
-                        <button
-                          type="button"
-                          class="tag-chip crossed"
-                          title={group.title}
-                          on:click={() => restoreDeletedTagGroup(group)}
-                        >
-                          {formatTagLabel(group.label)}
-                          {#if group.rows.length > 1}
-                            <span class="tag-count">{group.rows.length}</span>
-                          {/if}
-                        </button>
-                      {/each}
-                      <button
-                        type="button"
-                        class="tag-chip add"
-                        on:click={openTagPicker}
-                      >
-                        + Add tags
-                      </button>
-                    </div>
-                  </div>
-                {:else}
-                  <button
-                    type="button"
-                    class="log-row"
-                    data-date={day.date}
-                    on:click={() => selectTagsDay(day.date)}
-                  >
-                    <div class="log-date">
-                      <strong>{formatDate(day.date)}</strong>
-                      <small>{day.date}</small>
-                    </div>
-                    <span>
-                      {formatTagList(day.activeGroups.map((group) => group.label))}
-                    </span>
-                  </button>
-                {/if}
-              {/each}
-            </div>
-          {/if}
-        </div>
-      </div>
-
-      {#if isTagPickerOpen}
-        <div
-          class="tag-picker-backdrop"
-          role="presentation"
-          on:click={handleTagPickerBackdropClick}
-        >
-          <section
-            class="tag-picker-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Add tags"
-            use:trapFocus
-          >
-            <div class="tag-picker-modal-header">
-              <div>
-                <p class="section-kicker">
-                  {tagPickerMode === "add" ? "Tags for" : "Manage"}
-                </p>
-                <h2>
-                  {tagPickerMode === "add"
-                    ? formatDate(tagsViewDate)
-                    : "Rename tags"}
-                </h2>
-              </div>
-              <div class="tag-sort" role="group" aria-label="Picker mode">
-                <button
-                  type="button"
-                  class:active={tagPickerMode === "add"}
-                  aria-pressed={tagPickerMode === "add"}
-                  on:click={() => setTagPickerMode("add")}
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  class:active={tagPickerMode === "rename"}
-                  aria-pressed={tagPickerMode === "rename"}
-                  on:click={() => setTagPickerMode("rename")}
-                >
-                  Rename
-                </button>
-              </div>
-              <button
-                type="button"
-                class="tag-picker-close"
-                on:click={closeTagPicker}
-              >
-                Close
-              </button>
-            </div>
-            <input
-              class="tag-search"
-              type="search"
-              placeholder={tagPickerMode === "add"
-                ? "Search or type a new tag"
-                : "Search tags"}
-              aria-label="Search tags"
-              bind:value={tagPickerSearch}
-              bind:this={tagPickerSearchInput}
-            />
-
-            <!-- The rename form sits above the chip grid so it stays in view
-                 after picking a tag; large tag sets push anything below the
-                 grid out of the scrollable modal. -->
-            {#if tagPickerMode === "rename" && renameTargetTag}
-              <form
-                class="tag-rename-form"
-                on:submit|preventDefault={applyTagRename}
-              >
-                <input
-                  type="text"
-                  aria-label="New tag name"
-                  placeholder="New name"
-                  bind:value={renameInput}
-                  bind:this={renameNameInput}
-                />
-                <button type="submit" disabled={isRenamingTag}>
-                  {isRenamingTag ? "Renaming" : "Rename"}
-                </button>
-                <button
-                  type="button"
-                  class="secondary"
-                  on:click={() => selectRenameTarget(renameTargetTag)}
-                >
-                  Cancel
-                </button>
-              </form>
-              <p class="tag-rename-note">
-                Renames {formatTagLabel(renameTargetTag)} everywhere, including
-                crossed-out entries. Renaming to an existing tag merges them.
-              </p>
-            {/if}
-
-            {#if renameMessage}
-              <p class="tag-rename-message" role="status">{renameMessage}</p>
-            {/if}
-            <div class="tag-picker">
-              {#each visibleTagPickerTags as tag (tag)}
-                {@const key = tag.toLocaleLowerCase()}
-                <button
-                  type="button"
-                  class:active={tagPickerMode === "add"
-                    ? tagPickerActiveKeys.has(key)
-                    : renameTargetTag === tag}
-                  class:crossed={tagPickerMode === "add" &&
-                    tagPickerDeletedKeys.has(key)}
-                  on:click={() =>
-                    tagPickerMode === "add"
-                      ? toggleTagInPicker(tag)
-                      : selectRenameTarget(tag)}
-                >
-                  {formatTagLabel(tag)}
-                </button>
-              {/each}
-              {#if tagPickerMode === "add" && tagPickerCreateLabel}
-                <button
-                  type="button"
-                  class="create"
-                  on:click={createTagFromPicker}
-                >
-                  Add "{formatTagLabel(tagPickerCreateLabel)}"
-                </button>
-              {:else if visibleTagPickerTags.length === 0}
-                <p class="empty-state">No tags match your search.</p>
-              {/if}
-            </div>
-
-          </section>
-        </div>
-      {/if}
-    </section>
+    <TagsView
+      bind:tagEntries
+      bind:deletedTagRows
+      bind:tagsViewDate
+      bind:tagsFilterSearch
+      bind:tagsFilterTags
+      {dailyMetrics}
+      {availableTags}
+      {tagNightCounts}
+      {showTagCounts}
+      {tagSortMode}
+      {setTagSortMode}
+      onTagRenamed={renameOptimalOverrideTags}
+    />
   {:else}
     <section class="settings-workspace">
       <div class="settings-panel">
@@ -3700,17 +2672,6 @@
     box-sizing: border-box;
   }
 
-  .header,
-  .view-tabs,
-  .explore-workspace,
-  .optimal-workspace,
-  .settings-workspace,
-  .workspace,
-  .metric-grid {
-    width: min(1180px, 100%);
-    margin-inline: auto;
-  }
-
   .header {
     display: flex;
     align-items: flex-start;
@@ -3785,16 +2746,6 @@
     margin-bottom: 1rem;
   }
 
-  .view-tabs button,
-  .segmented-control button,
-  .tag-picker button {
-    appearance: none;
-    border: 1px solid transparent;
-    color: inherit;
-    cursor: pointer;
-    font: inherit;
-  }
-
   .view-tabs button {
     background: transparent;
     border-radius: 8px 8px 0 0;
@@ -3817,17 +2768,6 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 0.8rem;
     margin-bottom: 0.8rem;
-  }
-
-  .metric-card,
-  .analysis-panel,
-  .explore-panel,
-  .settings-panel,
-  .trend-panel {
-    border: 1px solid #d3d5c8;
-    border-radius: 8px;
-    background: rgba(251, 247, 239, 0.88);
-    box-shadow: 0 10px 30px rgba(55, 64, 54, 0.045);
   }
 
   .metric-card {
@@ -3933,19 +2873,7 @@
     gap: 0.8rem;
   }
 
-  .analysis-panel,
-  .explore-panel,
-  .settings-panel,
-  .trend-panel {
-    padding: 1rem;
-  }
-
   .explore-workspace {
-    display: grid;
-    gap: 0.8rem;
-  }
-
-  .settings-workspace {
     display: grid;
     gap: 0.8rem;
   }
@@ -4194,347 +3122,6 @@
     text-transform: uppercase;
   }
 
-  .tag-log-row {
-    align-items: start;
-  }
-
-  .tag-log-row.selected {
-    background: rgba(30, 44, 100, 0.09);
-    box-shadow: inset 4px 0 0 #1e2c64;
-  }
-
-  .tag-log-row.selected .log-date strong {
-    color: #1e2c64;
-  }
-
-  .tag-chip-list {
-    align-content: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    padding-block: 0.15rem;
-  }
-
-  .tag-chip {
-    appearance: none;
-    align-items: center;
-    background: #f7f1e8;
-    border: 1px solid #d8d8cc;
-    border-radius: 999px;
-    color: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 750;
-    padding: 0.32rem 0.62rem;
-  }
-
-  .tag-chip:hover {
-    border-color: #8a3f2f;
-    color: #8a3f2f;
-    text-decoration: line-through;
-  }
-
-  .tag-chip.crossed {
-    background: transparent;
-    border-style: dashed;
-    color: #6f786f;
-    text-decoration: line-through;
-  }
-
-  .tag-chip.crossed:hover {
-    border-color: #1e2c64;
-    color: #1e2c64;
-  }
-
-  .tags-message {
-    color: #8a3f2f;
-    font-size: 0.9rem;
-    font-weight: 700;
-  }
-
-  .tag-empty {
-    color: #6f786f;
-    font-size: 0.9rem;
-    padding-block: 0.6rem;
-  }
-
-  .tag-daily-log {
-    display: grid;
-    gap: 0.45rem;
-  }
-
-  .tag-day-strip {
-    align-items: flex-end;
-    display: flex;
-    gap: 4px;
-    margin-bottom: 0.4rem;
-    overflow-x: auto;
-    padding: 0.4rem 0.1rem 0.2rem;
-    scrollbar-width: thin;
-  }
-
-  .strip-day {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    border-radius: 5px;
-    cursor: pointer;
-    display: grid;
-    flex: 0 0 auto;
-    gap: 0.2rem;
-    /* Keeps wide month labels from stretching their column, which made the
-       month-start bar merge with its neighbor. */
-    min-width: 0;
-    padding: 2px 2px 0;
-    width: 26px;
-  }
-
-  .strip-day:hover {
-    background: rgba(31, 37, 32, 0.08);
-  }
-
-  .strip-day.selected {
-    background: rgba(30, 44, 100, 0.14);
-  }
-
-  .strip-day.dimmed {
-    opacity: 0.25;
-  }
-
-  .strip-bar-area {
-    align-items: flex-end;
-    display: flex;
-    height: 96px;
-  }
-
-  .strip-bar {
-    border-radius: 5px 5px 0 0;
-    min-height: 9px;
-    width: 100%;
-  }
-
-  .strip-bar.empty {
-    height: 9px;
-    opacity: 0.45;
-  }
-
-  .strip-bar.score-excellent {
-    background: #1e2c64;
-  }
-
-  .strip-bar.score-good {
-    background: #4f8a63;
-  }
-
-  .strip-bar.score-poor {
-    background: #a8423e;
-  }
-
-  .strip-bar.score-neutral {
-    background: #9ca69a;
-  }
-
-  .strip-label {
-    color: #6f786f;
-    font-size: 0.58rem;
-    font-weight: 800;
-    height: 0.8rem;
-    overflow: visible;
-    text-align: left;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .strip-day-panel {
-    align-items: center;
-    border: 1px solid #d8d8cc;
-    border-radius: 8px;
-    display: grid;
-    gap: 0.85rem;
-    grid-template-columns: auto minmax(0, 1fr);
-    margin-bottom: 0.4rem;
-    padding: 0.55rem 0.7rem;
-  }
-
-  .tag-comment-editor {
-    grid-column: 1 / -1;
-  }
-
-  .tag-comment-editor summary {
-    color: #6f786f;
-    cursor: pointer;
-    font-size: 0.72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .tag-comment-rows {
-    display: grid;
-    gap: 0.45rem;
-    padding-top: 0.55rem;
-  }
-
-  .tag-comment-rows input {
-    background: #fbf7ef;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    font: inherit;
-    font-size: 0.85rem;
-    min-width: 0;
-    padding: 0.4rem 0.6rem;
-    width: 100%;
-  }
-
-  .tag-chip.add {
-    background: transparent;
-    border-style: dashed;
-    color: #6f786f;
-  }
-
-  .tag-chip.add:hover {
-    border-color: #1e2c64;
-    color: #1e2c64;
-    text-decoration: none;
-  }
-
-  .tag-picker-backdrop {
-    align-items: center;
-    background: rgba(23, 32, 27, 0.45);
-    display: flex;
-    inset: 0;
-    justify-content: center;
-    padding: 1rem;
-    position: fixed;
-    z-index: 20;
-  }
-
-  .tag-picker-modal {
-    background: #fbf7ef;
-    border-radius: 12px;
-    box-shadow: 0 18px 48px rgba(23, 32, 27, 0.28);
-    display: grid;
-    gap: 0.7rem;
-    max-height: min(80vh, 640px);
-    max-width: 640px;
-    overflow-y: auto;
-    padding: 1rem;
-    width: 100%;
-  }
-
-  .tag-picker-modal-header {
-    align-items: flex-start;
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-  }
-
-  .tag-picker-modal-header h2 {
-    font-size: 1.15rem;
-  }
-
-  .tag-picker-close {
-    appearance: none;
-    background: #f7f1e8;
-    border: 1px solid #c5cbbd;
-    border-radius: 8px;
-    color: #17201b;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    padding: 0.45rem 0.7rem;
-  }
-
-  /* Day state chips inside the picker: navy for tags already on the day,
-     crossed out for deleted ones, matching the settings metric chips. */
-  .tag-picker-modal .tag-picker button.active {
-    background: #1e2c64;
-    border-color: #1e2c64;
-    color: #fbf7ef;
-  }
-
-  .tag-picker-modal .tag-picker button.crossed {
-    background: transparent;
-    border-style: dashed;
-    color: #6f786f;
-    text-decoration: line-through;
-  }
-
-  .tag-picker-modal .tag-picker button.create {
-    background: transparent;
-    border-style: dashed;
-    color: #1e2c64;
-  }
-
-  .tag-filter-control {
-    display: grid;
-    gap: 0.55rem;
-    margin-bottom: 0.4rem;
-  }
-
-  .tag-rename-form {
-    display: grid;
-    gap: 0.55rem;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-  }
-
-  .tag-rename-form input {
-    background: #fbf7ef;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    font: inherit;
-    min-width: 0;
-    padding: 0.5rem 0.65rem;
-  }
-
-  .tag-rename-form button {
-    appearance: none;
-    background: #1d2a22;
-    border: 1px solid #1d2a22;
-    border-radius: 8px;
-    color: #f8f3ea;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    padding: 0.5rem 0.9rem;
-    white-space: nowrap;
-  }
-
-  .tag-rename-form button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .tag-rename-form button.secondary {
-    background: #f7f1e8;
-    border-color: #c5cbbd;
-    color: #17201b;
-  }
-
-  .tag-rename-note {
-    color: #6f786f;
-    font-size: 0.8rem;
-    line-height: 1.4;
-  }
-
-  .tag-rename-message {
-    color: #17201b;
-    font-weight: 700;
-  }
-
-  @media (max-width: 720px) {
-    .tag-rename-form {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .tag-filter-control h3 {
-    font-size: 0.95rem;
-  }
-
   .explore-builder {
     align-items: start;
     display: grid;
@@ -4565,105 +3152,6 @@
     border-bottom: 1px solid #d8d8cc;
     grid-column: 1 / -1;
     padding-bottom: 0.9rem;
-  }
-
-  .tag-control-heading {
-    align-items: center;
-    display: flex;
-    gap: 0.75rem;
-    justify-content: space-between;
-  }
-
-  .tag-sort {
-    display: flex;
-    gap: 0.3rem;
-  }
-
-  .tag-sort button {
-    background: #f7f1e8;
-    border: 1px solid #d8d8cc;
-    border-radius: 999px;
-    color: #6f786f;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.68rem;
-    font-weight: 800;
-    padding: 0.28rem 0.6rem;
-    text-transform: uppercase;
-  }
-
-  .tag-sort button.active {
-    background: #1e2c64;
-    border-color: #1e2c64;
-    color: #fbf7ef;
-  }
-
-  .tag-search {
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    background: #fbf7ef;
-    color: #17201b;
-    font: inherit;
-    padding: 0.55rem 0.7rem;
-    width: 100%;
-  }
-
-  .tag-picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-  }
-
-  .tag-picker button,
-  .segmented-control button {
-    background: #f7f1e8;
-    border-color: #d8d8cc;
-    border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 750;
-    padding: 0.5rem 0.72rem;
-  }
-
-  .tag-picker button {
-    align-items: center;
-    display: inline-flex;
-    gap: 0.4rem;
-    /* Comfortable tap target inside the picker; the daily log keeps its
-       denser chips. */
-    min-height: 2.25rem;
-  }
-
-  /* Keyboard focus ring for every dashboard control; mouse clicks stay
-     ring-free via focus-visible. */
-  button:focus-visible,
-  input:focus-visible,
-  select:focus-visible,
-  summary:focus-visible {
-    outline: 2px solid #1d2a22;
-    outline-offset: 2px;
-  }
-
-  .tag-count {
-    background: rgba(31, 37, 32, 0.08);
-    border-radius: 999px;
-    color: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-    min-width: 1.1rem;
-    padding: 0.02rem 0.36rem;
-    text-align: center;
-  }
-
-  .tag-picker button.active,
-  .segmented-control button.active {
-    background: #1d2a22;
-    border-color: #1d2a22;
-    color: #f8f3ea;
-  }
-
-  .tag-picker button.active .tag-count {
-    background: rgba(248, 243, 234, 0.22);
-    color: #f8f3ea;
   }
 
   .metric-preferences {
@@ -4754,12 +3242,6 @@
 
   .metric-selectors select:hover {
     border-color: #9ca69a;
-  }
-
-  .metric-selectors select:focus-visible {
-    border-color: #1e2c64;
-    outline: 2px solid rgba(30, 44, 100, 0.25);
-    outline-offset: 1px;
   }
 
   .segmented-control {
@@ -4970,110 +3452,9 @@
     padding: 1rem 1rem 0;
   }
 
-  .log-row.header span,
-  .log-heading > span {
-    color: #6f786f;
-    font-size: 0.72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
   .matching-log {
     display: grid;
     gap: 0.45rem;
-  }
-
-  .log-heading {
-    align-items: flex-start;
-    display: flex;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .log-heading h3 {
-    font-size: 1rem;
-    margin-top: 0.1rem;
-  }
-
-  .log-heading > span {
-    white-space: nowrap;
-  }
-
-  .log-table {
-    border-top: 1px solid #d8d8cc;
-    display: grid;
-  }
-
-  .log-row {
-    appearance: none;
-    background: transparent;
-    border: 0;
-    border-bottom: 1px solid #d8d8cc;
-    color: inherit;
-    display: grid;
-    font: inherit;
-    grid-template-columns: 150px minmax(0, 1fr);
-    gap: 0.85rem;
-    min-height: 52px;
-    /* Left padding keeps text clear of the selected row's accent bar. */
-    padding: 0.65rem 0 0.65rem 0.75rem;
-    text-align: left;
-  }
-
-  button.log-row {
-    cursor: pointer;
-  }
-
-  button.log-row:hover,
-  button.log-row.hovered {
-    background: rgba(255, 252, 246, 0.58);
-  }
-
-  button.log-row.selected {
-    background: rgba(30, 44, 100, 0.09);
-    box-shadow: inset 4px 0 0 #1e2c64;
-  }
-
-  button.log-row.selected .log-date strong {
-    color: #1e2c64;
-  }
-
-  /* Every night shows its full tag list; rows grow as tall as they need. */
-  button.log-row > span {
-    overflow: visible;
-    text-overflow: clip;
-    white-space: normal;
-  }
-
-  .log-row strong,
-  .log-row span {
-    align-self: center;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .log-date {
-    align-self: center;
-    display: grid;
-    gap: 0.12rem;
-    min-width: 0;
-  }
-
-  .log-date strong,
-  .log-date small {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .log-date small {
-    color: #6f786f;
-    font-size: 0.68rem;
-    font-weight: 800;
-    text-transform: uppercase;
   }
 
   .panel-heading {
@@ -5579,7 +3960,7 @@
     white-space: nowrap;
   }
 
-  @media (max-width: 820px) {
+@media (max-width: 820px) {
     .dashboard {
       padding: 1rem;
     }
@@ -5596,11 +3977,6 @@
 
     .metric-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .log-row {
-      grid-template-columns: 136px minmax(0, 1fr);
-      overflow-x: auto;
     }
 
     .impact-metric-heading {
@@ -5626,7 +4002,7 @@
     }
   }
 
-  @media (max-width: 560px) {
+@media (max-width: 560px) {
     .header {
       align-items: stretch;
       flex-direction: column;
@@ -5652,18 +4028,9 @@
       display: none;
     }
 
-    .log-row {
-      grid-template-columns: 124px minmax(0, 1fr);
-      gap: 0.35rem 0.85rem;
-    }
-
     .setting-row,
     .setting-row.tag-timing-setting {
       grid-template-columns: 1fr;
-    }
-
-    .log-row.header {
-      display: none;
     }
 
     .chart-heading {
@@ -5697,6 +4064,5 @@
     .discovery-meta {
       justify-items: start;
     }
-
   }
 </style>

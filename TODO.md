@@ -20,10 +20,9 @@ it is done rather than checking it off.
 
 ## Production hardening
 
-4. DashboardPage.svelte is 5,500+ lines. The Tags view (strip, day panel,
-   filter, log, popup, dialogs) is a natural extraction into its own
-   component(s) before more features pile on; the biggest maintainability
-   item.
+4. DashboardPage.svelte is still 4,000+ lines after the Tags view moved into
+   TagsView.svelte. The Explore, Optimal, Insights, and Settings views are
+   the next natural extractions before more features pile on.
 5. Strip scalability: one DOM button per day (~365/year) with damped wheel
    scroll. Revisit if importing many years (windowing or a week-level zoom).
 
