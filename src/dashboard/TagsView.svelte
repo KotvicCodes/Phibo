@@ -1,0 +1,1150 @@
+<script lang="ts">
+  import { db } from "../lib/db"
+  import type {
+    DailyMetricRow,
+    DeletedTagIdRow,
+    TagEntryRow
+  } from "../lib/db/types"
+  import {
+    addUserTagEntry,
+    deleteTagEntries,
+    renameTag,
+    restoreTagEntries,
+    resolveUserTagLabel,
+    updateDayComment
+  } from "../lib/tags/store"
+  import { trapFocus } from "./focusTrap"
+  import { formatDate } from "./format"
+  import {
+    buildAllKnownTags,
+    buildTagDays,
+    buildTagStripDays,
+    filterTagsByQuery,
+    type DeletedTagChipGroup,
+    type TagChipGroup
+  } from "./tagDays"
+  import {
+    formatTagLabel,
+    formatTagList,
+    tagSortModes,
+    type TagSortMode
+  } from "./tagLabels"
+
+  // Tag data is owned by DashboardPage (the analysis views read it too);
+  // edits here flow back up through the bound props. The selected day and
+  // filter state also live in the parent so they survive view switches.
+  export let tagEntries: TagEntryRow[]
+  export let deletedTagRows: DeletedTagIdRow[]
+  export let dailyMetrics: DailyMetricRow[]
+  export let availableTags: string[]
+  export let tagNightCounts: Map<string, number>
+  export let showTagCounts: boolean
+  export let tagSortMode: TagSortMode
+  export let tagsViewDate: string
+  export let tagsFilterSearch: string
+  export let tagsFilterTags: string[]
+  export let setTagSortMode: (mode: TagSortMode) => void
+  // Lets the parent rewrite settings that store tag labels, like the
+  // Optimal include and exclude overrides.
+  export let onTagRenamed: (fromLabel: string, toLabel: string) => void
+
+  let tagsMessage = ""
+  let isTagPickerOpen = false
+  let tagPickerSearch = ""
+  let tagPickerMode: "add" | "rename" = "add"
+  let renameTargetTag = ""
+  let renameInput = ""
+  let renameMessage = ""
+  let isRenamingTag = false
+  let tagPickerSearchInput: HTMLInputElement | null = null
+  let renameNameInput: HTMLInputElement | null = null
+  let tagsFilterSearchInput: HTMLInputElement | null = null
+
+  // The Tags manager works on the raw stored dates, like import does. The
+  // tag timing shift for analysis views does not apply here.
+  $: tagDays = buildTagDays(tagEntries, deletedTagRows)
+  $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
+  // Oura keeps one note per day, duplicated across the day's tag rows.
+  $: selectedDayComment =
+    selectedTagDay?.entries.find((entry) => entry.comment)?.comment ?? ""
+  // The picker offers every label ever seen, including fully deleted ones,
+  // so a tag whose last instance was deleted stays one click away.
+  $: allKnownTags = buildAllKnownTags(tagEntries, deletedTagRows)
+  $: visibleTagPickerTags = filterTagsByQuery(allKnownTags, tagPickerSearch)
+  $: tagPickerActiveKeys = new Set(
+    selectedTagDay?.activeGroups.map((group) => group.key) ?? []
+  )
+  $: tagPickerDeletedKeys = new Set(
+    selectedTagDay?.deletedGroups.map((group) => group.key) ?? []
+  )
+  $: tagPickerCreateLabel = (() => {
+    const label = resolveUserTagLabel(tagPickerSearch, allKnownTags)
+
+    if (!label) {
+      return null
+    }
+
+    const key = label.toLocaleLowerCase()
+
+    return allKnownTags.some((tag) => tag.toLocaleLowerCase() === key)
+      ? null
+      : label
+  })()
+  // The filter offers every known label, including fully deleted ones, since
+  // day matching already counts crossed-out tags.
+  $: sortedTagFilterTags =
+    tagSortMode === "count"
+      ? [...allKnownTags].sort(
+          (left, right) =>
+            (tagNightCounts.get(right) ?? 0) - (tagNightCounts.get(left) ?? 0)
+        )
+      : allKnownTags
+  $: visibleTagFilterTags = filterTagsByQuery(
+    sortedTagFilterTags,
+    tagsFilterSearch
+  )
+  $: filteredTagDays =
+    tagsFilterTags.length === 0
+      ? tagDays
+      : tagDays.filter((day) =>
+          tagsFilterTags.every(
+            (tag) =>
+              day.entries.some((entry) => entry.tag === tag) ||
+              day.deleted.some((row) => row.entry?.tag === tag)
+          )
+        )
+  $: tagStripDays = buildTagStripDays(
+    dailyMetrics,
+    tagDays,
+    filteredTagDays,
+    tagsFilterTags.length > 0
+  )
+  $: if (tagsViewDate && tagStripDays.length > 0) {
+    scrollTagStripToDate(tagsViewDate)
+  }
+
+  async function reloadTagEntries() {
+    tagEntries = await db.tagEntries.orderBy("date").toArray()
+    deletedTagRows = await db.deletedTagIds.toArray()
+  }
+
+  function selectTagsDay(date: string) {
+    tagsViewDate = date
+    tagsMessage = ""
+  }
+
+  // The strip starts positioned on the selected day without animating past
+  // every prior day; only later selections glide smoothly. Mounting fresh on
+  // every visit to the Tags view resets this naturally.
+  let tagStripHasPositioned = false
+
+  function scrollTagStripToDate(date: string) {
+    requestAnimationFrame(() => {
+      const target = document.querySelector(
+        `.tag-day-strip [data-strip-date="${date}"]`
+      )
+
+      if (!target) {
+        return
+      }
+
+      target.scrollIntoView({
+        behavior: tagStripHasPositioned ? "smooth" : "auto",
+        inline: "center",
+        block: "nearest"
+      })
+      tagStripHasPositioned = true
+    })
+  }
+
+  // Map wheel movement onto the strip's horizontal axis at a reduced rate,
+  // so days glide by instead of flying past.
+  function handleTagStripWheel(event: WheelEvent) {
+    const strip = event.currentTarget
+
+    if (!(strip instanceof HTMLElement)) {
+      return
+    }
+
+    const delta =
+      Math.abs(event.deltaY) > Math.abs(event.deltaX)
+        ? event.deltaY
+        : event.deltaX
+
+    event.preventDefault()
+    strip.scrollLeft += delta * 0.35
+  }
+
+  function toggleTagsFilterTag(tag: string) {
+    tagsFilterTags = tagsFilterTags.includes(tag)
+      ? tagsFilterTags.filter((item) => item !== tag)
+      : [...tagsFilterTags, tag]
+  }
+
+  function openTagPicker() {
+    isTagPickerOpen = true
+    tagPickerSearch = ""
+    setTagPickerMode("add")
+    requestAnimationFrame(() => tagPickerSearchInput?.focus())
+  }
+
+  function setTagPickerMode(mode: "add" | "rename") {
+    tagPickerMode = mode
+    renameTargetTag = ""
+    renameInput = ""
+    renameMessage = ""
+  }
+
+  function closeTagPicker() {
+    isTagPickerOpen = false
+  }
+
+  function handleTagPickerBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeTagPicker()
+    }
+  }
+
+  async function toggleTagInPicker(tag: string) {
+    const key = tag.toLocaleLowerCase()
+    const activeGroup = selectedTagDay?.activeGroups.find(
+      (group) => group.key === key
+    )
+
+    if (activeGroup) {
+      await deleteTagGroup(activeGroup)
+      return
+    }
+
+    const deletedGroup = selectedTagDay?.deletedGroups.find(
+      (group) => group.key === key
+    )
+
+    if (deletedGroup) {
+      await restoreDeletedTagGroup(deletedGroup)
+      return
+    }
+
+    try {
+      const entry = await addUserTagEntry({
+        date: tagsViewDate,
+        tag,
+        comment: null
+      })
+
+      tagEntries = [...tagEntries, entry].sort((left, right) =>
+        left.date.localeCompare(right.date)
+      )
+      tagsMessage = ""
+    } catch {
+      tagsMessage = "Could not save that tag. Try again."
+    }
+  }
+
+  async function createTagFromPicker() {
+    if (!tagPickerCreateLabel) {
+      return
+    }
+
+    await toggleTagInPicker(tagPickerCreateLabel)
+    tagPickerSearch = ""
+  }
+
+  // Chip clicks patch the in-memory state with what the store reports back
+  // instead of re-reading both tables, so toggles do not re-render every
+  // chip or hit IndexedDB for the full history on each click.
+  async function deleteTagGroup(group: TagChipGroup) {
+    try {
+      const result = await deleteTagEntries(
+        group.entries.map((entry) => entry.id)
+      )
+      const removedIds = new Set(result.deletedIds)
+
+      tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
+      deletedTagRows = [...deletedTagRows, ...result.tombstones]
+      tagsMessage = ""
+    } catch {
+      tagsMessage = "Could not delete that tag. Try again."
+    }
+  }
+
+  async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
+    try {
+      const result = await restoreTagEntries(group.rows.map((row) => row.id))
+      const removedTombstoneIds = new Set(result.removedTombstoneIds)
+
+      deletedTagRows = deletedTagRows.filter(
+        (row) => !removedTombstoneIds.has(row.id)
+      )
+
+      if (result.restoredEntries.length > 0) {
+        tagEntries = [...tagEntries, ...result.restoredEntries].sort(
+          (left, right) => left.date.localeCompare(right.date)
+        )
+      }
+
+      tagsMessage = ""
+    } catch {
+      tagsMessage = "Could not restore that tag. Try again."
+    }
+  }
+
+  function selectRenameTarget(tag: string) {
+    renameTargetTag = renameTargetTag === tag ? "" : tag
+    renameInput = renameTargetTag
+    renameMessage = ""
+
+    // Jump into the name field; focusing also scrolls the form into view
+    // when the picked chip sat deep in the grid.
+    if (renameTargetTag) {
+      requestAnimationFrame(() => renameNameInput?.focus())
+    }
+  }
+
+  async function applyTagRename() {
+    if (!renameTargetTag) {
+      return
+    }
+
+    const trimmed = renameInput.replace(/\s+/g, " ").trim()
+
+    if (!trimmed) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    // A case-only change keeps the typed casing; anything else adopts an
+    // existing label's casing or canonicalizes like the popup does.
+    const label =
+      trimmed.toLocaleLowerCase() === renameTargetTag.toLocaleLowerCase()
+        ? trimmed
+        : resolveUserTagLabel(trimmed, allKnownTags)
+
+    if (!label) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    if (label === renameTargetTag) {
+      renameMessage = "That is already the tag's name."
+      return
+    }
+
+    const isMerge = allKnownTags.some(
+      (tag) =>
+        tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
+        tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
+    )
+
+    isRenamingTag = true
+
+    try {
+      const { renamedCount, mergedCount } = await renameTag(
+        renameTargetTag,
+        label
+      )
+
+      // Drop stale filter selections that still carry the old label.
+      tagsFilterTags = tagsFilterTags.filter(
+        (tag) =>
+          tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
+      )
+      onTagRenamed(renameTargetTag, label)
+      await reloadTagEntries()
+      renameMessage = isMerge
+        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
+          (mergedCount > 0
+            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
+            : "")
+        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
+      renameTargetTag = ""
+      renameInput = ""
+    } catch {
+      renameMessage = "Could not rename that tag. Try again."
+    } finally {
+      isRenamingTag = false
+    }
+  }
+
+  async function saveDayComment(event: Event) {
+    const input = event.currentTarget
+
+    if (!(input instanceof HTMLInputElement)) {
+      return
+    }
+
+    const comment = input.value.replace(/\s+/g, " ").trim() || null
+
+    try {
+      await updateDayComment(tagsViewDate, comment)
+      tagEntries = tagEntries.map((entry) =>
+        entry.date === tagsViewDate ? { ...entry, comment } : entry
+      )
+      tagsMessage = ""
+    } catch {
+      tagsMessage = "Could not save that note. Try again."
+    }
+  }
+
+  // Typing anywhere starts a tag search without clicking the search box
+  // first. Only mounted while the Tags view is open, so this never fights
+  // the parent's handler for the Explore view.
+  function handleTagsKeydown(event: KeyboardEvent) {
+    const searchInput = isTagPickerOpen
+      ? tagPickerSearchInput
+      : tagsFilterSearchInput
+
+    if (!searchInput) {
+      return
+    }
+
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return
+    }
+
+    const target = event.target instanceof HTMLElement ? event.target : null
+
+    // Escape closes the tag picker popup, or backs out of the tag search.
+    if (event.key === "Escape") {
+      if (isTagPickerOpen) {
+        closeTagPicker()
+        return
+      }
+
+      tagsFilterSearch = ""
+
+      if (target === searchInput) {
+        searchInput.blur()
+      }
+
+      return
+    }
+
+    // Only printable characters; keeps shortcuts, Tab, and arrows working.
+    if (event.key.length !== 1) {
+      return
+    }
+
+    if (
+      target &&
+      (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target.isContentEditable)
+    ) {
+      return
+    }
+
+    // Space on a focused button should still activate that button.
+    if (event.key === " " && target instanceof HTMLButtonElement) {
+      return
+    }
+
+    searchInput.focus()
+  }
+</script>
+
+<svelte:window on:keydown={handleTagsKeydown} />
+
+    <section class="settings-workspace" aria-label="Tag manager">
+      <div class="settings-panel">
+        <div class="tag-daily-log" aria-label="Tagged days">
+          <div class="log-heading">
+            <div>
+              <p class="section-kicker">Daily log</p>
+              <h3>
+                {tagsFilterTags.length > 0
+                  ? formatTagList(tagsFilterTags, " + ")
+                  : "All tagged days"}
+              </h3>
+            </div>
+            <span>
+              {tagsFilterTags.length > 0
+                ? `${filteredTagDays.length} of ${tagDays.length} days`
+                : `${tagDays.length} days`}
+            </span>
+          </div>
+
+          {#if tagStripDays.length > 0}
+            <div
+              class="tag-day-strip"
+              aria-label="Day timeline"
+              on:wheel|nonpassive={handleTagStripWheel}
+            >
+              {#each tagStripDays as day (day.date)}
+                <button
+                  type="button"
+                  class="strip-day"
+                  class:selected={tagsViewDate === day.date}
+                  class:dimmed={day.dimmed}
+                  data-strip-date={day.date}
+                  title={day.title}
+                  on:click={() => selectTagsDay(day.date)}
+                >
+                  <span class="strip-bar-area">
+                    <span
+                      class="strip-bar {day.tone}"
+                      class:empty={day.tagCount === 0}
+                      style={day.tagCount === 0
+                        ? ""
+                        : `height: ${day.barHeight}%`}
+                    ></span>
+                  </span>
+                  <small class="strip-label">{day.monthLabel ?? ""}</small>
+                </button>
+              {/each}
+            </div>
+          {/if}
+
+          {#if tagsViewDate}
+            <div class="strip-day-panel" aria-label="Selected day tags">
+              <div class="log-date">
+                <strong>{formatDate(tagsViewDate)}</strong>
+                <small>{tagsViewDate}</small>
+              </div>
+              <div class="tag-chip-list">
+                {#if selectedTagDay}
+                  {#each selectedTagDay.activeGroups as group (group.key)}
+                    <button
+                      type="button"
+                      class="tag-chip"
+                      title={group.title}
+                      on:click={() => deleteTagGroup(group)}
+                    >
+                      {formatTagLabel(group.label)}
+                      {#if group.entries.length > 1}
+                        <span class="tag-count">{group.entries.length}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                  {#each selectedTagDay.deletedGroups as group (group.key)}
+                    <button
+                      type="button"
+                      class="tag-chip crossed"
+                      title={group.title}
+                      on:click={() => restoreDeletedTagGroup(group)}
+                    >
+                      {formatTagLabel(group.label)}
+                      {#if group.rows.length > 1}
+                        <span class="tag-count">{group.rows.length}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                {/if}
+                <button
+                  type="button"
+                  class="tag-chip add"
+                  on:click={openTagPicker}
+                >
+                  + Add tags
+                </button>
+              </div>
+              {#if selectedTagDay && selectedTagDay.activeGroups.length > 0}
+                <details class="tag-comment-editor" open={Boolean(selectedDayComment)}>
+                  <summary>Day note</summary>
+                  <div class="tag-comment-rows">
+                    <input
+                      type="text"
+                      aria-label="Day note"
+                      placeholder="Add a note for this day"
+                      value={selectedDayComment}
+                      on:change={saveDayComment}
+                    />
+                  </div>
+                </details>
+              {/if}
+            </div>
+          {/if}
+
+          {#if tagsMessage}
+            <p class="tags-message" role="status">{tagsMessage}</p>
+          {/if}
+
+          <div class="tag-filter-control">
+            <div class="tag-control-heading">
+              <h3>Filter</h3>
+              <div class="tag-sort" role="group" aria-label="Sort tags">
+                {#each tagSortModes as mode}
+                  <button
+                    type="button"
+                    class:active={tagSortMode === mode.id}
+                    aria-pressed={tagSortMode === mode.id}
+                    on:click={() => setTagSortMode(mode.id)}
+                  >
+                    {mode.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+            {#if availableTags.length > 0}
+              <input
+                class="tag-search"
+                type="search"
+                placeholder="Search tags"
+                aria-label="Search tags"
+                bind:value={tagsFilterSearch}
+                bind:this={tagsFilterSearchInput}
+              />
+            {/if}
+            <div class="tag-picker">
+              {#each visibleTagFilterTags as tag}
+                <button
+                  type="button"
+                  class:active={tagsFilterTags.includes(tag)}
+                  on:click={() => toggleTagsFilterTag(tag)}
+                >
+                  {formatTagLabel(tag)}
+                  {#if showTagCounts}
+                    <span class="tag-count">{tagNightCounts.get(tag) ?? 0}</span>
+                  {/if}
+                </button>
+              {:else}
+                <p class="empty-state">
+                  {availableTags.length === 0
+                    ? "Import Oura data or add tags to filter days."
+                    : "No tags match your search."}
+                </p>
+              {/each}
+            </div>
+          </div>
+
+          {#if tagDays.length === 0}
+            <p class="tag-empty">
+              Import Oura data or add your first tag above.
+            </p>
+          {:else if filteredTagDays.length === 0}
+            <p class="tag-empty">No tagged days match these filters.</p>
+          {:else}
+            <div class="log-table">
+              <div class="log-row header">
+                <span>Date</span>
+                <span>Tags</span>
+              </div>
+              {#each filteredTagDays as day (day.date)}
+                {#if tagsViewDate === day.date}
+                  <div class="log-row tag-log-row selected" data-date={day.date}>
+                    <div class="log-date">
+                      <strong>{formatDate(day.date)}</strong>
+                      <small>{day.date}</small>
+                    </div>
+                    <div class="tag-chip-list">
+                      {#each day.activeGroups as group (group.key)}
+                        <button
+                          type="button"
+                          class="tag-chip"
+                          title={group.title}
+                          on:click={() => deleteTagGroup(group)}
+                        >
+                          {formatTagLabel(group.label)}
+                          {#if group.entries.length > 1}
+                            <span class="tag-count">{group.entries.length}</span>
+                          {/if}
+                        </button>
+                      {/each}
+                      {#each day.deletedGroups as group (group.key)}
+                        <button
+                          type="button"
+                          class="tag-chip crossed"
+                          title={group.title}
+                          on:click={() => restoreDeletedTagGroup(group)}
+                        >
+                          {formatTagLabel(group.label)}
+                          {#if group.rows.length > 1}
+                            <span class="tag-count">{group.rows.length}</span>
+                          {/if}
+                        </button>
+                      {/each}
+                      <button
+                        type="button"
+                        class="tag-chip add"
+                        on:click={openTagPicker}
+                      >
+                        + Add tags
+                      </button>
+                    </div>
+                  </div>
+                {:else}
+                  <button
+                    type="button"
+                    class="log-row"
+                    data-date={day.date}
+                    on:click={() => selectTagsDay(day.date)}
+                  >
+                    <div class="log-date">
+                      <strong>{formatDate(day.date)}</strong>
+                      <small>{day.date}</small>
+                    </div>
+                    <span>
+                      {formatTagList(day.activeGroups.map((group) => group.label))}
+                    </span>
+                  </button>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+        </div>
+      </div>
+
+      {#if isTagPickerOpen}
+        <div
+          class="tag-picker-backdrop"
+          role="presentation"
+          on:click={handleTagPickerBackdropClick}
+        >
+          <section
+            class="tag-picker-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add tags"
+            use:trapFocus
+          >
+            <div class="tag-picker-modal-header">
+              <div>
+                <p class="section-kicker">
+                  {tagPickerMode === "add" ? "Tags for" : "Manage"}
+                </p>
+                <h2>
+                  {tagPickerMode === "add"
+                    ? formatDate(tagsViewDate)
+                    : "Rename tags"}
+                </h2>
+              </div>
+              <div class="tag-sort" role="group" aria-label="Picker mode">
+                <button
+                  type="button"
+                  class:active={tagPickerMode === "add"}
+                  aria-pressed={tagPickerMode === "add"}
+                  on:click={() => setTagPickerMode("add")}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  class:active={tagPickerMode === "rename"}
+                  aria-pressed={tagPickerMode === "rename"}
+                  on:click={() => setTagPickerMode("rename")}
+                >
+                  Rename
+                </button>
+              </div>
+              <button
+                type="button"
+                class="tag-picker-close"
+                on:click={closeTagPicker}
+              >
+                Close
+              </button>
+            </div>
+            <input
+              class="tag-search"
+              type="search"
+              placeholder={tagPickerMode === "add"
+                ? "Search or type a new tag"
+                : "Search tags"}
+              aria-label="Search tags"
+              bind:value={tagPickerSearch}
+              bind:this={tagPickerSearchInput}
+            />
+
+            <!-- The rename form sits above the chip grid so it stays in view
+                 after picking a tag; large tag sets push anything below the
+                 grid out of the scrollable modal. -->
+            {#if tagPickerMode === "rename" && renameTargetTag}
+              <form
+                class="tag-rename-form"
+                on:submit|preventDefault={applyTagRename}
+              >
+                <input
+                  type="text"
+                  aria-label="New tag name"
+                  placeholder="New name"
+                  bind:value={renameInput}
+                  bind:this={renameNameInput}
+                />
+                <button type="submit" disabled={isRenamingTag}>
+                  {isRenamingTag ? "Renaming" : "Rename"}
+                </button>
+                <button
+                  type="button"
+                  class="secondary"
+                  on:click={() => selectRenameTarget(renameTargetTag)}
+                >
+                  Cancel
+                </button>
+              </form>
+              <p class="tag-rename-note">
+                Renames {formatTagLabel(renameTargetTag)} everywhere, including
+                crossed-out entries. Renaming to an existing tag merges them.
+              </p>
+            {/if}
+
+            {#if renameMessage}
+              <p class="tag-rename-message" role="status">{renameMessage}</p>
+            {/if}
+            <div class="tag-picker">
+              {#each visibleTagPickerTags as tag (tag)}
+                {@const key = tag.toLocaleLowerCase()}
+                <button
+                  type="button"
+                  class:active={tagPickerMode === "add"
+                    ? tagPickerActiveKeys.has(key)
+                    : renameTargetTag === tag}
+                  class:crossed={tagPickerMode === "add" &&
+                    tagPickerDeletedKeys.has(key)}
+                  on:click={() =>
+                    tagPickerMode === "add"
+                      ? toggleTagInPicker(tag)
+                      : selectRenameTarget(tag)}
+                >
+                  {formatTagLabel(tag)}
+                </button>
+              {/each}
+              {#if tagPickerMode === "add" && tagPickerCreateLabel}
+                <button
+                  type="button"
+                  class="create"
+                  on:click={createTagFromPicker}
+                >
+                  Add "{formatTagLabel(tagPickerCreateLabel)}"
+                </button>
+              {:else if visibleTagPickerTags.length === 0}
+                <p class="empty-state">No tags match your search.</p>
+              {/if}
+            </div>
+
+          </section>
+        </div>
+      {/if}
+    </section>
+
+<style>
+  .tag-log-row {
+    align-items: start;
+  }
+
+  .tag-log-row.selected {
+    background: rgba(30, 44, 100, 0.09);
+    box-shadow: inset 4px 0 0 #1e2c64;
+  }
+
+  .tag-log-row.selected .log-date strong {
+    color: #1e2c64;
+  }
+
+  .tag-chip-list {
+    align-content: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-block: 0.15rem;
+  }
+
+  .tag-chip {
+    appearance: none;
+    align-items: center;
+    background: #f7f1e8;
+    border: 1px solid #d8d8cc;
+    border-radius: 999px;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 750;
+    padding: 0.32rem 0.62rem;
+  }
+
+  .tag-chip:hover {
+    border-color: #8a3f2f;
+    color: #8a3f2f;
+    text-decoration: line-through;
+  }
+
+  .tag-chip.crossed {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+    text-decoration: line-through;
+  }
+
+  .tag-chip.crossed:hover {
+    border-color: #1e2c64;
+    color: #1e2c64;
+  }
+
+  .tags-message {
+    color: #8a3f2f;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  .tag-empty {
+    color: #6f786f;
+    font-size: 0.9rem;
+    padding-block: 0.6rem;
+  }
+
+  .tag-daily-log {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .tag-day-strip {
+    align-items: flex-end;
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0.4rem;
+    overflow-x: auto;
+    padding: 0.4rem 0.1rem 0.2rem;
+    scrollbar-width: thin;
+  }
+
+  .strip-day {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    cursor: pointer;
+    display: grid;
+    flex: 0 0 auto;
+    gap: 0.2rem;
+    /* Keeps wide month labels from stretching their column, which made the
+       month-start bar merge with its neighbor. */
+    min-width: 0;
+    padding: 2px 2px 0;
+    width: 26px;
+  }
+
+  .strip-day:hover {
+    background: rgba(31, 37, 32, 0.08);
+  }
+
+  .strip-day.selected {
+    background: rgba(30, 44, 100, 0.14);
+  }
+
+  .strip-day.dimmed {
+    opacity: 0.25;
+  }
+
+  .strip-bar-area {
+    align-items: flex-end;
+    display: flex;
+    height: 96px;
+  }
+
+  .strip-bar {
+    border-radius: 5px 5px 0 0;
+    min-height: 9px;
+    width: 100%;
+  }
+
+  .strip-bar.empty {
+    height: 9px;
+    opacity: 0.45;
+  }
+
+  .strip-bar.score-excellent {
+    background: #1e2c64;
+  }
+
+  .strip-bar.score-good {
+    background: #4f8a63;
+  }
+
+  .strip-bar.score-poor {
+    background: #a8423e;
+  }
+
+  .strip-bar.score-neutral {
+    background: #9ca69a;
+  }
+
+  .strip-label {
+    color: #6f786f;
+    font-size: 0.58rem;
+    font-weight: 800;
+    height: 0.8rem;
+    overflow: visible;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .strip-day-panel {
+    align-items: center;
+    border: 1px solid #d8d8cc;
+    border-radius: 8px;
+    display: grid;
+    gap: 0.85rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    margin-bottom: 0.4rem;
+    padding: 0.55rem 0.7rem;
+  }
+
+  .tag-comment-editor {
+    grid-column: 1 / -1;
+  }
+
+  .tag-comment-editor summary {
+    color: #6f786f;
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .tag-comment-rows {
+    display: grid;
+    gap: 0.45rem;
+    padding-top: 0.55rem;
+  }
+
+  .tag-comment-rows input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 0.85rem;
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
+    width: 100%;
+  }
+
+  .tag-chip.add {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+  }
+
+  .tag-chip.add:hover {
+    border-color: #1e2c64;
+    color: #1e2c64;
+    text-decoration: none;
+  }
+
+  .tag-picker-modal {
+    background: #fbf7ef;
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(23, 32, 27, 0.28);
+    display: grid;
+    gap: 0.7rem;
+    max-height: min(80vh, 640px);
+    max-width: 640px;
+    overflow-y: auto;
+    padding: 1rem;
+    width: 100%;
+  }
+
+  .tag-picker-modal-header {
+    align-items: flex-start;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+
+  .tag-picker-modal-header h2 {
+    font-size: 1.15rem;
+  }
+
+  .tag-picker-close {
+    appearance: none;
+    background: #f7f1e8;
+    border: 1px solid #c5cbbd;
+    border-radius: 8px;
+    color: #17201b;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.45rem 0.7rem;
+  }
+
+  /* Day state chips inside the picker: navy for tags already on the day,
+     crossed out for deleted ones, matching the settings metric chips. */
+  .tag-picker-modal .tag-picker button.active {
+    background: #1e2c64;
+    border-color: #1e2c64;
+    color: #fbf7ef;
+  }
+
+  .tag-picker-modal .tag-picker button.crossed {
+    background: transparent;
+    border-style: dashed;
+    color: #6f786f;
+    text-decoration: line-through;
+  }
+
+  .tag-picker-modal .tag-picker button.create {
+    background: transparent;
+    border-style: dashed;
+    color: #1e2c64;
+  }
+
+  .tag-filter-control {
+    display: grid;
+    gap: 0.55rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .tag-rename-form {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .tag-rename-form input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+  }
+
+  .tag-rename-form button {
+    appearance: none;
+    background: #1d2a22;
+    border: 1px solid #1d2a22;
+    border-radius: 8px;
+    color: #f8f3ea;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.5rem 0.9rem;
+    white-space: nowrap;
+  }
+
+  .tag-rename-form button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .tag-rename-form button.secondary {
+    background: #f7f1e8;
+    border-color: #c5cbbd;
+    color: #17201b;
+  }
+
+  .tag-rename-note {
+    color: #6f786f;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .tag-rename-message {
+    color: #17201b;
+    font-weight: 700;
+  }
+
+@media (max-width: 720px) {
+    .tag-rename-form {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .tag-filter-control h3 {
+    font-size: 0.95rem;
+  }
+</style>

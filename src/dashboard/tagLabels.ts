@@ -1,3 +1,10 @@
+export type TagSortMode = "alpha" | "count"
+
+export const tagSortModes: { id: TagSortMode; label: string }[] = [
+  { id: "alpha", label: "A–Z" },
+  { id: "count", label: "Most tagged" }
+]
+
 const displayTagLabels = new Map([
   ["slept alone", "Sleep Solo"],
   ["sunrise exposure", "Morning Sunlight"],
