@@ -260,16 +260,47 @@
     ? dailyMetrics.filter((day) => taggedMetricDates.has(day.date))
     : dailyMetrics
   $: excludedUntaggedDayCount = dailyMetrics.length - analysisDailyMetrics.length
-  $: correlations = calculateTagCorrelations(
-    analysisDailyMetrics,
-    effectiveTagEntries
-  )
-  $: optimalDayFull = calculateOptimalDay(
-    analysisDailyMetrics,
-    effectiveTagEntries,
-    { target: optimalTarget, boundsMetrics: dailyMetrics }
-  )
-  $: optimalDay = calculateOptimalDay(analysisDailyMetrics, effectiveTagEntries, {
+  // Each analysis view works from its own frozen snapshot of the analysis
+  // inputs. The snapshot only refreshes while that view is open, so tag
+  // edits on the Tags view no longer trigger correlation, optimal, and
+  // explore recalculations on every chip click; a view catches up with the
+  // latest data the moment it is opened.
+  let insightsMetrics: typeof dailyMetrics = []
+  let insightsEntries: typeof tagEntries = []
+  let optimalMetrics: typeof dailyMetrics = []
+  let optimalEntries: typeof tagEntries = []
+  let exploreMetrics: typeof dailyMetrics = []
+  let exploreEntries: typeof tagEntries = []
+  $: if (activeView === "insights") {
+    if (insightsMetrics !== analysisDailyMetrics) {
+      insightsMetrics = analysisDailyMetrics
+    }
+    if (insightsEntries !== effectiveTagEntries) {
+      insightsEntries = effectiveTagEntries
+    }
+  }
+  $: if (activeView === "optimal") {
+    if (optimalMetrics !== analysisDailyMetrics) {
+      optimalMetrics = analysisDailyMetrics
+    }
+    if (optimalEntries !== effectiveTagEntries) {
+      optimalEntries = effectiveTagEntries
+    }
+  }
+  $: if (activeView === "explore") {
+    if (exploreMetrics !== analysisDailyMetrics) {
+      exploreMetrics = analysisDailyMetrics
+    }
+    if (exploreEntries !== effectiveTagEntries) {
+      exploreEntries = effectiveTagEntries
+    }
+  }
+  $: correlations = calculateTagCorrelations(insightsMetrics, insightsEntries)
+  $: optimalDayFull = calculateOptimalDay(optimalMetrics, optimalEntries, {
+    target: optimalTarget,
+    boundsMetrics: dailyMetrics
+  })
+  $: optimalDay = calculateOptimalDay(optimalMetrics, optimalEntries, {
     target: optimalTarget,
     excludedTags: optimalExcludedTags,
     includedTags: optimalIncludedTags,
@@ -396,8 +427,8 @@
     }
   }
   $: exploreDays = buildExploreDays(
-    analysisDailyMetrics,
-    effectiveTagEntries,
+    exploreMetrics,
+    exploreEntries,
     selectedExploreTags
   )
   $: exploreTagCalendarOptions = buildExploreTagCalendarOptions(exploreDays)
@@ -416,8 +447,8 @@
     selectedExploreTagCalendarRange
   )
   $: exploreImpacts = calculateExploreMetricImpacts(
-    analysisDailyMetrics,
-    effectiveTagEntries,
+    exploreMetrics,
+    exploreEntries,
     selectedExploreTags
   ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
   $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
@@ -455,8 +486,8 @@
     allInsights.find((insight) => insightKey(insight) === selectedInsightKey) ??
     allInsights[0]
   $: latestMetricDate =
-    analysisDailyMetrics.at(-1)?.date ?? dailyMetrics.at(-1)?.date ?? endDate
-  $: discoveries = getTagDiscoveries(effectiveTagEntries, latestMetricDate)
+    insightsMetrics.at(-1)?.date ?? dailyMetrics.at(-1)?.date ?? endDate
+  $: discoveries = getTagDiscoveries(insightsEntries, latestMetricDate)
   $: selectedComparisons = selectedInsight
     ? insightComparisonMetrics.map(
         (item): InsightComparison => ({
@@ -464,20 +495,21 @@
           comparison: getMetricComparison(
             selectedInsight.tag,
             item.metric,
-            analysisDailyMetrics
+            insightsMetrics,
+            insightsEntries
           )
         })
       )
     : []
   $: selectedStats = selectedInsight
-    ? createInsightStats(selectedInsight, analysisDailyMetrics)
+    ? createInsightStats(selectedInsight, insightsMetrics)
     : []
   $: isOuraConnected = Boolean(savedOuraToken?.accessToken) && !isEditingToken
   $: connectionActionLabel = isOuraConnected ? "Sync data" : "Connect & sync"
   $: summaries = [
-    createSummary("Sleep", "sleepScore", analysisDailyMetrics),
-    createSummary("Readiness", "readinessScore", analysisDailyMetrics),
-    createSummary("Activity", "activityScore", analysisDailyMetrics)
+    createSummary("Sleep", "sleepScore", insightsMetrics),
+    createSummary("Readiness", "readinessScore", insightsMetrics),
+    createSummary("Activity", "activityScore", insightsMetrics)
   ]
   // Explore selections are saved reactively, so restoring must finish first
   // or the initial defaults would overwrite the stored values.
@@ -1254,9 +1286,10 @@
   function getMetricComparison(
     tag: string,
     metric: InsightComparisonMetric,
-    metrics: DailyMetricRow[]
+    metrics: DailyMetricRow[],
+    entries: typeof tagEntries
   ): MetricComparison {
-    const currentTagsByDate = buildTagsByDate(effectiveTagEntries)
+    const currentTagsByDate = buildTagsByDate(entries)
     const taggedDays = metrics.filter((day) =>
       (currentTagsByDate[day.date] ?? []).includes(tag)
     )
