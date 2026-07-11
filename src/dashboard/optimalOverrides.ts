@@ -3,20 +3,10 @@
 // saves the lists while it is open, and a tag rename (which happens on the
 // Tags view, while OptimalView is not mounted) rewrites them in place.
 
+import { getSavedTagList } from "./storedSettings"
+
 const optimalExcludedTagsSettingKey = "phibo.optimalExcludedTags"
 const optimalIncludedTagsSettingKey = "phibo.optimalIncludedTags"
-
-function getSavedTagList(settingKey: string): string[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(settingKey) ?? "[]")
-
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : []
-  } catch {
-    return []
-  }
-}
 
 export function loadOptimalOverrides() {
   return {

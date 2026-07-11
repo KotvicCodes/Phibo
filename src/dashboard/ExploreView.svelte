@@ -53,6 +53,8 @@
     tagSortModes,
     type TagSortMode
   } from "./tagLabels"
+  import { getSavedTagList } from "./storedSettings"
+  import { handleTypeToSearchKeydown } from "./typeToSearch"
   import EChart from "./EChart.svelte"
   import TagCalendar from "./TagCalendarView.svelte"
 
@@ -113,18 +115,6 @@
       )
       ? (savedMetric as ExploreMetricKey)
       : fallback
-  }
-
-  function getSavedTagList(settingKey: string): string[] {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(settingKey) ?? "[]")
-
-      return Array.isArray(parsed)
-        ? parsed.filter((tag): tag is string => typeof tag === "string")
-        : []
-    } catch {
-      return []
-    }
   }
 
   onMount(() => {
@@ -328,54 +318,12 @@
       : [...selectedExploreTags, tag]
   }
 
-  // Typing anywhere starts a tag search without clicking the search box
-  // first. Only mounted while the Explore view is open, so this never
-  // fights the handlers of the other views.
+  // Escape backs out of the tag search.
   function handleExploreKeydown(event: KeyboardEvent) {
-    const searchInput = tagSearchInput
-
-    if (!searchInput) {
-      return
-    }
-
-    if (event.metaKey || event.ctrlKey || event.altKey) {
-      return
-    }
-
-    const target = event.target instanceof HTMLElement ? event.target : null
-
-    // Escape backs out of the tag search.
-    if (event.key === "Escape") {
+    handleTypeToSearchKeydown(event, tagSearchInput, () => {
       tagSearch = ""
-
-      if (target === searchInput) {
-        searchInput.blur()
-      }
-
-      return
-    }
-
-    // Only printable characters; keeps shortcuts, Tab, and arrows working.
-    if (event.key.length !== 1) {
-      return
-    }
-
-    if (
-      target &&
-      (target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLSelectElement ||
-        target.isContentEditable)
-    ) {
-      return
-    }
-
-    // Space on a focused button should still activate that button.
-    if (event.key === " " && target instanceof HTMLButtonElement) {
-      return
-    }
-
-    searchInput.focus()
+      return "clear"
+    })
   }
 </script>
 
