@@ -677,6 +677,39 @@
     saveOptimalOverrides()
   }
 
+  // The Optimal include and exclude overrides live in localStorage as plain
+  // labels, so a rename has to rewrite them or they silently stop matching
+  // anything. When the rename merges into a tag that already has its own
+  // override, that override wins and the old label is dropped.
+  function renameOptimalOverrideTags(fromLabel: string, toLabel: string) {
+    const fromKey = fromLabel.toLocaleLowerCase()
+    const toKey = toLabel.toLocaleLowerCase()
+    const targetHasOverride =
+      fromKey !== toKey &&
+      [...optimalExcludedTags, ...optimalIncludedTags].some(
+        (tag) => tag.toLocaleLowerCase() === toKey
+      )
+
+    const rewrite = (tags: string[]) => {
+      const rewritten = targetHasOverride
+        ? tags.filter((tag) => tag.toLocaleLowerCase() !== fromKey)
+        : tags.map((tag) =>
+            tag.toLocaleLowerCase() === fromKey ? toLabel : tag
+          )
+
+      return rewritten.filter(
+        (tag, index) =>
+          rewritten.findIndex(
+            (other) => other.toLocaleLowerCase() === tag.toLocaleLowerCase()
+          ) === index
+      )
+    }
+
+    optimalExcludedTags = rewrite(optimalExcludedTags)
+    optimalIncludedTags = rewrite(optimalIncludedTags)
+    saveOptimalOverrides()
+  }
+
   function setTagSortMode(mode: TagSortMode) {
     tagSortMode = mode
     localStorage.setItem(tagSortModeSettingKey, mode)
@@ -1899,6 +1932,7 @@
         (tag) =>
           tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
       )
+      renameOptimalOverrideTags(renameTargetTag, label)
       await reloadTagEntries()
       renameMessage = isMerge
         ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
