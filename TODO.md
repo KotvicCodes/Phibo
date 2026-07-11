@@ -10,30 +10,26 @@ it is done rather than checking it off.
    export rows for one day stay inconsistent until the note is re-saved).
    Cheap fix if wanted: when adding a tag to a day that has a note, copy the
    note onto the new entry.
-2. Stale labels in Optimal settings after rename. `selectedExploreTags` gets
-   pruned reactively, but `optimalExcludedTags` and `optimalIncludedTags`
-   (localStorage) keep the old label after a rename and silently stop
-   matching anything. Rename should rewrite or prune those lists.
-3. Dedupe undo is still session-only. The backup-first dialog largely defuses
+2. Dedupe undo is still session-only. The backup-first dialog largely defuses
    this, but for durability persist the last cleanup's tombstone ids so Undo
    survives reloads.
-4. Old backups restore without crossed chips. Backups exported before
+3. Old backups restore without crossed chips. Backups exported before
    tombstone snapshots existed (pre-0.3.3 data) restore fine but their
    tombstones have no entry, so those deletions never display. Only matters
    if such files exist; likely ignorable.
 
 ## Production hardening
 
-5. DashboardPage.svelte is 5,500+ lines. The Tags view (strip, day panel,
+4. DashboardPage.svelte is 5,500+ lines. The Tags view (strip, day panel,
    filter, log, popup, dialogs) is a natural extraction into its own
    component(s) before more features pile on; the biggest maintainability
    item.
-6. Strip scalability: one DOM button per day (~365/year) with damped wheel
+5. Strip scalability: one DOM button per day (~365/year) with damped wheel
    scroll. Revisit if importing many years (windowing or a week-level zoom).
 
 ## Tags UI
 
-7. Rename entry point feels misplaced. The tag picker popup carries an
+6. Rename entry point feels misplaced. The tag picker popup carries an
    Add/Rename mode toggle in its header even when opened from "+ Add tags",
    so the Rename control shows up in an add-focused flow. Reconsider where
    tag renaming lives, for example a separate entry point, or opening the
