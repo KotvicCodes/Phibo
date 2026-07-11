@@ -20,9 +20,9 @@ it is done rather than checking it off.
 
 ## Production hardening
 
-4. DashboardPage.svelte is still 4,000+ lines after the Tags view moved into
-   TagsView.svelte. The Explore, Optimal, Insights, and Settings views are
-   the next natural extractions before more features pile on.
+4. DashboardPage.svelte is down to about 2,900 lines after the Tags and
+   Explore views moved into their own components. The Optimal, Insights,
+   and Settings views are the next natural extractions.
 5. Strip scalability: one DOM button per day (~365/year) with damped wheel
    scroll. Revisit if importing many years (windowing or a week-level zoom).
 
