@@ -35,6 +35,11 @@ round-trip test guard against silent data loss. Run those before the rest.
       popup, and confirm the label is gone from the list.
 - [ ] Escape and backdrop click both close the popup; typing with the popup
       open goes to its search box.
+- [ ] Tab and Shift+Tab cycle only through the popup's controls while it is
+      open, and closing it returns focus to the button that opened it; the
+      same holds for the duplicate removal dialog in Settings.
+- [ ] Tabbing through chips and buttons shows a visible focus ring; clicking
+      with the mouse does not.
 
 ## Popup rename mode
 
