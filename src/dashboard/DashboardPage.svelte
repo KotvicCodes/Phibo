@@ -1820,7 +1820,10 @@
     isRenamingTag = true
 
     try {
-      const renamedCount = await renameTag(renameTargetTag, label)
+      const { renamedCount, mergedCount } = await renameTag(
+        renameTargetTag,
+        label
+      )
 
       // Drop stale filter selections that still carry the old label.
       tagsFilterTags = tagsFilterTags.filter(
@@ -1829,7 +1832,10 @@
       )
       await reloadTagEntries()
       renameMessage = isMerge
-        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.`
+        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
+          (mergedCount > 0
+            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
+            : "")
         : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
       renameTargetTag = ""
       renameInput = ""
