@@ -158,7 +158,19 @@ export async function restoreTagBackup(
 
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
     // Tombstones merge as a union so a restore reproduces past deletions.
-    await db.deletedTagIds.bulkPut(backup.deletedTagIds)
+    // Local tombstones win on id collisions, like entries below, so a
+    // pre-rename backup cannot revert renamed snapshots and drag the old
+    // label back into crossed-out chips and the label lists.
+    const localTombstoneIds = new Set(
+      await db.deletedTagIds.toCollection().primaryKeys()
+    )
+    const tombstonesToAdd = backup.deletedTagIds.filter(
+      (tombstone) => !localTombstoneIds.has(tombstone.id)
+    )
+
+    if (tombstonesToAdd.length > 0) {
+      await db.deletedTagIds.bulkPut(tombstonesToAdd)
+    }
 
     const incomingDeletedIds = new Set(
       backup.deletedTagIds.map((tombstone) => tombstone.id)
