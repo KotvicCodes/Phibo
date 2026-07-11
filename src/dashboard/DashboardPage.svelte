@@ -4209,10 +4209,6 @@
     padding: 0.55rem 0.7rem;
   }
 
-  .strip-day-panel .tag-empty {
-    padding-block: 0;
-  }
-
   .tag-comment-editor {
     grid-column: 1 / -1;
   }
