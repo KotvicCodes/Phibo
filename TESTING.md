@@ -46,6 +46,11 @@ round-trip test guard against silent data loss. Run those before the rest.
       new casing is kept verbatim.
 - [ ] Rename a tag that is selected in the daily log filter and confirm the
       stale filter selection is dropped.
+- [ ] On a day that has both tags, rename one onto the other and confirm the
+      day ends up with a single chip, no duplicate or count badge, and the
+      message reports the collapsed same-day duplicates.
+- [ ] Merge an Oura tag away on a shared day, then re-import the same
+      `enhancedtag.csv` and confirm the merged-away entry does not come back.
 
 ## Day note
 
@@ -109,6 +114,9 @@ round-trip test guard against silent data loss. Run those before the rest.
       confirm the export button still works and the file round-trips.
 - [ ] Try restoring a non-backup JSON file and confirm the error message is
       generic (no tag names or dates in it).
+- [ ] Export a backup, rename a tag that has crossed-out entries, restore
+      that backup, and confirm the crossed-out chips keep the new name and
+      the old name stays out of the picker and filter lists.
 
 ## Tags view basics
 
