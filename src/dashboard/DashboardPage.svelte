@@ -59,6 +59,11 @@
   import { exploreMetricCategories } from "./exploreCharts"
   import { impactTone } from "./exploreImpacts"
   import {
+    loadOptimalOverrides,
+    renameOptimalOverrideTags,
+    saveOptimalOverrides
+  } from "./optimalOverrides"
+  import {
     insightComparisonMetrics,
     type InsightComparison,
     type InsightComparisonMetric,
@@ -101,8 +106,6 @@
   const activeViewSettingKey = "phibo.activeView"
   const tagSortModeSettingKey = "phibo.tagSortMode"
   const optimalTargetSettingKey = "phibo.optimalTarget"
-  const optimalExcludedTagsSettingKey = "phibo.optimalExcludedTags"
-  const optimalIncludedTagsSettingKey = "phibo.optimalIncludedTags"
   const excludeUntaggedDaysSettingKey = "phibo.excludeUntaggedDays"
   const tagTimingModeSettingKey = "phibo.tagTimingMode"
   const showTagCountsSettingKey = "phibo.showTagCounts"
@@ -317,8 +320,10 @@
     tagTimingMode = getSavedTagTimingMode()
     tagSortMode = getSavedTagSortMode()
     optimalTarget = getSavedOptimalTarget()
-    optimalExcludedTags = getSavedOptimalTagList(optimalExcludedTagsSettingKey)
-    optimalIncludedTags = getSavedOptimalTagList(optimalIncludedTagsSettingKey)
+    const savedOverrides = loadOptimalOverrides()
+
+    optimalExcludedTags = savedOverrides.excludedTags
+    optimalIncludedTags = savedOverrides.includedTags
 
     const savedToken = await db.authTokens.get("oura")
     const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
@@ -348,7 +353,7 @@
       optimalExcludedTags = [...optimalExcludedTags, tag]
     }
 
-    saveOptimalOverrides()
+    persistOptimalOverrides()
   }
 
   function addOptimalTag(tag: string) {
@@ -358,46 +363,24 @@
       optimalIncludedTags = [...optimalIncludedTags, tag]
     }
 
-    saveOptimalOverrides()
+    persistOptimalOverrides()
   }
 
   function resetOptimalTags() {
     optimalExcludedTags = []
     optimalIncludedTags = []
-    saveOptimalOverrides()
+    persistOptimalOverrides()
   }
 
-  // The Optimal include and exclude overrides live in localStorage as plain
-  // labels, so a rename has to rewrite them or they silently stop matching
-  // anything. When the rename merges into a tag that already has its own
-  // override, that override wins and the old label is dropped.
-  function renameOptimalOverrideTags(fromLabel: string, toLabel: string) {
-    const fromKey = fromLabel.toLocaleLowerCase()
-    const toKey = toLabel.toLocaleLowerCase()
-    const targetHasOverride =
-      fromKey !== toKey &&
-      [...optimalExcludedTags, ...optimalIncludedTags].some(
-        (tag) => tag.toLocaleLowerCase() === toKey
-      )
+  // Renames rewrite the stored Optimal overrides; the in-memory lists then
+  // reload from storage so the open dashboard reflects the rewrite.
+  function handleTagRenamed(fromLabel: string, toLabel: string) {
+    renameOptimalOverrideTags(fromLabel, toLabel)
 
-    const rewrite = (tags: string[]) => {
-      const rewritten = targetHasOverride
-        ? tags.filter((tag) => tag.toLocaleLowerCase() !== fromKey)
-        : tags.map((tag) =>
-            tag.toLocaleLowerCase() === fromKey ? toLabel : tag
-          )
+    const overrides = loadOptimalOverrides()
 
-      return rewritten.filter(
-        (tag, index) =>
-          rewritten.findIndex(
-            (other) => other.toLocaleLowerCase() === tag.toLocaleLowerCase()
-          ) === index
-      )
-    }
-
-    optimalExcludedTags = rewrite(optimalExcludedTags)
-    optimalIncludedTags = rewrite(optimalIncludedTags)
-    saveOptimalOverrides()
+    optimalExcludedTags = overrides.excludedTags
+    optimalIncludedTags = overrides.includedTags
   }
 
   function setTagSortMode(mode: TagSortMode) {
@@ -416,15 +399,8 @@
     localStorage.setItem(optimalTargetSettingKey, target)
   }
 
-  function saveOptimalOverrides() {
-    localStorage.setItem(
-      optimalExcludedTagsSettingKey,
-      JSON.stringify(optimalExcludedTags)
-    )
-    localStorage.setItem(
-      optimalIncludedTagsSettingKey,
-      JSON.stringify(optimalIncludedTags)
-    )
+  function persistOptimalOverrides() {
+    saveOptimalOverrides(optimalExcludedTags, optimalIncludedTags)
   }
 
   function getSavedOptimalTarget(): OptimalTarget {
@@ -432,18 +408,6 @@
     const match = optimalTargets.find((option) => option.id === savedTarget)
 
     return match?.id ?? "total"
-  }
-
-  function getSavedOptimalTagList(settingKey: string): string[] {
-    try {
-      const parsed = JSON.parse(localStorage.getItem(settingKey) ?? "[]")
-
-      return Array.isArray(parsed)
-        ? parsed.filter((item): item is string => typeof item === "string")
-        : []
-    } catch {
-      return []
-    }
   }
 
   function optimalTagBarWidth(value: number, maxValue: number) {
@@ -1686,7 +1650,7 @@
       {showTagCounts}
       {tagSortMode}
       {setTagSortMode}
-      onTagRenamed={renameOptimalOverrideTags}
+      onTagRenamed={handleTagRenamed}
     />
   {:else}
     <section class="settings-workspace">
@@ -2092,67 +2056,6 @@
     border-bottom-color: rgba(251, 247, 239, 0.78);
     color: #17201b;
     transform: translateY(1px);
-  }
-
-  .metric-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.8rem;
-    margin-bottom: 0.8rem;
-  }
-
-  .metric-card {
-    padding: 1rem;
-    min-height: 128px;
-    box-sizing: border-box;
-  }
-
-  .metric-card p {
-    color: #6f786f;
-    font-size: 0.85rem;
-    font-weight: 700;
-  }
-
-  .metric-card strong {
-    display: block;
-    margin: 0.9rem 0 0.35rem;
-    font-size: 2rem;
-    line-height: 1;
-  }
-
-  .metric-card small {
-    color: #6f786f;
-    display: block;
-    font-size: 0.76rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .metric-card span {
-    color: #5d685e;
-    display: block;
-    font-size: 0.9rem;
-    margin-top: 0.45rem;
-  }
-
-  .metric-card.score-excellent {
-    border-top: 4px solid #1e2c64;
-  }
-
-  .metric-card.score-good {
-    border-top: 4px solid #4f8a63;
-  }
-
-  .metric-card.score-poor {
-    border-top: 4px solid #a8423e;
-  }
-
-  .metric-card.score-neutral {
-    border-top: 4px solid #9ca69a;
-  }
-
-  .metric-card.dimmed {
-    opacity: 0.55;
   }
 
   .optimal-method {
@@ -2862,10 +2765,6 @@
     .correlation-card {
       grid-template-columns: minmax(0, 1fr) auto;
     }
-
-    .metric-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 
 @media (max-width: 560px) {
@@ -2876,10 +2775,6 @@
 
     .sync-button {
       width: 100%;
-    }
-
-    .metric-grid {
-      grid-template-columns: 1fr;
     }
 
     .optimal-tag-row {
