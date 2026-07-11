@@ -20,16 +20,12 @@ it is done rather than checking it off.
 
 ## Production hardening
 
-4. DashboardPage.svelte is down to about 1,500 lines after the Tags,
-   Explore, Optimal, and Settings views moved into their own components.
-   The Insights view is the last natural extraction, leaving the page as
-   shell, data loading, and import/sync plumbing.
-5. Strip scalability: one DOM button per day (~365/year) with damped wheel
+4. Strip scalability: one DOM button per day (~365/year) with damped wheel
    scroll. Revisit if importing many years (windowing or a week-level zoom).
 
 ## Tags UI
 
-6. Rename entry point feels misplaced. The tag picker popup carries an
+5. Rename entry point feels misplaced. The tag picker popup carries an
    Add/Rename mode toggle in its header even when opened from "+ Add tags",
    so the Rename control shows up in an add-focused flow. Reconsider where
    tag renaming lives, for example a separate entry point, or opening the
