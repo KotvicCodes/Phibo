@@ -307,15 +307,9 @@
   // tag timing shift in effectiveTagEntries only applies to analysis views.
   $: tagDays = buildTagDays(tagEntries, deletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
-  // Oura keeps one note per day, duplicated across the day's tag rows;
-  // distinct values only appear in odd data, so they are joined for display.
-  $: selectedDayComment = Array.from(
-    new Set(
-      (selectedTagDay?.entries ?? [])
-        .map((entry) => entry.comment)
-        .filter((comment): comment is string => Boolean(comment))
-    )
-  ).join("; ")
+  // Oura keeps one note per day, duplicated across the day's tag rows.
+  $: selectedDayComment =
+    selectedTagDay?.entries.find((entry) => entry.comment)?.comment ?? ""
   $: duplicateTagIds = findDuplicateTagEntryIds(tagEntries)
   // The picker offers every label ever seen, including fully deleted ones,
   // so a tag whose last instance was deleted stays one click away.
