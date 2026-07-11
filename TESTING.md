@@ -6,6 +6,26 @@ Untested scenarios to verify by hand in the loaded extension
 Highest value first: the re-import resurrection tests and the backup
 round-trip test guard against silent data loss. Run those before the rest.
 
+## Post-refactor regression sweep
+
+The dashboard was split from one 5,700-line component into five view
+components plus a shell (0.3.36 to 0.3.39). One smoke pass over each view
+covers the move:
+
+- [ ] Insights: summary cards show, clicking a rewarding or concerning
+      insight switches the detail panel, discoveries render.
+- [ ] Explore: chart mode, axis metrics, selected tags, and search persist
+      across a reload; impact groups expand; calendar and matching nights
+      log respond to clicks.
+- [ ] Optimal: target switch recalculates, removing and adding tags updates
+      the cards, reset works, overrides survive a reload.
+- [ ] Tags: strip, day panel, filter, log, picker, and rename all behave as
+      covered by the sections below.
+- [ ] Settings: every row works as covered by the sections below, and the
+      analysis toggles still change Insights and Explore results.
+- [ ] Rename a tag that has an Optimal include or exclude override and
+      confirm the override follows the new name on the Optimal view.
+
 ## Tag deletion and resurrection protection
 
 - [ ] Delete an imported Oura tag on the Tags view, then re-import the same
@@ -81,6 +101,8 @@ round-trip test guard against silent data loss. Run those before the rest.
 - [ ] After a removal, the Undo button restores the removed duplicates even
       though the same tag is still active on those days; the Undo offer goes
       away once the dashboard is closed or reloaded.
+- [ ] After a removal, switch to another view and back to Settings and
+      confirm the Undo button is still offered and still works.
 
 ## Day strip
 
