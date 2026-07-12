@@ -22,13 +22,24 @@ const dayMs = 86_400_000
 // Days can carry many tags; wrap only the tag block so the date and metric
 // lines stay on single lines. Line breaks happen between tags, never inside
 // a tag name.
+// Tag labels come from import files, so escape them before injecting
+// them into the tooltip markup.
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 function tooltipTagsHtml(tags: string[]) {
   const label =
     tags.length > 0
       ? sortTagsForDisplay(tags)
           .map(
             (tag) =>
-              `<span style="white-space: nowrap;">${formatTagLabel(tag)}</span>`
+              `<span style="white-space: nowrap;">${escapeHtml(formatTagLabel(tag))}</span>`
           )
           .join(", ")
       : "no tags"
