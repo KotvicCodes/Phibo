@@ -118,7 +118,10 @@
   // With no filter active the log lists every day in the data range, so
   // untagged days can be opened and tagged straight from the list.
   $: allLogDays = buildAllLogDays(dailyMetrics, tagDays)
-  $: logDays = tagsFilterTags.length > 0 ? filteredTagDays : allLogDays
+  // The log always renders every day and hides non-matching rows with CSS,
+  // so toggling a filter flips classes instead of rebuilding ~1500 row
+  // subtrees, which is what made toggles feel slow.
+  $: filteredLogDates = new Set(filteredTagDays.map((day) => day.date))
   $: tagStripDays = buildTagStripDays(
     dailyMetrics,
     tagDays,
@@ -623,21 +626,31 @@
             </div>
           </div>
 
-          {#if logDays.length === 0}
+          {#if allLogDays.length === 0}
             <p class="tag-empty">
-              {tagsFilterTags.length > 0
-                ? "No tagged days match these filters."
-                : "Import Oura data or add your first tag above."}
+              Import Oura data or add your first tag above.
             </p>
           {:else}
-            <div class="log-table">
+            {#if tagsFilterTags.length > 0 && filteredTagDays.length === 0}
+              <p class="tag-empty">No tagged days match these filters.</p>
+            {/if}
+            <div
+              class="log-table"
+              class:no-matches={tagsFilterTags.length > 0 &&
+                filteredTagDays.length === 0}
+            >
               <div class="log-row header">
                 <span>Date</span>
                 <span>Tags</span>
               </div>
-              {#each logDays as day (day.date)}
+              {#each allLogDays as day (day.date)}
                 {#if tagsViewDate === day.date}
-                  <div class="log-row tag-log-row selected" data-date={day.date}>
+                  <div
+                    class="log-row tag-log-row selected"
+                    class:filtered-out={tagsFilterTags.length > 0 &&
+                      !filteredLogDates.has(day.date)}
+                    data-date={day.date}
+                  >
                     <div class="log-date">
                       <strong>{formatDate(day.date)}</strong>
                       <small>{day.date}</small>
@@ -682,6 +695,8 @@
                   <button
                     type="button"
                     class="log-row"
+                    class:filtered-out={tagsFilterTags.length > 0 &&
+                      !filteredLogDates.has(day.date)}
                     data-date={day.date}
                     on:click={() => selectTagsDay(day.date)}
                   >
@@ -833,6 +848,23 @@
     </section>
 
 <style>
+  /* Off-screen rows skip layout and paint; the intrinsic size stands in
+     for the usual row height so the page scrollbar stays stable. */
+  .log-table .log-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 53px;
+  }
+
+  /* Filtering hides rows instead of removing them, so toggling a filter
+     tag flips classes rather than rebuilding the whole day list. */
+  .log-table .log-row.filtered-out {
+    display: none;
+  }
+
+  .log-table.no-matches {
+    display: none;
+  }
+
   .tag-log-row {
     align-items: start;
   }
