@@ -1,7 +1,12 @@
 import type { PrimaryInsightMetric } from "../lib/analysis/correlations"
 
+// Local calendar date, not UTC: toISOString would report yesterday
+// between local midnight and the UTC offset.
 export function formatInputDate(date: Date) {
-  return date.toISOString().slice(0, 10)
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+
+  return `${date.getFullYear()}-${month}-${day}`
 }
 
 export function daysAgo(days: number) {
