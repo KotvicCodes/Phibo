@@ -1,6 +1,7 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
+import { average, groupTagsByName, roundToOne } from "./shared"
 
-export type MetricKey =
+type MetricKey =
   | "averageHrv"
   | "readinessScore"
   | "recoveryHighMinutes"
@@ -103,7 +104,7 @@ export interface ExploreMetricDefinition {
   unit: string
 }
 
-export interface TagMetricCorrelation {
+interface TagMetricCorrelation {
   tag: string
   daysWithTag: number
   daysWithoutTag: number
@@ -112,7 +113,7 @@ export interface TagMetricCorrelation {
   weightedImpact: number
 }
 
-export type InsightKind = "concerning" | "rewarding"
+type InsightKind = "concerning" | "rewarding"
 
 export interface TagInsight {
   kind: InsightKind
@@ -124,7 +125,7 @@ export interface TagInsight {
   weightedImpact: number
 }
 
-export interface TagDiscovery {
+interface TagDiscovery {
   tag: string
   daysWithTag: number
   lastSeenDate: string
@@ -840,7 +841,7 @@ export function getRankedTagInsights(correlations: TagMetricCorrelation[]) {
 
       return [
         {
-          kind: classifyInsight(metric, delta),
+          kind: classifyInsight(delta),
           metric,
           tag: correlation.tag,
           daysWithTag: correlation.daysWithTag,
@@ -941,12 +942,11 @@ export function buildExploreDays(
   })
 }
 
+// Works on prebuilt explore days so callers that already computed them
+// (the Explore view) do not pay for building the day list twice.
 export function calculateExploreMetricImpacts(
-  metrics: DailyMetricRow[],
-  tags: TagEntryRow[],
-  selectedTags: string[]
+  days: ExploreDay[]
 ): ExploreMetricImpact[] {
-  const days = buildExploreDays(metrics, tags, selectedTags)
   const taggedDays = days.filter((day) => day.matches).map((day) => day.metric)
   const otherDays = days.filter((day) => !day.matches).map((day) => day.metric)
 
@@ -991,7 +991,7 @@ export function getExploreMetric(key: ExploreMetricKey) {
   )
 }
 
-export function metricToneDelta(
+function metricToneDelta(
   metric: ExploreMetricDefinition,
   delta: number
 ) {
@@ -1003,16 +1003,6 @@ function groupTagsByDate(tags: TagEntryRow[]) {
     const dates = groups.get(entry.date) ?? new Set<string>()
     dates.add(entry.tag)
     groups.set(entry.date, dates)
-
-    return groups
-  }, new Map<string, Set<string>>())
-}
-
-function groupTagsByName(tags: TagEntryRow[]) {
-  return tags.reduce((groups, entry) => {
-    const dates = groups.get(entry.tag) ?? new Set<string>()
-    dates.add(entry.date)
-    groups.set(entry.tag, dates)
 
     return groups
   }, new Map<string, Set<string>>())
@@ -1045,7 +1035,7 @@ export function calculateSupportScore(daysWithTag: number, daysWithoutTag: numbe
   return roundToOne(Math.sqrt(taggedSupport * comparisonSupport))
 }
 
-function classifyInsight(metric: MetricKey, delta: number): InsightKind {
+function classifyInsight(delta: number): InsightKind {
   return delta > 0 ? "rewarding" : "concerning"
 }
 
@@ -1078,18 +1068,6 @@ function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
     .slice(0, 4)
 }
 
-function average(values: Array<number | null | undefined>) {
-  const usableValues = values.filter((value): value is number => value != null)
-
-  if (usableValues.length === 0) {
-    return null
-  }
-
-  return (
-    usableValues.reduce((total, value) => total + value, 0) / usableValues.length
-  )
-}
-
 function standardDeviation(values: Array<number | null | undefined>) {
   const usableValues = values.filter((value): value is number => value != null)
 
@@ -1105,10 +1083,6 @@ function standardDeviation(values: Array<number | null | undefined>) {
     (usableValues.length - 1)
 
   return Math.sqrt(variance)
-}
-
-function roundToOne(value: number) {
-  return Math.round(value * 10) / 10
 }
 
 function roundToTwo(value: number) {

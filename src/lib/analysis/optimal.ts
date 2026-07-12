@@ -1,5 +1,6 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import { calculateSupportScore } from "./correlations"
+import { average, groupTagsByName, roundToOne } from "./shared"
 
 export const OPTIMAL_MIN_TAGGED_DAYS = 10
 const OPTIMAL_MIN_UNTAGGED_DAYS = 8
@@ -12,13 +13,13 @@ export type OptimalTarget =
   | "sleep"
   | "total"
 
-export interface OptimalTargetOption {
+interface OptimalTargetOption {
   id: OptimalTarget
   label: string
   categories: ScoreCategory[]
 }
 
-export interface OptimalTagContribution {
+interface OptimalTagContribution {
   tag: string
   daysWithTag: number
   supportScore: number
@@ -31,7 +32,7 @@ export interface OptimalTagContribution {
   targetImpact: number
 }
 
-export interface OptimalDayResult {
+interface OptimalDayResult {
   target: OptimalTarget
   baselines: Record<ScoreCategory, number | null>
   bestDayAverages: Record<ScoreCategory, number | null>
@@ -460,32 +461,6 @@ function mapCategories<Value>(compute: (key: ScoreCategory) => Value) {
   )
 }
 
-function groupTagsByName(tags: TagEntryRow[]) {
-  return tags.reduce((groups, entry) => {
-    const dates = groups.get(entry.tag) ?? new Set<string>()
-    dates.add(entry.date)
-    groups.set(entry.tag, dates)
-
-    return groups
-  }, new Map<string, Set<string>>())
-}
-
-function average(values: Array<number | null | undefined>) {
-  const usableValues = values.filter((value): value is number => value != null)
-
-  if (usableValues.length === 0) {
-    return null
-  }
-
-  return (
-    usableValues.reduce((total, value) => total + value, 0) / usableValues.length
-  )
-}
-
 function clampScore(value: number) {
   return Math.min(100, Math.max(0, value))
-}
-
-function roundToOne(value: number) {
-  return Math.round(value * 10) / 10
 }

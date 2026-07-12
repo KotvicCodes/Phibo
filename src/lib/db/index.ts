@@ -7,7 +7,7 @@ import type {
   TagEntryRow
 } from "./types"
 
-export class PhiboDb extends Dexie {
+class PhiboDb extends Dexie {
   authTokens!: Table<AuthTokenRow, string>
   dailyMetrics!: Table<DailyMetricRow, string>
   deletedTagIds!: Table<DeletedTagIdRow, string>

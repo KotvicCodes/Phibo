@@ -217,11 +217,9 @@
     selectedExploreTags,
     selectedExploreTagCalendarRange
   )
-  $: exploreImpacts = calculateExploreMetricImpacts(
-    analysisMetrics,
-    analysisEntries,
-    selectedExploreTags
-  ).filter((row) => !isPrimaryScoreMetric(row.metric.key))
+  $: exploreImpacts = calculateExploreMetricImpacts(exploreDays).filter(
+    (row) => !isPrimaryScoreMetric(row.metric.key)
+  )
   $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
   $: matchingExploreDays = sortExploreDaysNewestFirst(
     exploreDays.filter((day) => day.matches)

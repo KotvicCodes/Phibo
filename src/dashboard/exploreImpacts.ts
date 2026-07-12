@@ -5,7 +5,7 @@ import type {
 } from "../lib/analysis/correlations"
 import { formatExploreDelta } from "./exploreCharts"
 
-export interface ExploreImpactGroup {
+interface ExploreImpactGroup {
   category: ExploreMetricCategory
   rows: ExploreMetricImpact[]
   strongest: ExploreMetricImpact | null

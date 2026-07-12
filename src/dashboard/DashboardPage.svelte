@@ -144,13 +144,17 @@
     tagTimingMode = getSavedTagTimingMode()
     tagSortMode = getSavedTagSortMode()
 
-    const savedToken = await db.authTokens.get("oura")
-    const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
-    const savedTags = await db.tagEntries.orderBy("date").toArray()
+    const [savedToken, savedMetrics, savedTags, savedDeletedRows] =
+      await Promise.all([
+        db.authTokens.get("oura"),
+        db.dailyMetrics.orderBy("date").toArray(),
+        db.tagEntries.orderBy("date").toArray(),
+        db.deletedTagIds.toArray()
+      ])
 
     savedOuraToken = savedToken ?? null
     tagEntries = savedTags
-    deletedTagRows = await db.deletedTagIds.toArray()
+    deletedTagRows = savedDeletedRows
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
@@ -452,11 +456,14 @@
   }
 
   async function loadLocalOuraData() {
-    const savedMetrics = await db.dailyMetrics.orderBy("date").toArray()
-    const savedTags = await db.tagEntries.orderBy("date").toArray()
+    const [savedMetrics, savedTags, savedDeletedRows] = await Promise.all([
+      db.dailyMetrics.orderBy("date").toArray(),
+      db.tagEntries.orderBy("date").toArray(),
+      db.deletedTagIds.toArray()
+    ])
 
     tagEntries = savedTags
-    deletedTagRows = await db.deletedTagIds.toArray()
+    deletedTagRows = savedDeletedRows
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
