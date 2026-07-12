@@ -15,7 +15,7 @@
     <p class="eyebrow">Phibo</p>
   </div>
   <h1>Phibo</h1>
-  <p class="description">A clean shell for the popup and dashboard.</p>
+  <p class="description">Explore how your daily tags relate to sleep, readiness, and activity. Everything stays on this device.</p>
 
   <OpenDashboardButton href={dashboardUrl} />
 </main>

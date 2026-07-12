@@ -38,7 +38,7 @@ interface ParsedFileSummary {
   rows: number
 }
 
-export interface OuraImportResult {
+interface OuraImportResult {
   dailyMetrics: ReturnType<typeof mergeDailyMetrics>
   filesImported: number
   // Known Oura export files Phibo deliberately does not import

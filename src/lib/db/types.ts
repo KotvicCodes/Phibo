@@ -1,4 +1,4 @@
-export type OuraScope =
+type OuraScope =
   | "daily"
   | "email"
   | "heartrate"

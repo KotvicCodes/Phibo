@@ -1,11 +1,11 @@
 const OURA_API_BASE_URL = "https://api.ouraring.com/v2/usercollection"
 
-export interface OuraCollectionResponse<T> {
+interface OuraCollectionResponse<T> {
   data: T[]
   next_token?: string
 }
 
-export interface OuraCollectionParams {
+interface OuraCollectionParams {
   end_date: string
   start_date: string
   next_token?: string

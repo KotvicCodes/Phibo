@@ -21,7 +21,7 @@ export interface DeletedTagChipGroup {
   title: string
 }
 
-export interface TagDay {
+interface TagDay {
   date: string
   entries: TagEntryRow[]
   deleted: DeletedTagIdRow[]
@@ -29,7 +29,7 @@ export interface TagDay {
   deletedGroups: DeletedTagChipGroup[]
 }
 
-export interface TagStripDay {
+interface TagStripDay {
   date: string
   monthLabel: string | null
   tagCount: number

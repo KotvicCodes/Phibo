@@ -11,13 +11,13 @@ import { formatTagList, sortTagsForDisplay } from "./tagLabels"
 const calendarWeekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 const tagCalendarDays = 365
 
-export interface ExploreTagCalendarCell {
+interface ExploreTagCalendarCell {
   date: string | null
   day: ExploreDay | null
   taggedTags: string[]
 }
 
-export interface ExploreTagCalendarWeekdayRow {
+interface ExploreTagCalendarWeekdayRow {
   cells: ExploreTagCalendarCell[]
   label: string
 }
@@ -34,7 +34,7 @@ export interface ExploreTagCalendarOption {
   label: string
 }
 
-export interface ExploreTagCalendarRange {
+interface ExploreTagCalendarRange {
   firstDate: Date
   lastDate: Date
   label: string

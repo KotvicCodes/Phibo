@@ -64,7 +64,7 @@ function metricValues(days: ExploreDay[], metric: ExploreMetricDefinition) {
 // never extends past the metric's hard bounds (scores stop at exactly 100,
 // counts never dip below 0). The clamp points 0 and 100 are step multiples
 // for every step this produces, so tick labels stay round after clamping.
-export function niceAxisBounds(
+function niceAxisBounds(
   values: number[],
   metric: ExploreMetricDefinition,
   targetTicks = 5
@@ -157,7 +157,7 @@ interface TimelineDatum {
   value: [number, number | null]
 }
 
-export function linearFit(points: Array<readonly [number, number]>) {
+function linearFit(points: Array<readonly [number, number]>) {
   const n = points.length
   const sumX = points.reduce((total, [x]) => total + x, 0)
   const sumY = points.reduce((total, [, y]) => total + y, 0)
@@ -187,7 +187,7 @@ export function linearFit(points: Array<readonly [number, number]>) {
 // Centered rolling mean over a calendar window, gap-aware: days with too
 // little surrounding data yield null so the trend breaks instead of
 // bridging holes in the dataset.
-export function rollingAverageSeries(
+function rollingAverageSeries(
   usable: ExploreDay[],
   metric: ExploreMetricDefinition,
   windowDays = 30,
@@ -222,7 +222,7 @@ export function rollingAverageSeries(
 // Break the line where the calendar gap between points is unusually large:
 // daily metrics split across multi-week holes, while sparse metrics (whose
 // normal cadence is already weeks) stay connected.
-export function timelineSeriesData(days: ExploreDay[], metric: ExploreMetricDefinition) {
+function timelineSeriesData(days: ExploreDay[], metric: ExploreMetricDefinition) {
   const usable = days.filter((day) => day.metric[metric.key] != null)
   const gaps = usable
     .slice(1)

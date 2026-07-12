@@ -36,7 +36,7 @@ export function metricAxisLabel(metric: ExploreMetricDefinition) {
 // Bedtime metrics store hours on a past-noon clock (00:30 is 24.5, 06:00 is
 // 30) so averages around midnight do not wrap. Display them as wall-clock
 // time instead of the raw shifted number.
-export function formatClockHour(value: number) {
+function formatClockHour(value: number) {
   const normalized = ((value % 24) + 24) % 24
   const totalMinutes = Math.round(normalized * 60)
   const hours = Math.floor(totalMinutes / 60) % 24
@@ -47,7 +47,7 @@ export function formatClockHour(value: number) {
 
 // Turns stored minutes into a readable duration: 444 becomes "7h 24m",
 // 45 stays "45m", 420 becomes "7h".
-export function formatHoursMinutes(minutes: number) {
+function formatHoursMinutes(minutes: number) {
   const sign = minutes < 0 ? "-" : ""
   const totalMinutes = Math.round(Math.abs(minutes))
   const hours = Math.floor(totalMinutes / 60)

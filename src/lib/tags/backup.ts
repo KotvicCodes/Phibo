@@ -1,7 +1,7 @@
 import { db } from "../db"
 import type { DeletedTagIdRow, TagEntryRow } from "../db/types"
 
-export interface PhiboTagBackup {
+interface PhiboTagBackup {
   schema: "phibo-tag-backup"
   version: 1
   exportedAt: string
@@ -9,7 +9,7 @@ export interface PhiboTagBackup {
   deletedTagIds: DeletedTagIdRow[]
 }
 
-export interface TagRestoreResult {
+interface TagRestoreResult {
   added: number
   skipped: number
   deleted: number

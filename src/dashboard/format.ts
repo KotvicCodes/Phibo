@@ -52,18 +52,7 @@ export function formatSleepNightDate(metricDate: string) {
   return formatDate(shiftDate(metricDate, -1))
 }
 
-export function average(values: Array<number | null | undefined>) {
-  const usableValues = values.filter((value): value is number => value != null)
-
-  if (usableValues.length === 0) {
-    return null
-  }
-
-  return (
-    usableValues.reduce((total, value) => total + value, 0) /
-    usableValues.length
-  )
-}
+export { average } from "../lib/analysis/shared"
 
 export function formatDelta(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
