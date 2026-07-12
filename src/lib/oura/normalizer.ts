@@ -440,26 +440,45 @@ export function mergeWithStoredRow(
 
 export function mapTagEntries(tags: OuraTag[]) {
   const syncedAt = new Date().toISOString()
+  // Rows lacking both an id and a StartTime share the same fallback id per
+  // day and label; count occurrences so duplicates do not collapse in
+  // bulkPut. The first occurrence keeps the unsuffixed id so existing
+  // stored rows and tombstones still match.
+  const fallbackIdCounts = new Map<string, number>()
 
   return tags.flatMap((tag): TagEntryRow[] => {
     const date = getRecordDay(tag)
-    const label = normalizeTagLabel(
+    const namedLabel =
       getString(tag, "custom_tag_name", "CustomTagName", "CustomName") ??
-        getString(tag, "tag_type_code", "TagTypeCode", "text")
-    )
+      getString(tag, "tag_type_code", "TagTypeCode")
+    const textValue = getString(tag, "text")
+    const label = normalizeTagLabel(namedLabel ?? textValue)
 
     if (!date || !label) {
       return []
     }
 
+    let id = getString(tag, "id", "ID", "EnhancedTagKey")
+
+    if (!id) {
+      const fallbackId = `${date}-${label}-${getString(tag, "StartTime") ?? ""}`
+      const occurrence = fallbackIdCounts.get(fallbackId) ?? 0
+
+      fallbackIdCounts.set(fallbackId, occurrence + 1)
+      id = occurrence === 0 ? fallbackId : `${fallbackId}-${occurrence + 1}`
+    }
+
     return [
       {
-        id:
-          getString(tag, "id", "ID", "EnhancedTagKey") ??
-          `${date}-${label}-${getString(tag, "StartTime") ?? ""}`,
+        id,
         date,
         tag: label,
-        comment: getString(tag, "comment", "Comment", "text") ?? null,
+        // Only fall back to "text" as the comment when it did not already
+        // serve as the label; otherwise the label would repeat as its own
+        // comment.
+        comment:
+          getString(tag, "comment", "Comment") ??
+          (namedLabel ? textValue : null),
         source: "oura",
         sourceUpdatedAt:
           getString(tag, "updated_at", "UpdatedAt", "InsertedDate") ?? null,
