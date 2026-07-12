@@ -134,6 +134,42 @@
     tagsMessage = ""
   }
 
+  // The strip renders only the days near the viewport. Each day occupies a
+  // fixed 30px slot (26px button plus 4px spacing), so the visible index
+  // range is plain arithmetic on scrollLeft, and spacer divs keep the total
+  // scroll width so the scrollbar and positions stay exact.
+  const stripDaySlot = 30
+  const stripWindowBuffer = 15
+
+  let tagStripElement: HTMLElement | null = null
+  let tagStripWidth = 0
+  let tagStripScrollLeft = 0
+  let stripScrollFrame = 0
+
+  $: stripWindowStart = Math.max(
+    0,
+    Math.floor(tagStripScrollLeft / stripDaySlot) - stripWindowBuffer
+  )
+  $: stripWindowEnd = Math.min(
+    tagStripDays.length,
+    Math.ceil((tagStripScrollLeft + tagStripWidth) / stripDaySlot) +
+      stripWindowBuffer
+  )
+  $: visibleStripDays = tagStripDays.slice(stripWindowStart, stripWindowEnd)
+
+  // Scroll events fire per frame while dragging; collapse them so the
+  // window slice recomputes at most once per animation frame.
+  function handleTagStripScroll() {
+    if (stripScrollFrame) {
+      return
+    }
+
+    stripScrollFrame = requestAnimationFrame(() => {
+      stripScrollFrame = 0
+      tagStripScrollLeft = tagStripElement?.scrollLeft ?? 0
+    })
+  }
+
   // The strip starts positioned on the selected day without animating past
   // every prior day; only later selections glide smoothly. Mounting fresh on
   // every visit to the Tags view resets this naturally.
@@ -141,18 +177,18 @@
 
   function scrollTagStripToDate(date: string) {
     requestAnimationFrame(() => {
-      const target = document.querySelector(
-        `.tag-day-strip [data-strip-date="${date}"]`
-      )
+      const strip = tagStripElement
+      // Off-screen days are not in the DOM, so the target position comes
+      // from the day's index instead of scrollIntoView.
+      const index = tagStripDays.findIndex((day) => day.date === date)
 
-      if (!target) {
+      if (!strip || index === -1) {
         return
       }
 
-      target.scrollIntoView({
-        behavior: tagStripHasPositioned ? "smooth" : "auto",
-        inline: "center",
-        block: "nearest"
+      strip.scrollTo({
+        left: index * stripDaySlot - (strip.clientWidth - stripDaySlot) / 2,
+        behavior: tagStripHasPositioned ? "smooth" : "auto"
       })
       tagStripHasPositioned = true
     })
@@ -433,15 +469,21 @@
             <div
               class="tag-day-strip"
               aria-label="Day timeline"
+              bind:this={tagStripElement}
+              bind:clientWidth={tagStripWidth}
+              on:scroll={handleTagStripScroll}
               on:wheel|nonpassive={handleTagStripWheel}
             >
-              {#each tagStripDays as day (day.date)}
+              <div
+                class="strip-spacer"
+                style={`width: ${stripWindowStart * stripDaySlot}px`}
+              ></div>
+              {#each visibleStripDays as day (day.date)}
                 <button
                   type="button"
                   class="strip-day"
                   class:selected={tagsViewDate === day.date}
                   class:dimmed={day.dimmed}
-                  data-strip-date={day.date}
                   title={day.title}
                   on:click={() => selectTagsDay(day.date)}
                 >
@@ -457,6 +499,10 @@
                   <small class="strip-label">{day.monthLabel ?? ""}</small>
                 </button>
               {/each}
+              <div
+                class="strip-spacer"
+                style={`width: ${(tagStripDays.length - stripWindowEnd) * stripDaySlot}px`}
+              ></div>
             </div>
           {/if}
 
@@ -856,11 +902,16 @@
   .tag-day-strip {
     align-items: flex-end;
     display: flex;
-    gap: 4px;
     margin-bottom: 0.4rem;
     overflow-x: auto;
     padding: 0.4rem 0.1rem 0.2rem;
     scrollbar-width: thin;
+  }
+
+  /* Stands in for the off-screen days on each side of the rendered window
+     so the scrollbar length and day positions stay exact. */
+  .strip-spacer {
+    flex: 0 0 auto;
   }
 
   .strip-day {
@@ -872,6 +923,9 @@
     display: grid;
     flex: 0 0 auto;
     gap: 0.2rem;
+    /* The 4px spacing lives on the button instead of a flex gap on the
+       strip so each day occupies a fixed 30px slot next to the spacers. */
+    margin-right: 4px;
     /* Keeps wide month labels from stretching their column, which made the
        month-start bar merge with its neighbor. */
     min-width: 0;
