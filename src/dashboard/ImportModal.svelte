@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte"
   import type { AuthTokenRow } from "../lib/db/types"
+  import { trapFocus } from "./focusTrap"
   import { formatConnectionDate } from "./format"
 
   export let hasLocalData: boolean
@@ -55,6 +56,7 @@
     role="dialog"
     aria-modal="true"
     aria-labelledby="import-modal-title"
+    use:trapFocus
   >
     <div class="modal-header">
       <div>
