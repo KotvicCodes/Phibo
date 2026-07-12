@@ -188,7 +188,10 @@
         tag.toLocaleLowerCase().includes(query)
     )
   })()
-  $: {
+  // Skip the prune while availableTags is still empty: before the parent's
+  // async data load finishes it would wipe the restored selection and the
+  // persist reactive would save the emptied list.
+  $: if (availableTags.length > 0) {
     const validExploreTags = selectedExploreTags.filter((tag) =>
       availableTags.includes(tag)
     )
