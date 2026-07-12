@@ -1,11 +1,11 @@
 import JSZip from "jszip"
 import Papa from "papaparse"
 import { db } from "../db"
-import type { DailyMetricRow } from "../db/types"
 import { filterTombstonedTagEntries, getDeletedTagIdSet } from "../tags/store"
 import {
   mapTagEntries,
   mergeDailyMetrics,
+  mergeWithStoredRow,
   type OuraDailyActivity,
   type OuraDailySummary,
   type OuraMetricInput,
@@ -610,23 +610,4 @@ function getImportDateRange(
   ].sort()
 
   return [dates[0], dates.at(-1) ?? dates[0]] as const
-}
-
-function mergeWithStoredRow(
-  storedRow: DailyMetricRow | undefined,
-  incomingRow: DailyMetricRow
-): DailyMetricRow {
-  if (!storedRow) {
-    return incomingRow
-  }
-
-  const mergedRow: Record<string, unknown> = { ...storedRow }
-
-  for (const [key, value] of Object.entries(incomingRow)) {
-    if (value !== null && value !== undefined) {
-      mergedRow[key] = value
-    }
-  }
-
-  return mergedRow as unknown as DailyMetricRow
 }

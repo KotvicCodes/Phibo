@@ -4,6 +4,7 @@ import { fetchOuraCollection } from "./client"
 import {
   mapTagEntries,
   mergeDailyMetrics,
+  mergeWithStoredRow,
   type OuraDailyActivity,
   type OuraDailySummary,
   type OuraSleepSession,
@@ -77,7 +78,19 @@ export async function syncOuraRange(
       db.deletedTagIds,
       db.importRuns,
       async () => {
-        await db.dailyMetrics.bulkPut(dailyMetrics)
+        // Merge into any previously stored rows: a sync only fetches a few
+        // collections, so putting whole rows would null out file-only
+        // fields (SpO2, stress, resilience, cardiovascular age, VO2 max,
+        // workouts) from an earlier import.
+        const storedRows = await db.dailyMetrics.bulkGet(
+          dailyMetrics.map((metric) => metric.date)
+        )
+
+        await db.dailyMetrics.bulkPut(
+          dailyMetrics.map((metric, index) =>
+            mergeWithStoredRow(storedRows[index], metric)
+          )
+        )
 
         // Skip tags the user deleted in the app so a resync does not
         // resurrect them.

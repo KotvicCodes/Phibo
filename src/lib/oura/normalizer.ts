@@ -416,6 +416,28 @@ export function mergeDailyMetrics(input: OuraMetricInput) {
   )
 }
 
+// Merge an incoming row into any previously stored row so importing or
+// syncing a subset of sources does not null out metrics that came from an
+// earlier import (imports carry file-only fields a sync never fetches).
+export function mergeWithStoredRow(
+  storedRow: DailyMetricRow | undefined,
+  incomingRow: DailyMetricRow
+): DailyMetricRow {
+  if (!storedRow) {
+    return incomingRow
+  }
+
+  const mergedRow: Record<string, unknown> = { ...storedRow }
+
+  for (const [key, value] of Object.entries(incomingRow)) {
+    if (value !== null && value !== undefined) {
+      mergedRow[key] = value
+    }
+  }
+
+  return mergedRow as unknown as DailyMetricRow
+}
+
 export function mapTagEntries(tags: OuraTag[]) {
   const syncedAt = new Date().toISOString()
 
