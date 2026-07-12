@@ -632,6 +632,10 @@
     background:
       radial-gradient(circle at top left, #f6efe6 0%, #f1eadf 34%, transparent 58%),
       linear-gradient(135deg, #ebe5d9 0%, #e7e9df 58%, #dde4d8 100%);
+    /* Gradients size to the document by default, so filtering the day list
+       (which changes the page height) visibly shifted the colors. Fixed
+       attachment sizes them to the viewport instead. */
+    background-attachment: fixed;
     color: #17201b;
   }
 
