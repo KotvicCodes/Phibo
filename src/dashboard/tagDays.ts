@@ -163,6 +163,41 @@ export function buildTagDays(
   )
 }
 
+// The unfiltered daily log lists every day in the data range, tagged or
+// not, so untagged days are reachable without the strip. Newest first to
+// match the list order.
+export function buildAllLogDays(
+  metrics: DailyMetricRow[],
+  days: TagDay[]
+): TagDay[] {
+  const today = formatInputDate(new Date())
+  const startCandidates = [metrics[0]?.date, days.at(-1)?.date]
+    .filter((date): date is string => Boolean(date))
+    .sort()
+  const start = startCandidates[0]
+
+  if (!start || start > today) {
+    return days
+  }
+
+  const dayByDate = new Map(days.map((day) => [day.date, day]))
+  const allDays: TagDay[] = []
+
+  for (let date = today; date >= start; date = shiftDate(date, -1)) {
+    allDays.push(
+      dayByDate.get(date) ?? {
+        date,
+        entries: [],
+        deleted: [],
+        activeGroups: [],
+        deletedGroups: []
+      }
+    )
+  }
+
+  return allDays
+}
+
 export function buildTagStripDays(
   metrics: DailyMetricRow[],
   days: TagDay[],

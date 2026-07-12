@@ -17,6 +17,7 @@
   import { formatDate } from "./format"
   import {
     buildAllKnownTags,
+    buildAllLogDays,
     buildTagDays,
     buildTagStripDays,
     filterTagsByQuery,
@@ -114,6 +115,10 @@
               day.deleted.some((row) => row.entry?.tag === tag)
           )
         )
+  // With no filter active the log lists every day in the data range, so
+  // untagged days can be opened and tagged straight from the list.
+  $: allLogDays = buildAllLogDays(dailyMetrics, tagDays)
+  $: logDays = tagsFilterTags.length > 0 ? filteredTagDays : allLogDays
   $: tagStripDays = buildTagStripDays(
     dailyMetrics,
     tagDays,
@@ -448,20 +453,20 @@
 
     <section class="settings-workspace" aria-label="Tag manager">
       <div class="settings-panel">
-        <div class="tag-daily-log" aria-label="Tagged days">
+        <div class="tag-daily-log" aria-label="Days">
           <div class="log-heading">
             <div>
               <p class="section-kicker">Daily log</p>
               <h3>
                 {tagsFilterTags.length > 0
                   ? formatTagList(tagsFilterTags, " + ")
-                  : "All tagged days"}
+                  : "All days"}
               </h3>
             </div>
             <span>
               {tagsFilterTags.length > 0
-                ? `${filteredTagDays.length} of ${tagDays.length} days`
-                : `${tagDays.length} days`}
+                ? `${filteredTagDays.length} of ${allLogDays.length} days`
+                : `${allLogDays.length} days`}
             </span>
           </div>
 
@@ -618,19 +623,19 @@
             </div>
           </div>
 
-          {#if tagDays.length === 0}
+          {#if logDays.length === 0}
             <p class="tag-empty">
-              Import Oura data or add your first tag above.
+              {tagsFilterTags.length > 0
+                ? "No tagged days match these filters."
+                : "Import Oura data or add your first tag above."}
             </p>
-          {:else if filteredTagDays.length === 0}
-            <p class="tag-empty">No tagged days match these filters.</p>
           {:else}
             <div class="log-table">
               <div class="log-row header">
                 <span>Date</span>
                 <span>Tags</span>
               </div>
-              {#each filteredTagDays as day (day.date)}
+              {#each logDays as day (day.date)}
                 {#if tagsViewDate === day.date}
                   <div class="log-row tag-log-row selected" data-date={day.date}>
                     <div class="log-date">
