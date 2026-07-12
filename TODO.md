@@ -18,34 +18,29 @@ it is done rather than checking it off.
    tombstones have no entry, so those deletions never display. Only matters
    if such files exist; likely ignorable.
 
-## Production hardening
-
-4. Strip scalability: one DOM button per day (~365/year) with damped wheel
-   scroll. Revisit if importing many years (windowing or a week-level zoom).
-
 ## Tags UI
 
-5. Move tag renaming completely out of the tag picker popup. Decided on
+4. Move tag renaming completely out of the tag picker popup. Decided on
    2026-07-11: the Add/Rename mode toggle does not belong in an add-focused
    popup at all. The destination is still undecided; pick one before
    building (candidates worth weighing: a dedicated manage section on the
    Tags view, a small dialog of its own, or a Settings row).
-6. Tags Page's list may have empty days upon deleting last tag entries.
+5. Tags Page's list may have empty days upon deleting last tag entries.
    Hiding such days or handling them in the same manner as empty days are
    in the same space is recommended. To be also concidered: handling the empty
    days as the the ones with newly deleted tags.
 
 ## Loose ends from the extraction review (2026-07-11)
 
-7. Review the view-switch state resets introduced by the component split:
+6. Review the view-switch state resets introduced by the component split:
    Explore forgets its selected day, hover, and expanded impact groups when
    leaving the view; Insights forgets the selected insight; Settings
    messages clear. Persisted settings survive. If any reset annoys in
    practice, each is one bind: to the parent to fix.
-8. Discoveries anchor date falls back to the sync form's end date
+7. Discoveries anchor date falls back to the sync form's end date
    (InsightsView gets endDate as a prop just for this). Falling back to
    today's date instead would cut the odd coupling.
-9. "Delete local data" wipes IndexedDB but not localStorage: Optimal
+8. "Delete local data" wipes IndexedDB but not localStorage: Optimal
    overrides, Explore tag selections, and filter settings survive the wipe
    and silently re-apply to re-imported data. Decide whether the wipe
    should clear those too.
