@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { db } from "../lib/db"
   import type {
     DailyMetricRow,
     DeletedTagIdRow,
@@ -8,7 +7,6 @@
   import {
     addUserTagEntry,
     deleteTagEntries,
-    renameTag,
     restoreTagEntries,
     resolveUserTagLabel,
     updateDayComment
@@ -46,20 +44,11 @@
   export let tagsFilterSearch: string
   export let tagsFilterTags: string[]
   export let setTagSortMode: (mode: TagSortMode) => void
-  // Lets the parent rewrite settings that store tag labels, like the
-  // Optimal include and exclude overrides.
-  export let onTagRenamed: (fromLabel: string, toLabel: string) => void
 
   let tagsMessage = ""
   let isTagPickerOpen = false
   let tagPickerSearch = ""
-  let tagPickerMode: "add" | "rename" = "add"
-  let renameTargetTag = ""
-  let renameInput = ""
-  let renameMessage = ""
-  let isRenamingTag = false
   let tagPickerSearchInput: HTMLInputElement | null = null
-  let renameNameInput: HTMLInputElement | null = null
   let tagsFilterSearchInput: HTMLInputElement | null = null
 
   // The Tags manager works on the raw stored dates, like import does. The
@@ -130,11 +119,6 @@
   )
   $: if (tagsViewDate && tagStripDays.length > 0) {
     scrollTagStripToDate(tagsViewDate)
-  }
-
-  async function reloadTagEntries() {
-    tagEntries = await db.tagEntries.orderBy("date").toArray()
-    deletedTagRows = await db.deletedTagIds.toArray()
   }
 
   function selectTagsDay(date: string) {
@@ -229,15 +213,7 @@
   function openTagPicker() {
     isTagPickerOpen = true
     tagPickerSearch = ""
-    setTagPickerMode("add")
     requestAnimationFrame(() => tagPickerSearchInput?.focus())
-  }
-
-  function setTagPickerMode(mode: "add" | "rename") {
-    tagPickerMode = mode
-    renameTargetTag = ""
-    renameInput = ""
-    renameMessage = ""
   }
 
   function closeTagPicker() {
@@ -333,83 +309,6 @@
       tagsMessage = ""
     } catch {
       tagsMessage = "Could not restore that tag. Try again."
-    }
-  }
-
-  function selectRenameTarget(tag: string) {
-    renameTargetTag = renameTargetTag === tag ? "" : tag
-    renameInput = renameTargetTag
-    renameMessage = ""
-
-    // Jump into the name field; focusing also scrolls the form into view
-    // when the picked chip sat deep in the grid.
-    if (renameTargetTag) {
-      requestAnimationFrame(() => renameNameInput?.focus())
-    }
-  }
-
-  async function applyTagRename() {
-    if (!renameTargetTag) {
-      return
-    }
-
-    const trimmed = renameInput.replace(/\s+/g, " ").trim()
-
-    if (!trimmed) {
-      renameMessage = "Type a new tag name first."
-      return
-    }
-
-    // A case-only change keeps the typed casing; anything else adopts an
-    // existing label's casing or canonicalizes like the popup does.
-    const label =
-      trimmed.toLocaleLowerCase() === renameTargetTag.toLocaleLowerCase()
-        ? trimmed
-        : resolveUserTagLabel(trimmed, allKnownTags)
-
-    if (!label) {
-      renameMessage = "Type a new tag name first."
-      return
-    }
-
-    if (label === renameTargetTag) {
-      renameMessage = "That is already the tag's name."
-      return
-    }
-
-    const isMerge = allKnownTags.some(
-      (tag) =>
-        tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
-        tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
-    )
-
-    isRenamingTag = true
-
-    try {
-      const { renamedCount, mergedCount } = await renameTag(
-        renameTargetTag,
-        label
-      )
-
-      // Drop stale filter selections that still carry the old label.
-      tagsFilterTags = tagsFilterTags.filter(
-        (tag) =>
-          tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
-      )
-      onTagRenamed(renameTargetTag, label)
-      await reloadTagEntries()
-      renameMessage = isMerge
-        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
-          (mergedCount > 0
-            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
-            : "")
-        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
-      renameTargetTag = ""
-      renameInput = ""
-    } catch {
-      renameMessage = "Could not rename that tag. Try again."
-    } finally {
-      isRenamingTag = false
     }
   }
 
@@ -732,32 +631,8 @@
           >
             <div class="tag-picker-modal-header">
               <div>
-                <p class="section-kicker">
-                  {tagPickerMode === "add" ? "Tags for" : "Manage"}
-                </p>
-                <h2>
-                  {tagPickerMode === "add"
-                    ? formatDate(tagsViewDate)
-                    : "Rename tags"}
-                </h2>
-              </div>
-              <div class="tag-sort" role="group" aria-label="Picker mode">
-                <button
-                  type="button"
-                  class:active={tagPickerMode === "add"}
-                  aria-pressed={tagPickerMode === "add"}
-                  on:click={() => setTagPickerMode("add")}
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  class:active={tagPickerMode === "rename"}
-                  aria-pressed={tagPickerMode === "rename"}
-                  on:click={() => setTagPickerMode("rename")}
-                >
-                  Rename
-                </button>
+                <p class="section-kicker">Tags for</p>
+                <h2>{formatDate(tagsViewDate)}</h2>
               </div>
               <button
                 type="button"
@@ -770,68 +645,24 @@
             <input
               class="tag-search"
               type="search"
-              placeholder={tagPickerMode === "add"
-                ? "Search or type a new tag"
-                : "Search tags"}
+              placeholder="Search or type a new tag"
               aria-label="Search tags"
               bind:value={tagPickerSearch}
               bind:this={tagPickerSearchInput}
             />
-
-            <!-- The rename form sits above the chip grid so it stays in view
-                 after picking a tag; large tag sets push anything below the
-                 grid out of the scrollable modal. -->
-            {#if tagPickerMode === "rename" && renameTargetTag}
-              <form
-                class="tag-rename-form"
-                on:submit|preventDefault={applyTagRename}
-              >
-                <input
-                  type="text"
-                  aria-label="New tag name"
-                  placeholder="New name"
-                  bind:value={renameInput}
-                  bind:this={renameNameInput}
-                />
-                <button type="submit" disabled={isRenamingTag}>
-                  {isRenamingTag ? "Renaming" : "Rename"}
-                </button>
-                <button
-                  type="button"
-                  class="secondary"
-                  on:click={() => selectRenameTarget(renameTargetTag)}
-                >
-                  Cancel
-                </button>
-              </form>
-              <p class="tag-rename-note">
-                Renames {formatTagLabel(renameTargetTag)} everywhere, including
-                crossed-out entries. Renaming to an existing tag merges them.
-              </p>
-            {/if}
-
-            {#if renameMessage}
-              <p class="tag-rename-message" role="status">{renameMessage}</p>
-            {/if}
             <div class="tag-picker">
               {#each visibleTagPickerTags as tag (tag)}
                 {@const key = tag.toLocaleLowerCase()}
                 <button
                   type="button"
-                  class:active={tagPickerMode === "add"
-                    ? tagPickerActiveKeys.has(key)
-                    : renameTargetTag === tag}
-                  class:crossed={tagPickerMode === "add" &&
-                    tagPickerDeletedKeys.has(key)}
-                  on:click={() =>
-                    tagPickerMode === "add"
-                      ? toggleTagInPicker(tag)
-                      : selectRenameTarget(tag)}
+                  class:active={tagPickerActiveKeys.has(key)}
+                  class:crossed={tagPickerDeletedKeys.has(key)}
+                  on:click={() => toggleTagInPicker(tag)}
                 >
                   {formatTagLabel(tag)}
                 </button>
               {/each}
-              {#if tagPickerMode === "add" && tagPickerCreateLabel}
+              {#if tagPickerCreateLabel}
                 <button
                   type="button"
                   class="create"
@@ -1142,63 +973,6 @@
     display: grid;
     gap: 0.55rem;
     margin-bottom: 0.4rem;
-  }
-
-  .tag-rename-form {
-    display: grid;
-    gap: 0.55rem;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-  }
-
-  .tag-rename-form input {
-    background: #fbf7ef;
-    border: 1px solid #cdcfc2;
-    border-radius: 8px;
-    font: inherit;
-    min-width: 0;
-    padding: 0.5rem 0.65rem;
-  }
-
-  .tag-rename-form button {
-    appearance: none;
-    background: #1d2a22;
-    border: 1px solid #1d2a22;
-    border-radius: 8px;
-    color: #f8f3ea;
-    cursor: pointer;
-    font: inherit;
-    font-size: 0.84rem;
-    font-weight: 800;
-    padding: 0.5rem 0.9rem;
-    white-space: nowrap;
-  }
-
-  .tag-rename-form button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .tag-rename-form button.secondary {
-    background: #f7f1e8;
-    border-color: #c5cbbd;
-    color: #17201b;
-  }
-
-  .tag-rename-note {
-    color: #6f786f;
-    font-size: 0.8rem;
-    line-height: 1.4;
-  }
-
-  .tag-rename-message {
-    color: #17201b;
-    font-weight: 700;
-  }
-
-@media (max-width: 720px) {
-    .tag-rename-form {
-      grid-template-columns: 1fr;
-    }
   }
 
   .tag-filter-control h3 {
