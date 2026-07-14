@@ -31,7 +31,8 @@ interface TagDay {
 
 interface TagStripDay {
   date: string
-  monthLabel: string | null
+  label: string | null
+  labelKind: "year" | "month" | "day" | null
   tagCount: number
   barHeight: number
   tone: ScoreRangeTone
@@ -230,10 +231,27 @@ export function buildTagStripDays(
   for (let date = start; date <= today; date = shiftDate(date, 1)) {
     const day = dayByDate.get(date)
     const count = day ? day.activeGroups.length : 0
+    // January 1 anchors the year, other month firsts keep the month name,
+    // and the 10th and 20th get small day hints so a bar is locatable
+    // inside a month without crowding the 30px slots.
+    const dayOfMonth = date.slice(8)
+    let label: string | null = null
+    let labelKind: TagStripDay["labelKind"] = null
+
+    if (dayOfMonth === "01") {
+      const isJanuary = date.slice(5, 7) === "01"
+
+      label = isJanuary ? date.slice(0, 4) : formatMonth(date)
+      labelKind = isJanuary ? "year" : "month"
+    } else if (dayOfMonth === "10" || dayOfMonth === "20") {
+      label = dayOfMonth
+      labelKind = "day"
+    }
 
     stripDays.push({
       date,
-      monthLabel: date.endsWith("-01") ? formatMonth(date) : null,
+      label,
+      labelKind,
       tagCount: count,
       barHeight:
         count === 0 ? 0 : Math.max(18, Math.round((count / maxCount) * 100)),
