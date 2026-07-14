@@ -27,8 +27,8 @@
   export let dailyMetrics: DailyMetricRow[]
   export let tagEntries: TagEntryRow[]
   export let deletedTagRows: DeletedTagIdRow[]
-  // Bound to the parent so the duplicate cleanup undo survives switching
-  // views; the offer only dies with the dashboard itself.
+  // Bound to the parent, which persists it so the duplicate cleanup undo
+  // survives switching views and reloading the dashboard.
   export let lastDedupeIds: string[]
 
   // Analysis-shaping settings stay parent-owned: the parent restores and
@@ -182,7 +182,7 @@
       lastDedupeIds = result.tombstones.map((tombstone) => tombstone.id)
       dedupeMessage = withBackup
         ? `Backed up, then removed ${result.deletedIds.length} duplicate tag entries.`
-        : `Removed ${result.deletedIds.length} duplicate tag entries. Undo works until you close or reload the dashboard.`
+        : `Removed ${result.deletedIds.length} duplicate tag entries. Undo works until the next cleanup.`
     } catch {
       dedupeMessage = "Could not remove duplicates. Try again."
     } finally {
@@ -245,6 +245,8 @@
       dailyMetrics = []
       tagEntries = []
       deletedTagRows = []
+      // The wiped tombstones took the undo's restore data with them.
+      lastDedupeIds = []
       onDataDeleted()
       deleteDataMessage = "All imported Oura data was deleted from this device."
     } catch {

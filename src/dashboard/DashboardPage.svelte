@@ -44,6 +44,7 @@
   const showTagCountsSettingKey = "phibo.showTagCounts"
   const exploreFavoriteMetricsSettingKey = "phibo.exploreFavoriteMetrics"
   const exploreHiddenMetricsSettingKey = "phibo.exploreHiddenMetrics"
+  const lastDedupeIdsSettingKey = "phibo.lastDedupeIds"
 
   let accessToken = ""
   let activeView: DashboardView = "insights"
@@ -68,9 +69,11 @@
   let tagsFilterSearch = ""
   let tagsFilterTags: string[] = []
   let deletedTagRows: DeletedTagIdRow[] = []
-  // Ids of the tombstones written by the last cleanup run; enables a
-  // session-level undo until the page is closed.
+  // Ids of the tombstones written by the last cleanup run; persisted so the
+  // undo offer survives closing or reloading the dashboard.
   let lastDedupeIds: string[] = []
+  // Guards the reactive save below, like the Explore settings restore.
+  let dedupeUndoRestored = false
 
   $: hasLocalData = dailyMetrics.length > 0
   $: effectiveTagEntries = getEffectiveTagEntries(tagEntries, tagTimingMode)
@@ -131,6 +134,40 @@
     )
   }
 
+  $: if (dedupeUndoRestored) {
+    if (lastDedupeIds.length > 0) {
+      localStorage.setItem(
+        lastDedupeIdsSettingKey,
+        JSON.stringify(lastDedupeIds)
+      )
+    } else {
+      localStorage.removeItem(lastDedupeIdsSettingKey)
+    }
+  }
+
+  // Saved undo ids are only kept while their tombstones still exist, so a
+  // data wipe or backup restore in a past session cannot leave a dead Undo
+  // button behind.
+  function getSavedDedupeIds(tombstoneRows: DeletedTagIdRow[]): string[] {
+    try {
+      const parsed = JSON.parse(
+        localStorage.getItem(lastDedupeIdsSettingKey) ?? "[]"
+      )
+
+      if (!Array.isArray(parsed)) {
+        return []
+      }
+
+      const tombstoneIds = new Set(tombstoneRows.map((row) => row.id))
+
+      return parsed.filter(
+        (id): id is string => typeof id === "string" && tombstoneIds.has(id)
+      )
+    } catch {
+      return []
+    }
+  }
+
   onMount(async () => {
     activeView = getSavedActiveView()
     exploreFavoriteMetrics = getSavedMetricList(
@@ -155,6 +192,8 @@
     savedOuraToken = savedToken ?? null
     tagEntries = savedTags
     deletedTagRows = savedDeletedRows
+    lastDedupeIds = getSavedDedupeIds(savedDeletedRows)
+    dedupeUndoRestored = true
 
     if (savedMetrics.length > 0) {
       dailyMetrics = withDerivedMetricFields(savedMetrics)
