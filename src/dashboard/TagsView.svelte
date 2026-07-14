@@ -271,10 +271,12 @@
     }
 
     try {
+      // The day note lives on every tag row of the day (Oura's format has no
+      // separate note store), so a late tag carries the existing note too.
       const entry = await addUserTagEntry({
         date: tagsViewDate,
         tag,
-        comment: null
+        comment: selectedDayComment || null
       })
 
       tagEntries = [...tagEntries, entry].sort((left, right) =>
