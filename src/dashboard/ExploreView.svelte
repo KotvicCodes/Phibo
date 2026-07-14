@@ -53,7 +53,7 @@
     tagSortModes,
     type TagSortMode
   } from "./tagLabels"
-  import { getSavedTagList } from "./storedSettings"
+  import { exploreTagsSettingKey, getSavedTagList } from "./storedSettings"
   import { handleTypeToSearchKeydown } from "./typeToSearch"
   import EChart from "./EChart.svelte"
   import TagCalendar from "./TagCalendarView.svelte"
@@ -64,7 +64,6 @@
   const exploreChartModeSettingKey = "phibo.exploreChartMode"
   const exploreXMetricSettingKey = "phibo.exploreXMetric"
   const exploreYMetricSettingKey = "phibo.exploreYMetric"
-  const exploreTagsSettingKey = "phibo.exploreTags"
 
   // The analysis inputs come straight from DashboardPage. This component
   // only exists while the Explore view is open, so tag edits made elsewhere

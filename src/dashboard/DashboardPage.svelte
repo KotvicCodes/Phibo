@@ -20,7 +20,11 @@
   import { syncOuraRange } from "../lib/oura/sync"
   import { daysAgo, formatInputDate, shiftDate } from "./format"
   import { exploreMetricCategories } from "./exploreCharts"
-  import { renameOptimalOverrideTags } from "./optimalOverrides"
+  import {
+    clearOptimalOverrides,
+    renameOptimalOverrideTags
+  } from "./optimalOverrides"
+  import { exploreTagsSettingKey } from "./storedSettings"
   import { sortTagsForDisplay, type TagSortMode } from "./tagLabels"
   import {
     getEffectiveTagEntries,
@@ -499,6 +503,18 @@
 
   function handleDataDeleted() {
     importMessage = "Import your Oura personal data export to begin."
+    // Settings and selections that reference the wiped data go with it, so
+    // nothing silently re-applies to re-imported data. Pure UI preferences
+    // like the active view, sort modes, and metric choices stay.
+    clearOptimalOverrides()
+    localStorage.removeItem(exploreTagsSettingKey)
+    tagsFilterSearch = ""
+    tagsFilterTags = []
+    tagsViewDate = formatInputDate(new Date())
+    selectedExploreDate = ""
+    hoveredExploreDate = ""
+    openExploreImpactCategories = []
+    selectedInsightKey = ""
   }
 
   // Settings that store tag labels must follow a rename: the Optimal

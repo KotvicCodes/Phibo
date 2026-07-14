@@ -589,8 +589,9 @@
             <strong>Delete local data</strong>
             <p>
               Permanently remove all imported days, tags, and import history
-              from this device. A saved Oura key is not affected. Use this to
-              start fresh before re-importing an export.
+              from this device, along with tag-based settings like Optimal
+              overrides and saved tag selections. A saved Oura key is not
+              affected. Use this to start fresh before re-importing an export.
             </p>
             {#if deleteDataMessage}
               <p class="delete-data-message" role="status">{deleteDataMessage}</p>
