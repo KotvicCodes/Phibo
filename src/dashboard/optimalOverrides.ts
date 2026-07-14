@@ -29,6 +29,13 @@ export function saveOptimalOverrides(
   )
 }
 
+// The overrides reference imported tag labels, so the local data wipe
+// clears them along with the data.
+export function clearOptimalOverrides() {
+  localStorage.removeItem(optimalExcludedTagsSettingKey)
+  localStorage.removeItem(optimalIncludedTagsSettingKey)
+}
+
 // The overrides store plain labels, so a rename must rewrite them or they
 // silently stop matching anything. When the rename merges into a tag that
 // already has its own override, that override wins and the old label is
