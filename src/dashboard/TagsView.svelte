@@ -860,7 +860,7 @@
     font-weight: 800;
     height: 0.8rem;
     overflow: visible;
-    text-align: left;
+    text-align: center;
     text-transform: uppercase;
     white-space: nowrap;
   }
