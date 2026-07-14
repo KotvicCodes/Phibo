@@ -616,7 +616,6 @@
       analysisMetrics={analysisDailyMetrics}
       analysisEntries={effectiveTagEntries}
       {dailyMetrics}
-      {endDate}
       bind:selectedInsightKey
     />
   {:else if activeView === "explore"}

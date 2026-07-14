@@ -19,6 +19,7 @@
     comparisonWidth,
     formatComparisonAverage,
     formatDelta,
+    formatInputDate,
     formatMetricDelta,
     formatNullableDelta,
     formatScoreTrend,
@@ -51,10 +52,10 @@
   // elsewhere cost nothing here and a fresh mount picks up the latest data.
   export let analysisMetrics: DailyMetricRow[]
   export let analysisEntries: TagEntryRow[]
-  // Fallbacks for the discovery anchor date when the analysis sample is
-  // empty: the newest imported day, then the sync range end date.
+  // Fallback for the discovery anchor date when the analysis sample is
+  // empty: the newest imported day. Manual exports lag behind today, so the
+  // anchor sticks to the last day with data.
   export let dailyMetrics: DailyMetricRow[]
-  export let endDate: string
   // Bound to the parent so the selection survives switching views.
   export let selectedInsightKey: string
 
@@ -68,7 +69,9 @@
     allInsights.find((insight) => insightKey(insight) === selectedInsightKey) ??
     allInsights[0]
   $: latestMetricDate =
-    analysisMetrics.at(-1)?.date ?? dailyMetrics.at(-1)?.date ?? endDate
+    analysisMetrics.at(-1)?.date ??
+    dailyMetrics.at(-1)?.date ??
+    formatInputDate(new Date())
   $: discoveries = getTagDiscoveries(analysisEntries, latestMetricDate)
   $: selectedComparisons = selectedInsight
     ? insightComparisonMetrics.map(
