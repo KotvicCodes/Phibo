@@ -14,13 +14,16 @@
   import {
     deleteTagEntries,
     findDuplicateTagEntryIds,
+    renameTag,
+    resolveUserTagLabel,
     restoreTagEntriesExact
   } from "../lib/tags/store"
   import type { ExploreMetricKey } from "../lib/analysis/correlations"
   import { exploreMetricCategories } from "./exploreCharts"
   import { trapFocus } from "./focusTrap"
   import { formatInputDate } from "./format"
-  import type { TagTimingMode } from "./tagDays"
+  import { buildAllKnownTags, type TagTimingMode } from "./tagDays"
+  import { formatTagLabel, sortTagsForDisplay } from "./tagLabels"
 
   // The data tables are bound so backup restores, duplicate cleanups, and
   // the local data wipe update the whole dashboard in place.
@@ -47,9 +50,16 @@
   export let cycleExploreMetricPreference: (key: ExploreMetricKey) => void
   // Lets the parent reset its import messaging after a local data wipe.
   export let onDataDeleted: () => void
+  // Lets the parent rewrite settings that store tag labels, like the
+  // Optimal overrides and the Tags view filter selections.
+  export let onTagRenamed: (fromLabel: string, toLabel: string) => void
 
   let tagBackupMessage = ""
   let isRestoringTagBackup = false
+  let renameTargetTag = ""
+  let renameInput = ""
+  let renameMessage = ""
+  let isRenamingTag = false
   let isDedupeConfirmOpen = false
   let isDeduping = false
   let dedupeMessage = ""
@@ -59,6 +69,11 @@
 
   $: hasLocalData = dailyMetrics.length > 0
   $: duplicateTagIds = findDuplicateTagEntryIds(tagEntries)
+  // Every label ever seen, including fully deleted ones, so a tag whose last
+  // instance is crossed out can still be renamed.
+  $: allKnownTags = sortTagsForDisplay(
+    buildAllKnownTags(tagEntries, deletedTagRows)
+  )
 
   async function reloadTagEntries() {
     tagEntries = await db.tagEntries.orderBy("date").toArray()
@@ -135,6 +150,71 @@
           : "Could not restore that backup file."
     } finally {
       isRestoringTagBackup = false
+    }
+  }
+
+  function selectRenameTarget() {
+    renameInput = renameTargetTag
+    renameMessage = ""
+  }
+
+  async function applyTagRename() {
+    if (!renameTargetTag) {
+      return
+    }
+
+    const trimmed = renameInput.replace(/\s+/g, " ").trim()
+
+    if (!trimmed) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    // A case-only change keeps the typed casing; anything else adopts an
+    // existing label's casing or canonicalizes like the tag picker does.
+    const label =
+      trimmed.toLocaleLowerCase() === renameTargetTag.toLocaleLowerCase()
+        ? trimmed
+        : resolveUserTagLabel(trimmed, allKnownTags)
+
+    if (!label) {
+      renameMessage = "Type a new tag name first."
+      return
+    }
+
+    if (label === renameTargetTag) {
+      renameMessage = "That is already the tag's name."
+      return
+    }
+
+    const isMerge = allKnownTags.some(
+      (tag) =>
+        tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
+        tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
+    )
+
+    isRenamingTag = true
+
+    try {
+      const { renamedCount, mergedCount } = await renameTag(
+        renameTargetTag,
+        label
+      )
+
+      onTagRenamed(renameTargetTag, label)
+      await reloadTagEntries()
+      renameMessage = isMerge
+        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
+          (mergedCount > 0
+            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
+            : "")
+        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
+      renameTargetTag = ""
+      renameInput = ""
+    } catch {
+      renameMessage = "Could not rename that tag. Try again."
+    } finally {
+      isRenamingTag = false
     }
   }
 
@@ -413,6 +493,47 @@
               />
             </label>
           </div>
+        </div>
+
+        <div class="setting-row rename-tag-setting">
+          <div>
+            <strong>Rename a tag</strong>
+            <p>
+              Renames a tag everywhere, including crossed-out entries.
+              Renaming to an existing tag merges the two.
+            </p>
+            {#if renameMessage}
+              <p class="tag-backup-message" role="status">{renameMessage}</p>
+            {/if}
+          </div>
+          <form
+            class="rename-tag-form"
+            on:submit|preventDefault={applyTagRename}
+          >
+            <select
+              aria-label="Tag to rename"
+              bind:value={renameTargetTag}
+              on:change={selectRenameTarget}
+            >
+              <option value="">Choose a tag</option>
+              {#each allKnownTags as tag (tag)}
+                <option value={tag}>{formatTagLabel(tag)}</option>
+              {/each}
+            </select>
+            <input
+              type="text"
+              aria-label="New tag name"
+              placeholder="New name"
+              disabled={!renameTargetTag}
+              bind:value={renameInput}
+            />
+            <button
+              type="submit"
+              disabled={isRenamingTag || !renameTargetTag}
+            >
+              {isRenamingTag ? "Renaming" : "Rename"}
+            </button>
+          </form>
         </div>
 
         <div class="setting-row dedupe-setting">
@@ -751,6 +872,61 @@
 
   .setting-row.tag-backup-setting {
     align-items: start;
+  }
+
+  .setting-row.rename-tag-setting {
+    align-items: start;
+    border-top: 0;
+  }
+
+  .rename-tag-form {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    min-width: min(24rem, 100%);
+  }
+
+  .rename-tag-form select,
+  .rename-tag-form input {
+    background: #fbf7ef;
+    border: 1px solid #cdcfc2;
+    border-radius: 8px;
+    font: inherit;
+    height: auto;
+    min-width: 0;
+    padding: 0.5rem 0.65rem;
+    width: auto;
+  }
+
+  .rename-tag-form select:disabled,
+  .rename-tag-form input:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .rename-tag-form button {
+    appearance: none;
+    background: #1d2a22;
+    border: 1px solid #1d2a22;
+    border-radius: 8px;
+    color: #f8f3ea;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    padding: 0.5rem 0.9rem;
+    white-space: nowrap;
+  }
+
+  .rename-tag-form button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  @media (max-width: 720px) {
+    .rename-tag-form {
+      grid-template-columns: 1fr;
+    }
   }
 
   .tag-backup-message {

@@ -494,6 +494,15 @@
     importMessage = "Import your Oura personal data export to begin."
   }
 
+  // Settings that store tag labels must follow a rename: the Optimal
+  // include/exclude overrides and the Tags view filter selections.
+  function handleTagRenamed(fromLabel: string, toLabel: string) {
+    renameOptimalOverrideTags(fromLabel, toLabel)
+    tagsFilterTags = tagsFilterTags.filter(
+      (tag) => tag.toLocaleLowerCase() !== fromLabel.toLocaleLowerCase()
+    )
+  }
+
   async function loadLocalOuraData() {
     const [savedMetrics, savedTags, savedDeletedRows] = await Promise.all([
       db.dailyMetrics.orderBy("date").toArray(),
@@ -633,7 +642,6 @@
       {showTagCounts}
       {tagSortMode}
       {setTagSortMode}
-      onTagRenamed={renameOptimalOverrideTags}
     />
   {:else}
     <SettingsView
@@ -653,6 +661,7 @@
       {updateTagTimingMode}
       {cycleExploreMetricPreference}
       onDataDeleted={handleDataDeleted}
+      onTagRenamed={handleTagRenamed}
     />
   {/if}
 </main>
