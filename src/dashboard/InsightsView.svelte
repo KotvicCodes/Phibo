@@ -55,8 +55,8 @@
   // empty: the newest imported day, then the sync range end date.
   export let dailyMetrics: DailyMetricRow[]
   export let endDate: string
-
-  let selectedInsightKey = ""
+  // Bound to the parent so the selection survives switching views.
+  export let selectedInsightKey: string
 
   $: correlations = calculateTagCorrelations(analysisMetrics, analysisEntries)
   $: insights = getRankedTagInsights(correlations)
