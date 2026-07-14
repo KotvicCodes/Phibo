@@ -405,7 +405,13 @@
                         : `height: ${day.barHeight}%`}
                     ></span>
                   </span>
-                  <small class="strip-label">{day.monthLabel ?? ""}</small>
+                  <small
+                    class="strip-label"
+                    class:year={day.labelKind === "year"}
+                    class:day-hint={day.labelKind === "day"}
+                  >
+                    {day.label ?? ""}
+                  </small>
                 </button>
               {/each}
               <div
@@ -857,6 +863,15 @@
     text-align: left;
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .strip-label.year {
+    color: #17201b;
+  }
+
+  .strip-label.day-hint {
+    color: #9ca69a;
+    font-weight: 700;
   }
 
   .strip-day-panel {
