@@ -81,15 +81,17 @@
   export let exploreFavoriteMetrics: ExploreMetricKey[]
   export let exploreHiddenMetrics: ExploreMetricKey[]
 
+  // In-view selections bound to the parent so they survive switching views.
+  export let selectedExploreDate: string
+  export let hoveredExploreDate: string
+  export let openExploreImpactCategories: ExploreMetricCategory[]
+
   let exploreChartMode: ChartMode = "impact"
   let tagSearch = ""
-  let selectedExploreDate = ""
-  let hoveredExploreDate = ""
   let selectedExploreTags: string[] = []
   let selectedXMetric: ExploreMetricKey = "sleepScore"
   let selectedYMetric: ExploreMetricKey = "readinessScore"
   let selectedExploreTagCalendarRange = "last365"
-  let openExploreImpactCategories: ExploreMetricCategory[] = []
   let tagSearchInput: HTMLInputElement | null = null
   // Selections are saved reactively, so restoring must finish first or the
   // initial defaults would overwrite the stored values.

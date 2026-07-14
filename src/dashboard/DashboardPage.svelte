@@ -5,6 +5,7 @@
     getAvailableTags,
     getTagNightCounts,
     withDerivedMetricFields,
+    type ExploreMetricCategory,
     type ExploreMetricKey
   } from "../lib/analysis/correlations"
   import { db } from "../lib/db"
@@ -72,6 +73,12 @@
   // Ids of the tombstones written by the last cleanup run; persisted so the
   // undo offer survives closing or reloading the dashboard.
   let lastDedupeIds: string[] = []
+  // In-view selections that live here only so they survive switching views,
+  // like the Tags view selection does. Not persisted.
+  let selectedExploreDate = ""
+  let hoveredExploreDate = ""
+  let openExploreImpactCategories: ExploreMetricCategory[] = []
+  let selectedInsightKey = ""
   // Guards the reactive save below, like the Explore settings restore.
   let dedupeUndoRestored = false
 
@@ -610,6 +617,7 @@
       analysisEntries={effectiveTagEntries}
       {dailyMetrics}
       {endDate}
+      bind:selectedInsightKey
     />
   {:else if activeView === "explore"}
     <ExploreView
@@ -622,6 +630,9 @@
       {setTagSortMode}
       {exploreFavoriteMetrics}
       {exploreHiddenMetrics}
+      bind:selectedExploreDate
+      bind:hoveredExploreDate
+      bind:openExploreImpactCategories
     />
   {:else if activeView === "optimal"}
     <OptimalView
