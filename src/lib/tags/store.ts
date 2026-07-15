@@ -79,29 +79,16 @@ export function findDuplicateTagEntryIds(entries: TagEntryRow[]) {
 }
 
 // Renames every entry carrying a label, including deletion tombstone
-// snapshots so crossed-out tags follow the rename. Renaming onto an existing
-// label merges the two tags.
+// snapshots so crossed-out tags follow the rename. The Settings UI blocks
+// renaming onto another tag's name, so this never has to merge two tags.
 export async function renameTag(fromLabel: string, toLabel: string) {
   const fromKey = fromLabel.toLocaleLowerCase()
-  const toKey = toLabel.toLocaleLowerCase()
   let renamedCount = 0
-  let mergedCount = 0
 
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
-    // Days that already carry the target label before the rename. Renamed
-    // entries landing on these days would become same-day duplicates.
-    const targetDays = new Set(
-      (await db.tagEntries.toArray())
-        .filter((entry) => entry.tag.toLocaleLowerCase() === toKey)
-        .map((entry) => entry.date)
-    )
-
-    const renamedEntries: TagEntryRow[] = []
-
     await db.tagEntries.toCollection().modify((entry) => {
       if (entry.tag.toLocaleLowerCase() === fromKey) {
         entry.tag = toLabel
-        renamedEntries.push({ ...entry })
         renamedCount += 1
       }
     })
@@ -111,30 +98,9 @@ export async function renameTag(fromLabel: string, toLabel: string) {
         row.entry.tag = toLabel
       }
     })
-
-    // Collapse merge duplicates: a renamed entry on a day that already had
-    // the target tag is removed, keeping the day's original entry. Deletion
-    // follows the usual rules, tombstones for Oura rows so a re-import
-    // cannot bring them back, hard delete for user rows. Pre-existing
-    // duplicates of either label are left alone; only the opt-in cleanup in
-    // Settings touches those.
-    const deletedAt = new Date().toISOString()
-
-    for (const entry of renamedEntries) {
-      if (!targetDays.has(entry.date)) {
-        continue
-      }
-
-      await db.tagEntries.delete(entry.id)
-      mergedCount += 1
-
-      if (entry.source !== "user") {
-        await db.deletedTagIds.put({ id: entry.id, deletedAt, entry })
-      }
-    }
   })
 
-  return { renamedCount, mergedCount }
+  return { renamedCount }
 }
 
 // Oura keeps the app's single per-day note on the enhanced tag rows of that
