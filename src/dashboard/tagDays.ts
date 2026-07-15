@@ -231,20 +231,20 @@ export function buildTagStripDays(
   for (let date = start; date <= today; date = shiftDate(date, 1)) {
     const day = dayByDate.get(date)
     const count = day ? day.activeGroups.length : 0
-    // January 1 anchors the year, other month firsts keep the month name,
-    // and the 10th and 20th get small day hints so a bar is locatable
-    // inside a month without crowding the 30px slots.
+    // Every bar carries its day-of-month number so any bar is locatable in
+    // time. The first of a month replaces that number with the month name,
+    // and January 1 with the year, so month and year boundaries stand out.
     const dayOfMonth = date.slice(8)
-    let label: string | null = null
-    let labelKind: TagStripDay["labelKind"] = null
+    let label: string
+    let labelKind: TagStripDay["labelKind"]
 
     if (dayOfMonth === "01") {
       const isJanuary = date.slice(5, 7) === "01"
 
       label = isJanuary ? date.slice(0, 4) : formatMonth(date)
       labelKind = isJanuary ? "year" : "month"
-    } else if (dayOfMonth === "10" || dayOfMonth === "20") {
-      label = dayOfMonth
+    } else {
+      label = String(Number(dayOfMonth))
       labelKind = "day"
     }
 
