@@ -225,28 +225,28 @@
       return
     }
 
-    const isMerge = allKnownTags.some(
+    // Renaming onto another tag's name would merge the two, which collapses
+    // same-day duplicates by deleting entries and cannot be undone by
+    // renaming back. Block it instead of merging silently.
+    const takenBy = allKnownTags.find(
       (tag) =>
         tag.toLocaleLowerCase() === label.toLocaleLowerCase() &&
         tag.toLocaleLowerCase() !== renameTargetTag.toLocaleLowerCase()
     )
 
+    if (takenBy) {
+      renameMessage = `Another tag is already named ${formatTagLabel(takenBy)}.`
+      return
+    }
+
     isRenamingTag = true
 
     try {
-      const { renamedCount, mergedCount } = await renameTag(
-        renameTargetTag,
-        label
-      )
+      const { renamedCount } = await renameTag(renameTargetTag, label)
 
       onTagRenamed(renameTargetTag, label)
       await reloadTagEntries()
-      renameMessage = isMerge
-        ? `Renamed ${renamedCount} entries and merged into ${formatTagLabel(label)}.` +
-          (mergedCount > 0
-            ? ` Collapsed ${mergedCount} same-day ${mergedCount === 1 ? "duplicate" : "duplicates"}.`
-            : "")
-        : `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
+      renameMessage = `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
       renameTargetTag = ""
       renameInput = ""
     } catch {
@@ -541,8 +541,8 @@
           <div>
             <strong>Rename tags</strong>
             <p>
-              Renames a tag everywhere, including crossed-out entries.
-              Renaming to an existing tag merges the two.
+              Renames a tag everywhere, including crossed-out entries. Names
+              already used by another tag are not allowed.
             </p>
           </div>
           <div class="delete-data-actions">
@@ -721,8 +721,8 @@
               </button>
             </div>
             <p class="rename-modal-hint">
-              Pick a tag, then type its new name. Renaming to an existing tag
-              merges the two.
+              Pick a tag, then type its new name. Names already used by
+              another tag are not allowed.
             </p>
             <input
               class="tag-search"
