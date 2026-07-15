@@ -19,12 +19,13 @@ covers the move:
       log respond to clicks.
 - [ ] Optimal: target switch recalculates, removing and adding tags updates
       the cards, reset works, overrides survive a reload.
-- [ ] Tags: strip, day panel, filter, log, picker, and rename all behave as
-      covered by the sections below.
+- [ ] Tags: strip, day panel, filter, log, and picker all behave as covered
+      by the sections below.
 - [ ] Settings: every row works as covered by the sections below, and the
       analysis toggles still change Insights and Explore results.
-- [ ] Rename a tag that has an Optimal include or exclude override and
-      confirm the override follows the new name on the Optimal view.
+- [ ] Rename a tag (Settings, Rename tags) that has an Optimal include or
+      exclude override and confirm the override follows the new name on the
+      Optimal view.
 
 ## Tag deletion and resurrection protection
 
@@ -61,21 +62,25 @@ covers the move:
 - [ ] Tabbing through chips and buttons shows a visible focus ring; clicking
       with the mouse does not.
 
-## Popup rename mode
+## Settings rename popup
 
-- [ ] Switch the popup to Rename, pick a tag, and rename it; confirm the new
-      name shows everywhere, including crossed-out entries and Explore.
-- [ ] Rename a tag onto an existing tag's name and confirm the two merge,
-      with the result message reporting the entry count.
+- [ ] Open Rename tags in Settings, pick a chip, and rename it; confirm the
+      new name shows everywhere, including crossed-out entries and Explore.
+- [ ] Try renaming a tag to another tag's name and confirm it is blocked
+      with a message instead of merging; try again with different casing
+      (for example "SICK" when "Sick" exists) and confirm that is blocked
+      too.
 - [ ] Do a case-only rename (for example "sick" to "Sick") and confirm the
       new casing is kept verbatim.
 - [ ] Rename a tag that is selected in the daily log filter and confirm the
       stale filter selection is dropped.
-- [ ] On a day that has both tags, rename one onto the other and confirm the
-      day ends up with a single chip, no duplicate or count badge, and the
-      message reports the collapsed same-day duplicates.
-- [ ] Merge an Oura tag away on a shared day, then re-import the same
-      `enhancedtag.csv` and confirm the merged-away entry does not come back.
+- [ ] With a large tag set, confirm the chip area scrolls on its own while
+      the search box and the rename input stay visible.
+- [ ] The search box filters the chips; clicking a selected chip again
+      deselects it and hides the rename input.
+- [ ] Escape and backdrop click close the popup, focus stays trapped inside
+      while it is open, and closing returns focus to the button that opened
+      it.
 
 ## Day note
 
@@ -85,6 +90,27 @@ covers the move:
       comment) and confirm the Day note section opens automatically with it.
 - [ ] Confirm the Day note section only appears when the day has active tags,
       and that one note covers the whole day rather than one per tag.
+- [ ] Write a day note, then add another tag to that day and confirm the new
+      tag's entry carries the note too (export a tag backup and check the
+      new entry's comment field matches the day's other entries).
+
+## View-switch persistence
+
+- [ ] On Explore, select a calendar day, hover state aside, and expand an
+      impact group; switch to another view and back and confirm the selected
+      day and expanded groups are still there.
+- [ ] On Insights, click an insight, switch views, and confirm the same
+      insight is still selected on return.
+- [ ] Trigger a Settings message (for example export a backup), switch views,
+      and confirm stale messages do not linger incorrectly on return.
+
+## Delete local data scope
+
+- [ ] Set an Optimal include or exclude override, select Explore tags, and
+      set a daily log filter; delete local data in Settings and confirm all
+      of those are gone too, then re-import and confirm none of them
+      silently re-apply.
+- [ ] Confirm a saved Oura API key still survives the wipe.
 
 ## Duplicate tag grouping and cleanup
 
@@ -99,10 +125,11 @@ covers the move:
 - [ ] Choose the backup path and confirm a tag backup downloads before the
       removal; if the backup download fails, nothing is removed.
 - [ ] After a removal, the Undo button restores the removed duplicates even
-      though the same tag is still active on those days; the Undo offer goes
-      away once the dashboard is closed or reloaded.
+      though the same tag is still active on those days.
 - [ ] After a removal, switch to another view and back to Settings and
       confirm the Undo button is still offered and still works.
+- [ ] After a removal, reload the dashboard and confirm the Undo button is
+      still offered in Settings and still restores the removed duplicates.
 
 ## Day strip
 
@@ -112,8 +139,10 @@ covers the move:
       keeps the same day open in the list, with no page scrolling.
 - [ ] Mouse wheel scrolls the strip horizontally at a damped speed.
 - [ ] With a tag filter active, non-matching days dim in the strip.
-- [ ] Bars at month boundaries stay separated and month labels render under
-      the first of each month.
+- [ ] Every bar shows its day number centered underneath, the first of each
+      month shows the month name instead, and January 1 shows the year.
+- [ ] Bars at month boundaries stay separated and the labels do not crowd or
+      overlap at the wider 38px slots.
 - [ ] Crossed-out (deleted) entries do not count toward strip bar heights.
 
 ## Tag filter

@@ -127,10 +127,10 @@
   }
 
   // The strip renders only the days near the viewport. Each day occupies a
-  // fixed 30px slot (26px button plus 4px spacing), so the visible index
+  // fixed 38px slot (34px button plus 4px spacing), so the visible index
   // range is plain arithmetic on scrollLeft, and spacer divs keep the total
   // scroll width so the scrollbar and positions stay exact.
-  const stripDaySlot = 30
+  const stripDaySlot = 38
   const stripWindowBuffer = 15
 
   let tagStripElement: HTMLElement | null = null
@@ -800,13 +800,13 @@
     flex: 0 0 auto;
     gap: 0.2rem;
     /* The 4px spacing lives on the button instead of a flex gap on the
-       strip so each day occupies a fixed 30px slot next to the spacers. */
+       strip so each day occupies a fixed 38px slot next to the spacers. */
     margin-right: 4px;
     /* Keeps wide month labels from stretching their column, which made the
        month-start bar merge with its neighbor. */
     min-width: 0;
     padding: 2px 2px 0;
-    width: 26px;
+    width: 34px;
   }
 
   .strip-day:hover {
