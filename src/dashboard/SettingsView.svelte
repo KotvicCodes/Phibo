@@ -63,6 +63,9 @@
   let renameTargetTag = ""
   let renameInput = ""
   let renameMessage = ""
+  // Distinguishes a rejected rename from a successful one so the two do not
+  // share the same neutral styling in the popup.
+  let renameError = false
   let isRenamingTag = false
   let isRenameModalOpen = false
   let renameSearch = ""
@@ -166,6 +169,7 @@
     renameTargetTag = ""
     renameInput = ""
     renameMessage = ""
+    renameError = false
   }
 
   function closeRenameModal() {
@@ -194,6 +198,7 @@
     }
 
     renameMessage = ""
+    renameError = false
   }
 
   async function applyTagRename() {
@@ -205,6 +210,7 @@
 
     if (!trimmed) {
       renameMessage = "Type a new tag name first."
+      renameError = true
       return
     }
 
@@ -217,11 +223,13 @@
 
     if (!label) {
       renameMessage = "Type a new tag name first."
+      renameError = true
       return
     }
 
     if (label === renameTargetTag) {
       renameMessage = "That is already the tag's name."
+      renameError = true
       return
     }
 
@@ -236,6 +244,7 @@
 
     if (takenBy) {
       renameMessage = `Another tag is already named ${formatTagLabel(takenBy)}.`
+      renameError = true
       return
     }
 
@@ -247,10 +256,12 @@
       onTagRenamed(renameTargetTag, label)
       await reloadTagEntries()
       renameMessage = `Renamed ${renamedCount} entries to ${formatTagLabel(label)}.`
+      renameError = false
       renameTargetTag = ""
       renameInput = ""
     } catch {
       renameMessage = "Could not rename that tag. Try again."
+      renameError = true
     } finally {
       isRenamingTag = false
     }
@@ -745,7 +756,13 @@
               {/each}
             </div>
             {#if renameMessage}
-              <p class="tag-backup-message" role="status">{renameMessage}</p>
+              <p
+                class="tag-backup-message"
+                class:is-error={renameError}
+                role="status"
+              >
+                {renameMessage}
+              </p>
             {/if}
             {#if renameTargetTag}
               <form
@@ -1056,6 +1073,10 @@
   .tag-backup-message {
     color: #17201b;
     font-weight: 700;
+  }
+
+  .tag-backup-message.is-error {
+    color: #8a3f2f;
   }
 
   .tag-backup-actions {
