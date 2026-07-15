@@ -22,7 +22,11 @@
   import { exploreMetricCategories } from "./exploreCharts"
   import { trapFocus } from "./focusTrap"
   import { formatInputDate } from "./format"
-  import { buildAllKnownTags, type TagTimingMode } from "./tagDays"
+  import {
+    buildAllKnownTags,
+    filterTagsByQuery,
+    type TagTimingMode
+  } from "./tagDays"
   import { formatTagLabel, sortTagsForDisplay } from "./tagLabels"
 
   // The data tables are bound so backup restores, duplicate cleanups, and
@@ -60,6 +64,8 @@
   let renameInput = ""
   let renameMessage = ""
   let isRenamingTag = false
+  let isRenameModalOpen = false
+  let renameSearch = ""
   let isDedupeConfirmOpen = false
   let isDeduping = false
   let dedupeMessage = ""
@@ -74,6 +80,7 @@
   $: allKnownTags = sortTagsForDisplay(
     buildAllKnownTags(tagEntries, deletedTagRows)
   )
+  $: filteredRenameTags = filterTagsByQuery(allKnownTags, renameSearch)
 
   async function reloadTagEntries() {
     tagEntries = await db.tagEntries.orderBy("date").toArray()
@@ -153,8 +160,39 @@
     }
   }
 
-  function selectRenameTarget() {
-    renameInput = renameTargetTag
+  function openRenameModal() {
+    isRenameModalOpen = true
+    renameSearch = ""
+    renameTargetTag = ""
+    renameInput = ""
+    renameMessage = ""
+  }
+
+  function closeRenameModal() {
+    if (isRenamingTag) {
+      return
+    }
+
+    isRenameModalOpen = false
+  }
+
+  function handleRenameBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      closeRenameModal()
+    }
+  }
+
+  // Clicking a chip toggles it off if it is already the target, otherwise
+  // picks it and pre-fills the input with its current label.
+  function selectRenameChip(tag: string) {
+    if (renameTargetTag === tag) {
+      renameTargetTag = ""
+      renameInput = ""
+    } else {
+      renameTargetTag = tag
+      renameInput = tag
+    }
+
     renameMessage = ""
   }
 
@@ -236,6 +274,10 @@
   function handleSettingsKeydown(event: KeyboardEvent) {
     if (event.key === "Escape" && isDedupeConfirmOpen && !isDeduping) {
       closeDedupeConfirm()
+    }
+
+    if (event.key === "Escape" && isRenameModalOpen && !isRenamingTag) {
+      closeRenameModal()
     }
   }
 
@@ -497,43 +539,22 @@
 
         <div class="setting-row rename-tag-setting">
           <div>
-            <strong>Rename a tag</strong>
+            <strong>Rename tags</strong>
             <p>
               Renames a tag everywhere, including crossed-out entries.
               Renaming to an existing tag merges the two.
             </p>
-            {#if renameMessage}
-              <p class="tag-backup-message" role="status">{renameMessage}</p>
-            {/if}
           </div>
-          <form
-            class="rename-tag-form"
-            on:submit|preventDefault={applyTagRename}
-          >
-            <select
-              aria-label="Tag to rename"
-              bind:value={renameTargetTag}
-              on:change={selectRenameTarget}
-            >
-              <option value="">Choose a tag</option>
-              {#each allKnownTags as tag (tag)}
-                <option value={tag}>{formatTagLabel(tag)}</option>
-              {/each}
-            </select>
-            <input
-              type="text"
-              aria-label="New tag name"
-              placeholder="New name"
-              disabled={!renameTargetTag}
-              bind:value={renameInput}
-            />
+          <div class="delete-data-actions">
             <button
-              type="submit"
-              disabled={isRenamingTag || !renameTargetTag}
+              type="button"
+              class="delete-data-button"
+              disabled={allKnownTags.length === 0}
+              on:click={openRenameModal}
             >
-              {isRenamingTag ? "Renaming" : "Rename"}
+              {allKnownTags.length === 0 ? "No tags" : "Rename tags"}
             </button>
-          </form>
+          </div>
         </div>
 
         <div class="setting-row dedupe-setting">
@@ -671,6 +692,77 @@
                 Never mind
               </button>
             </div>
+          </section>
+        </div>
+      {/if}
+
+      {#if isRenameModalOpen}
+        <div
+          class="tag-picker-backdrop"
+          role="presentation"
+          on:click={handleRenameBackdropClick}
+        >
+          <section
+            class="rename-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rename tags"
+            use:trapFocus
+          >
+            <div class="rename-modal-head">
+              <h2>Rename tags</h2>
+              <button
+                type="button"
+                class="rename-modal-close"
+                aria-label="Close"
+                on:click={closeRenameModal}
+              >
+                ×
+              </button>
+            </div>
+            <p class="rename-modal-hint">
+              Pick a tag, then type its new name. Renaming to an existing tag
+              merges the two.
+            </p>
+            <input
+              class="tag-search"
+              type="search"
+              placeholder="Search tags"
+              aria-label="Search tags"
+              bind:value={renameSearch}
+            />
+            <div class="rename-modal-tags tag-picker">
+              {#each filteredRenameTags as tag (tag)}
+                <button
+                  type="button"
+                  class:active={renameTargetTag === tag}
+                  on:click={() => selectRenameChip(tag)}
+                >
+                  {formatTagLabel(tag)}
+                </button>
+              {:else}
+                <p class="empty-state">No tags match your search.</p>
+              {/each}
+            </div>
+            {#if renameMessage}
+              <p class="tag-backup-message" role="status">{renameMessage}</p>
+            {/if}
+            {#if renameTargetTag}
+              <form
+                class="rename-modal-form"
+                on:submit|preventDefault={applyTagRename}
+              >
+                <input
+                  type="text"
+                  aria-label="New tag name"
+                  placeholder="New name"
+                  bind:value={renameInput}
+                />
+                <button type="submit" disabled={isRenamingTag}>
+                  {isRenamingTag ? "Renaming" : "Rename"}
+                </button>
+              </form>
+            {/if}
           </section>
         </div>
       {/if}
@@ -880,32 +972,69 @@
     border-top: 0;
   }
 
-  .rename-tag-form {
+  .rename-modal {
+    background: #fbf7ef;
+    border-radius: 12px;
+    box-shadow: 0 18px 48px rgba(23, 32, 27, 0.28);
     display: grid;
-    gap: 0.55rem;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-    min-width: min(24rem, 100%);
+    gap: 0.7rem;
+    max-height: min(80vh, 40rem);
+    max-width: 520px;
+    padding: 1rem;
+    width: 100%;
   }
 
-  .rename-tag-form select,
-  .rename-tag-form input {
+  .rename-modal-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .rename-modal-head h2 {
+    font-size: 1.15rem;
+  }
+
+  .rename-modal-close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: #6f786f;
+    cursor: pointer;
+    font-size: 1.4rem;
+    line-height: 1;
+    padding: 0.1rem 0.4rem;
+  }
+
+  .rename-modal-hint {
+    color: #6f786f;
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  /* Scrolls on its own so a large tag set never pushes the rename input off
+     the modal. */
+  .rename-modal-tags {
+    max-height: 40vh;
+    overflow-y: auto;
+    padding: 0.1rem;
+  }
+
+  .rename-modal-form {
+    display: grid;
+    gap: 0.55rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .rename-modal-form input {
     background: #fbf7ef;
     border: 1px solid #cdcfc2;
     border-radius: 8px;
     font: inherit;
-    height: auto;
     min-width: 0;
     padding: 0.5rem 0.65rem;
-    width: auto;
   }
 
-  .rename-tag-form select:disabled,
-  .rename-tag-form input:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-  }
-
-  .rename-tag-form button {
+  .rename-modal-form button {
     appearance: none;
     background: #1d2a22;
     border: 1px solid #1d2a22;
@@ -919,15 +1048,9 @@
     white-space: nowrap;
   }
 
-  .rename-tag-form button:disabled {
+  .rename-modal-form button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
-  }
-
-  @media (max-width: 720px) {
-    .rename-tag-form {
-      grid-template-columns: 1fr;
-    }
   }
 
   .tag-backup-message {
