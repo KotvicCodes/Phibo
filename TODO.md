@@ -8,9 +8,11 @@ it is done rather than checking it off.
    end, so the API-dependent tests in TESTING.md are on hold until this
    lands.
 
-2. Upgrade the data analysis from simple averages to a smarter model
-   (discussed 2026-07-16: candidates range from regularized regression to a
-   small neural network; must stay local-first and explainable).
+2. Feed the v0.4.0 adjusted tag effects (ridge model in
+   `src/lib/analysis/tagEffects.ts`) into the Optimal and Explore views,
+   which still run on simple averages. Optimal needs its damped/saturated
+   estimate math rethought around regression coefficients; Explore's impact
+   effect sizes could use the same adjusted effects and confidence levels.
 
 3. Rewrite the project as a webapp instead of a browser extension. The
    extension form factor adds no value for a local-first dashboard.
