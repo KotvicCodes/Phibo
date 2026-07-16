@@ -157,6 +157,19 @@ describe("fitRidge", () => {
     )
   })
 
+  it("skipping standard errors changes nothing but the errors", () => {
+    const { rows, outcomes } = synthetic(20, 300, [5, -3, 2], 70, 6)
+    const full = fitRidge(rows, outcomes, { lambda: 4 })!
+    const fast = fitRidge(rows, outcomes, {
+      lambda: 4,
+      computeStandardErrors: false
+    })!
+    expect(fast.coefficients).toEqual(full.coefficients)
+    expect(fast.intercept).toBe(full.intercept)
+    expect(fast.standardErrors.every((value) => value === 0)).toBe(true)
+    expect(full.standardErrors.some((value) => value > 0)).toBe(true)
+  })
+
   it("returns null on empty input", () => {
     expect(fitRidge([], [], { lambda: 1 })).toBeNull()
     expect(fitRidge([[]], [70], { lambda: 1 })).toBeNull()
