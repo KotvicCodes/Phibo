@@ -6,6 +6,12 @@
     type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
+  import {
+    confidenceFromPValue,
+    hashSeed,
+    permutationTestDelta,
+    type ConfidenceLevel
+  } from "../lib/analysis/stats"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
     insightComparisonMetrics,
@@ -43,6 +49,11 @@
     label: string
     unit: string
     value: string
+  }
+
+  interface InsightConfidence {
+    level: ConfidenceLevel
+    pValue: number | null
   }
 
   const scoreWeekDays = 7
@@ -86,8 +97,20 @@
         })
       )
     : []
+  // Permutation confidence runs only for the handful of displayed insights
+  // (at most eight), on the same analysis sample as the shown deltas, so the
+  // label always matches the number next to it.
+  $: insightConfidence = buildInsightConfidence(
+    allInsights,
+    analysisMetrics,
+    analysisEntries
+  )
   $: selectedStats = selectedInsight
-    ? createInsightStats(selectedInsight, analysisMetrics)
+    ? createInsightStats(
+        selectedInsight,
+        analysisMetrics,
+        insightConfidence.get(insightKey(selectedInsight)) ?? null
+      )
     : []
   $: summaries = [
     createSummary("Sleep", "sleepScore", analysisMetrics),
@@ -142,9 +165,64 @@
     return Math.round((currentAverage - previousAverage) * 10) / 10
   }
 
+  function buildInsightConfidence(
+    items: TagInsight[],
+    metrics: DailyMetricRow[],
+    entries: TagEntryRow[]
+  ) {
+    const tagsByDate = buildTagsByDate(entries)
+    const map = new Map<string, InsightConfidence>()
+    for (const item of items) {
+      const tagged: number[] = []
+      const untagged: number[] = []
+      for (const day of metrics) {
+        const value = day[item.metric]
+        if (value == null) continue
+        if ((tagsByDate[day.date] ?? []).includes(item.tag)) {
+          tagged.push(value)
+        } else {
+          untagged.push(value)
+        }
+      }
+      // Stable seed per tag, metric, and sample size keeps the label
+      // deterministic across reloads of the same data.
+      const result = permutationTestDelta(tagged, untagged, {
+        seed: hashSeed(item.tag, item.metric, metrics.length)
+      })
+      map.set(insightKey(item), {
+        level: confidenceFromPValue(
+          result?.pValue ?? null,
+          tagged.length,
+          untagged.length
+        ),
+        pValue: result?.pValue ?? null
+      })
+    }
+    return map
+  }
+
+  function confidenceBadgeLabel(level: ConfidenceLevel) {
+    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
+  }
+
+  function confidenceHelper(
+    confidence: InsightConfidence | null,
+    daysWithTag: number,
+    daysWithoutTag: number
+  ) {
+    if (confidence?.pValue == null) {
+      return `${daysWithTag} of ${daysWithTag + daysWithoutTag} nights tagged`
+    }
+    const percent = Math.round(confidence.pValue * 100)
+    return percent < 1
+      ? "chance alone shows a gap this size under 1% of the time"
+      : `chance alone shows a gap this size about ${percent}% of the time`
+  }
+
   function createInsightStats(
     item: TagInsight,
-    metrics: DailyMetricRow[]
+    metrics: DailyMetricRow[],
+    confidence: InsightConfidence | null
   ): InsightStat[] {
     const correlation = correlations.find((correlation) => correlation.tag === item.tag)
     const daysWithoutTag =
@@ -200,10 +278,10 @@
         value: `${daysWithoutTag}`
       },
       {
-        helper: `${item.daysWithTag} of ${item.daysWithTag + daysWithoutTag} nights tagged`,
+        helper: confidenceHelper(confidence, item.daysWithTag, daysWithoutTag),
         label: "Confidence",
         unit: "",
-        value: insightConfidenceLabel(item.daysWithTag, daysWithoutTag)
+        value: confidenceBadgeLabel(confidence?.level ?? "low")
       },
       {
         helper: `${metricLabel(item.metric)} difference on tagged nights`,
@@ -213,21 +291,6 @@
       },
       ...metricStats
     ]
-  }
-
-  function insightConfidenceLabel(daysWithTag: number, daysWithoutTag: number) {
-    const totalDays = daysWithTag + daysWithoutTag
-    const coverage = totalDays === 0 ? 0 : daysWithTag / totalDays
-
-    if (daysWithTag >= 10 && daysWithoutTag >= 20 && coverage >= 0.05) {
-      return "High"
-    }
-
-    if (daysWithTag >= 5 && daysWithoutTag >= 10 && coverage >= 0.02) {
-      return "Medium"
-    }
-
-    return "Low"
   }
 
   function discoveryImpact(tag: string) {
@@ -333,12 +396,16 @@
               <button
                 type="button"
                 class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
+                class:low-confidence={(insightConfidence.get(insightKey(item))?.level ?? "low") === "low"}
                 class="correlation-card rewarding"
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
+                  <span class="confidence-badge {insightConfidence.get(insightKey(item))?.level ?? "low"}">
+                    {confidenceBadgeLabel(insightConfidence.get(insightKey(item))?.level ?? "low")}
+                  </span>
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
                   <span>{metricLabel(item.metric)}</span>
@@ -358,12 +425,16 @@
               <button
                 type="button"
                 class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
+                class:low-confidence={(insightConfidence.get(insightKey(item))?.level ?? "low") === "low"}
                 class="correlation-card concerning"
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
+                  <span class="confidence-badge {insightConfidence.get(insightKey(item))?.level ?? "low"}">
+                    {confidenceBadgeLabel(insightConfidence.get(insightKey(item))?.level ?? "low")}
+                  </span>
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
                   <span>{metricLabel(item.metric)}</span>
@@ -598,6 +669,37 @@
     font-size: 0.82rem;
     font-weight: 700;
     white-space: nowrap;
+  }
+
+  .confidence-badge {
+    border: 1px solid #cbd3c3;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.16rem 0.42rem;
+    text-transform: uppercase;
+  }
+
+  .correlation-title .confidence-badge {
+    color: #4f5f53;
+  }
+
+  .confidence-badge.high {
+    background: #e9efe2;
+  }
+
+  .confidence-badge.medium {
+    background: #f3eadf;
+  }
+
+  .confidence-badge.low {
+    background: #ececec;
+    border-color: #d4d4d4;
+    color: #7a7a74;
+  }
+
+  .correlation-card.low-confidence:not(.selected):not(:hover) {
+    opacity: 0.62;
   }
 
   .correlation-card > strong {
