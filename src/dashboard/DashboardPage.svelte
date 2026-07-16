@@ -74,6 +74,11 @@
   let tagsFilterSearch = ""
   let tagsFilterTags: string[] = []
   let deletedTagRows: DeletedTagIdRow[] = []
+  // Deletions made during this session, for every tag source. Crossed-out
+  // chips render from this list only, so they disappear on the next load
+  // while Oura tombstones keep guarding re-imports invisibly. Lives here so
+  // the chips survive switching views. Not persisted.
+  let sessionDeletedTagRows: DeletedTagIdRow[] = []
   // Ids of the tombstones written by the last cleanup run; persisted so the
   // undo offer survives closing or reloading the dashboard.
   let lastDedupeIds: string[] = []
@@ -510,6 +515,7 @@
     localStorage.removeItem(exploreTagsSettingKey)
     tagsFilterSearch = ""
     tagsFilterTags = []
+    sessionDeletedTagRows = []
     tagsViewDate = formatInputDate(new Date())
     selectedExploreDate = ""
     hoveredExploreDate = ""
@@ -523,6 +529,13 @@
     renameOptimalOverrideTags(fromLabel, toLabel)
     tagsFilterTags = tagsFilterTags.filter(
       (tag) => tag.toLocaleLowerCase() !== fromLabel.toLocaleLowerCase()
+    )
+    // Session crossed-out chips carry entry snapshots too, so they follow
+    // the rename like the database tombstones do.
+    sessionDeletedTagRows = sessionDeletedTagRows.map((row) =>
+      row.entry && row.entry.tag.toLocaleLowerCase() === fromLabel.toLocaleLowerCase()
+        ? { ...row, entry: { ...row.entry, tag: toLabel } }
+        : row
     )
   }
 
@@ -659,6 +672,7 @@
     <TagsView
       bind:tagEntries
       bind:deletedTagRows
+      bind:sessionDeletedTagRows
       bind:tagsViewDate
       bind:tagsFilterSearch
       bind:tagsFilterTags

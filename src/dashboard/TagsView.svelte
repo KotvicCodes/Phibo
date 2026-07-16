@@ -35,6 +35,10 @@
   // filter state also live in the parent so they survive view switches.
   export let tagEntries: TagEntryRow[]
   export let deletedTagRows: DeletedTagIdRow[]
+  // This session's deletions, parent-owned. Crossed-out chips render only
+  // from these, so they last until the dashboard closes; the database
+  // tombstones in deletedTagRows stay invisible.
+  export let sessionDeletedTagRows: DeletedTagIdRow[]
   export let dailyMetrics: DailyMetricRow[]
   export let availableTags: string[]
   export let tagNightCounts: Map<string, number>
@@ -53,7 +57,7 @@
 
   // The Tags manager works on the raw stored dates, like import does. The
   // tag timing shift for analysis views does not apply here.
-  $: tagDays = buildTagDays(tagEntries, deletedTagRows)
+  $: tagDays = buildTagDays(tagEntries, sessionDeletedTagRows)
   $: selectedTagDay = tagDays.find((day) => day.date === tagsViewDate) ?? null
   // Oura keeps one note per day, duplicated across the day's tag rows.
   $: selectedDayComment =
@@ -285,6 +289,7 @@
 
       tagEntries = tagEntries.filter((entry) => !removedIds.has(entry.id))
       deletedTagRows = [...deletedTagRows, ...result.tombstones]
+      sessionDeletedTagRows = [...sessionDeletedTagRows, ...result.sessionRows]
       tagsMessage = ""
     } catch {
       tagsMessage = "Could not delete that tag. Try again."
@@ -293,10 +298,13 @@
 
   async function restoreDeletedTagGroup(group: DeletedTagChipGroup) {
     try {
-      const result = await restoreTagEntries(group.rows.map((row) => row.id))
+      const result = await restoreTagEntries(group.rows)
       const removedTombstoneIds = new Set(result.removedTombstoneIds)
 
       deletedTagRows = deletedTagRows.filter(
+        (row) => !removedTombstoneIds.has(row.id)
+      )
+      sessionDeletedTagRows = sessionDeletedTagRows.filter(
         (row) => !removedTombstoneIds.has(row.id)
       )
 
