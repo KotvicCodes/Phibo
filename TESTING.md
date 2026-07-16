@@ -1,182 +1,97 @@
 # Manual test checklist
 
-Untested scenarios to verify by hand in the loaded extension
-(`build/chrome-mv3-dev`). Check items off as they pass.
+Scenarios to verify by hand in the loaded extension (`build/chrome-mv3-dev`).
+Check items off as they pass.
+
+Scope rule: only list behavior that cannot be spotted by looking at the page
+after an update. Invisible backend guarantees, persistence across reloads and
+re-imports, cross-view side effects, and error paths belong here; layout,
+colors, and anything a normal click immediately shows do not.
 
 Highest value first: the re-import resurrection tests and the backup
 round-trip test guard against silent data loss. Run those before the rest.
 
-## Post-refactor regression sweep
-
-The dashboard was split from one 5,700-line component into five view
-components plus a shell (0.3.36 to 0.3.39). One smoke pass over each view
-covers the move:
-
-- [ ] Insights: summary cards show, clicking a rewarding or concerning
-      insight switches the detail panel, discoveries render.
-- [ ] Explore: chart mode, axis metrics, selected tags, and search persist
-      across a reload; impact groups expand; calendar and matching nights
-      log respond to clicks.
-- [ ] Optimal: target switch recalculates, removing and adding tags updates
-      the cards, reset works, overrides survive a reload.
-- [ ] Tags: strip, day panel, filter, log, and picker all behave as covered
-      by the sections below.
-- [ ] Settings: every row works as covered by the sections below, and the
-      analysis toggles still change Insights and Explore results.
-- [ ] Rename a tag (Settings, Rename tags) that has an Optimal include or
-      exclude override and confirm the override follows the new name on the
-      Optimal view.
-
 ## Tag deletion and resurrection protection
-
-- [ ] Delete an imported Oura tag on the Tags view, then re-import the same
+- [x] Delete an imported Oura tag on the Tags view, then re-import the same
       `enhancedtag.csv` and confirm the tag stays deleted.
-- [ ] If an Oura API key is connected, delete an imported tag and run a sync
-      over that date range; confirm the tag stays deleted.
-- [ ] Click an imported Oura tag chip to cross it out, reload the extension,
-      and confirm it is still crossed out; click it again and confirm it
-      comes back.
-- [ ] Click a user-created tag chip to delete it and confirm it disappears
-      entirely, with no crossed-out chip left behind. Only imported Oura
-      tags keep deletion tombstones; user-created tags are hard-deleted.
-
-## Add tags popup
-
-- [ ] Open the popup from the strip day panel and from an expanded day in the
-      list; both should target the same selected day.
-- [ ] Click a plain tag to add it (turns navy) and a navy tag to delete it.
-      A deleted Oura tag turns crossed and clicking it again restores it; a
-      deleted user-created tag simply leaves the day.
-- [ ] Type a name that matches nothing and use the Add button to create a new
-      custom tag; type an existing tag with different casing (for example
-      "Sick") and confirm it merges with the existing label instead.
-- [ ] Delete the only instance of an imported Oura tag anywhere, reopen the
-      popup, and confirm the label is still listed and can be re-added.
-- [ ] Delete the only instance of a user-created tag anywhere, reopen the
-      popup, and confirm the label is gone from the list.
-- [ ] Escape and backdrop click both close the popup; typing with the popup
-      open goes to its search box.
-- [ ] Tab and Shift+Tab cycle only through the popup's controls while it is
-      open, and closing it returns focus to the button that opened it; the
-      same holds for the duplicate removal dialog in Settings.
-- [ ] Tabbing through chips and buttons shows a visible focus ring; clicking
-      with the mouse does not.
-
-## Settings rename popup
-
-- [ ] Open Rename tags in Settings, pick a chip, and rename it; confirm the
-      new name shows everywhere, including crossed-out entries and Explore.
-- [ ] Try renaming a tag to another tag's name and confirm it is blocked
-      with a message instead of merging; try again with different casing
-      (for example "SICK" when "Sick" exists) and confirm that is blocked
-      too.
-- [ ] Do a case-only rename (for example "sick" to "Sick") and confirm the
-      new casing is kept verbatim.
-- [ ] Rename a tag that is selected in the daily log filter and confirm the
-      stale filter selection is dropped.
-- [ ] With a large tag set, confirm the chip area scrolls on its own while
-      the search box and the rename input stay visible.
-- [ ] The search box filters the chips; clicking a selected chip again
-      deselects it and hides the rename input.
-- [ ] Escape and backdrop click close the popup, focus stays trapped inside
-      while it is open, and closing returns focus to the button that opened
-      it.
-
-## Day note
-
-- [ ] Open the Day note section under the selected day's chips, type a note,
-      and confirm it saves on change and survives a reload.
-- [ ] Select a day that already has a note (for example an imported Oura
-      comment) and confirm the Day note section opens automatically with it.
-- [ ] Confirm the Day note section only appears when the day has active tags,
-      and that one note covers the whole day rather than one per tag.
-- [ ] Write a day note, then add another tag to that day and confirm the new
-      tag's entry carries the note too (export a tag backup and check the
-      new entry's comment field matches the day's other entries).
-
-## View-switch persistence
-
-- [ ] On Explore, select a calendar day, hover state aside, and expand an
-      impact group; switch to another view and back and confirm the selected
-      day and expanded groups are still there.
-- [ ] On Insights, click an insight, switch views, and confirm the same
-      insight is still selected on return.
-- [ ] Trigger a Settings message (for example export a backup), switch views,
-      and confirm stale messages do not linger incorrectly on return.
-
-## Delete local data scope
-
-- [ ] Set an Optimal include or exclude override, select Explore tags, and
-      set a daily log filter; delete local data in Settings and confirm all
-      of those are gone too, then re-import and confirm none of them
-      silently re-apply.
-- [ ] Confirm a saved Oura API key still survives the wipe.
-
-## Duplicate tag grouping and cleanup
-
-- [ ] A day where Oura logged the same tag several times shows one chip with
-      a count badge instead of repeated chips.
-- [ ] Clicking the grouped chip deletes all instances; clicking the crossed
-      chip restores it as a single entry.
-- [ ] Remove duplicate tags in Settings: the dialog reports the duplicate
-      count and offers three buttons (back up then remove, remove without a
-      backup, never mind); never mind, Escape, and backdrop click all close
-      it without removing anything.
-- [ ] Choose the backup path and confirm a tag backup downloads before the
-      removal; if the backup download fails, nothing is removed.
-- [ ] After a removal, the Undo button restores the removed duplicates even
-      though the same tag is still active on those days.
-- [ ] After a removal, switch to another view and back to Settings and
-      confirm the Undo button is still offered and still works.
-- [ ] After a removal, reload the dashboard and confirm the Undo button is
-      still offered in Settings and still restores the removed duplicates.
-
-## Day strip
-
-- [ ] The strip opens already positioned on the selected day without
-      animating through the whole history.
-- [ ] Clicking a bar shows that day's tags in the panel under the strip and
-      keeps the same day open in the list, with no page scrolling.
-- [ ] Mouse wheel scrolls the strip horizontally at a damped speed.
-- [ ] With a tag filter active, non-matching days dim in the strip.
-- [ ] Every bar shows its day number centered underneath, the first of each
-      month shows the month name instead, and January 1 shows the year.
-- [ ] Bars at month boundaries stay separated and the labels do not crowd or
-      overlap at the wider 38px slots.
-- [ ] Crossed-out (deleted) entries do not count toward strip bar heights.
-
-## Tag filter
-
-- [ ] The daily log filter offers every known label, including a tag whose
-      entries were all deleted, and selecting it still filters the days
-      where it appears crossed out.
-
-## Colors
-
-- [ ] Scores show only three colors everywhere (Insights and Optimal cards,
-      strip bars): blue for 85+, green for 70 to 84, red below 70, gray when
-      there is no score.
+- [x] Delete a tag, reload the extension, and confirm the crossed-out chip
+      is gone: the tag stays deleted, but the marker only lasts the session.
+- [x] After deleting an imported Oura tag and reloading (so its crossed chip
+      is gone), re-import the same `enhancedtag.csv` and confirm the tag
+      still does not come back; the tombstone works invisibly.
 
 ## Tag backup
-
 - [ ] Export tags from Settings and confirm the downloaded
       `phibo-tags-YYYY-MM-DD.json` contains your entries and deletions.
 - [ ] Export, delete all local data in Settings, restore the file, and confirm
-      the counts message, that a previously deleted tag stays deleted, and
-      that crossed-out chips are back.
+      the counts message and that a previously deleted tag stays deleted.
+      Restored deletions do not show crossed-out chips; those only mark
+      deletions made during the current session.
 - [ ] Restore the same backup a second time and confirm it reports 0 restored
       and changes nothing.
 - [ ] With every tag entry deleted so only deletion tombstones remain,
       confirm the export button still works and the file round-trips.
 - [ ] Try restoring a non-backup JSON file and confirm the error message is
       generic (no tag names or dates in it).
-- [ ] Export a backup, rename a tag that has crossed-out entries, restore
-      that backup, and confirm the crossed-out chips keep the new name and
-      the old name stays out of the picker and filter lists.
 
-## Tags view basics
+## Tag rename side effects
+- [ ] Rename a tag that has an Optimal include or exclude override and
+      confirm the override follows the new name on the Optimal view.
+- [ ] Rename a tag that is selected in the daily log filter and confirm the
+      stale filter selection is dropped.
+- [ ] Delete a tag (so its crossed chip shows), rename that tag in Settings,
+      and confirm the crossed chip carries the new name and the old name
+      stays out of the picker and filter lists.
+- [ ] Do a case-only rename (for example "sick" to "Sick") and confirm the
+      new casing is kept verbatim, while renaming to another tag's name is
+      blocked in any casing ("SICK" when "Sick" exists).
 
-- [ ] Upgrade check: open the extension over an existing pre-0.3.0 database
+## Add tags popup rules
+- [ ] Type an existing tag with different casing (for example "Sick") and
+      confirm it adopts the existing label instead of creating a duplicate.
+- [ ] Delete the only instance of an imported Oura tag anywhere, reopen the
+      popup, and confirm the label is still listed and can be re-added;
+      delete the only instance of a user-created tag and confirm its label
+      is gone from the list.
+
+## Day note
+- [ ] Type a day note and confirm it survives a reload.
+- [ ] Write a day note, then add another tag to that day and confirm the new
+      tag's entry carries the note too (export a tag backup and check the
+      new entry's comment field matches the day's other entries).
+
+## View-switch persistence
+- [ ] On Explore, select a calendar day and expand an impact group; switch
+      to another view and back and confirm the selected day and expanded
+      groups are still there.
+- [ ] On Insights, click an insight, switch views, and confirm the same
+      insight is still selected on return.
+- [ ] Trigger a Settings message (for example export a backup), switch views,
+      and confirm stale messages do not linger incorrectly on return.
+
+## Delete local data scope
+- [ ] Set an Optimal include or exclude override, select Explore tags, and
+      set a daily log filter; delete local data in Settings and confirm all
+      of those are gone too, then re-import and confirm none of them
+      silently re-apply.
+- [ ] Confirm a saved Oura API key still survives the wipe.
+
+## Duplicate tag cleanup
+- [ ] Choose the backup path and confirm a tag backup downloads before the
+      removal; if the backup download fails, nothing is removed.
+- [ ] After a removal, the Undo button restores the removed duplicates even
+      though the same tag is still active on those days.
+- [ ] After a removal, reload the dashboard and confirm the Undo button is
+      still offered in Settings and still restores the removed duplicates.
+
+## Tag filter
+- [ ] The daily log filter offers every known label, including an Oura tag
+      whose entries were all deleted; selecting it filters the days it was
+      deleted from during this session, and after a reload those days no
+      longer match (the crossed chips are gone).
+
+## Data edge states
+- [x] Upgrade check: open the extension over an existing pre-0.3.0 database
       and confirm imported data still loads (Dexie v3 migration).
 - [ ] With metrics deleted but tags present, confirm the Tags view still
       lists the tags.
