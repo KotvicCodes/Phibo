@@ -8,6 +8,9 @@
   } from "./tagCalendar"
 
   export let selectedTags: string[]
+  // Oura date of the day selected in the Explore view; its cell shows in
+  // yellow so chart, calendar, and log all point at the same night.
+  export let selectedDate: string
   export let calendar: ExploreTagCalendar
   export let options: ExploreTagCalendarOption[]
   export let selectedRange: string
@@ -65,6 +68,7 @@
                 <button
                   type="button"
                   class:tagged={cell.taggedTags.length > 0}
+                  class:selected={day.date === selectedDate}
                   class="tag-calendar-day"
                   aria-label={tagCalendarCellLabel(cell)}
                   title={tagCalendarCellLabel(cell)}
@@ -254,6 +258,13 @@
   .tag-calendar-day.tagged {
     background: #1e2c64;
     border-color: #1e2c64;
+  }
+
+  /* Declared after .tagged so the selection wins on tagged days. The same
+     yellow marks the selected day's point in the charts. */
+  .tag-calendar-day.selected {
+    background: #e0a92e;
+    border-color: #b8871e;
   }
 
   @media (max-width: 560px) {

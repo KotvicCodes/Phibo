@@ -12,6 +12,8 @@ const axisColor = "#cfd2c4"
 const matchColor = "#4f8a63"
 const otherColor = "#9ca69a"
 const trendColor = "#1e2c64"
+// Matches the yellow the Tag activity calendar uses for the selected day.
+const selectedColor = "#e0a92e"
 // A regression through a handful of points is noise, not signal.
 const minTrendPoints = 10
 const fontFamily =
@@ -262,7 +264,8 @@ function timelineSeriesData(days: ExploreDay[], metric: ExploreMetricDefinition)
 
 export function buildTimelineOption(
   days: ExploreDay[],
-  metric: ExploreMetricDefinition
+  metric: ExploreMetricDefinition,
+  selectedDate: string
 ): EChartsCoreOption {
   const { data, usable } = timelineSeriesData(days, metric)
   const bounds = niceAxisBounds(metricValues(days, metric), metric)
@@ -273,6 +276,18 @@ export function buildTimelineOption(
       name: day.date,
       value: [dateMs(day.date), day.metric[metric.key] as number]
     }))
+  const selectedDay = dayByDate.get(selectedDate)
+  const selectedData = selectedDay
+    ? [
+        {
+          name: selectedDay.date,
+          value: [
+            dateMs(selectedDay.date),
+            selectedDay.metric[metric.key] as number
+          ]
+        }
+      ]
+    : []
 
   return {
     ...baseOption(),
@@ -348,6 +363,18 @@ export function buildTimelineOption(
           borderWidth: 2
         },
         z: 3
+      },
+      {
+        type: "scatter",
+        name: "Selected day",
+        data: selectedData,
+        symbolSize: 15,
+        itemStyle: {
+          color: selectedColor,
+          borderColor: "#fbf7ef",
+          borderWidth: 2
+        },
+        z: 4
       }
     ]
   }
@@ -356,7 +383,8 @@ export function buildTimelineOption(
 export function buildScatterOption(
   days: ExploreDay[],
   xMetric: ExploreMetricDefinition,
-  yMetric: ExploreMetricDefinition
+  yMetric: ExploreMetricDefinition,
+  selectedDate: string
 ): EChartsCoreOption {
   const usable = days.filter(
     (day) => day.metric[xMetric.key] != null && day.metric[yMetric.key] != null
@@ -495,6 +523,18 @@ export function buildScatterOption(
           borderWidth: 2
         },
         z: 3
+      },
+      {
+        type: "scatter",
+        name: "Selected day",
+        data: usable.filter((day) => day.date === selectedDate).map(toDatum),
+        symbolSize: 17,
+        itemStyle: {
+          color: selectedColor,
+          borderColor: "#fbf7ef",
+          borderWidth: 2
+        },
+        z: 4
       }
     ]
   }
