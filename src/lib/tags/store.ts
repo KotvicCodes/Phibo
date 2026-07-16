@@ -117,6 +117,7 @@ export async function updateDayComment(date: string, comment: string | null) {
 
 export async function deleteTagEntries(ids: string[]) {
   const tombstones: DeletedTagIdRow[] = []
+  const sessionRows: DeletedTagIdRow[] = []
 
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
     const deletedAt = new Date().toISOString()
@@ -126,10 +127,18 @@ export async function deleteTagEntries(ids: string[]) {
 
       await db.tagEntries.delete(id)
 
+      if (!entry) {
+        continue
+      }
+
+      // Every deletion gets a session row so the UI can show a crossed-out
+      // chip until the dashboard closes, whatever the tag's source.
+      sessionRows.push({ id, deletedAt, entry })
+
       // Tombstones exist so a re-import or resync cannot resurrect deleted
-      // Oura tags. User-created tags never come back from an import, so they
-      // are hard-deleted without leaving a crossed-out entry behind.
-      if (entry?.source !== "user") {
+      // Oura tags. They are backend-only; nothing displays them. User-created
+      // tags never come back from an import, so they get no tombstone.
+      if (entry.source !== "user") {
         const tombstone = { id, deletedAt, entry }
 
         await db.deletedTagIds.put(tombstone)
@@ -138,19 +147,21 @@ export async function deleteTagEntries(ids: string[]) {
     }
   })
 
-  return { deletedIds: ids, tombstones }
+  return { deletedIds: ids, tombstones, sessionRows }
 }
 
-export async function restoreTagEntries(ids: string[]) {
+// Takes the session rows themselves rather than ids: user-created tags have
+// no tombstone in the database, so the entry to restore only exists on the
+// in-memory row.
+export async function restoreTagEntries(rows: DeletedTagIdRow[]) {
   const restoredEntries: TagEntryRow[] = []
+  const removedTombstoneIds = rows.map((row) => row.id)
 
   await db.transaction("rw", db.tagEntries, db.deletedTagIds, async () => {
-    for (const id of ids) {
-      const tombstone = await db.deletedTagIds.get(id)
+    for (const row of rows) {
+      await db.deletedTagIds.delete(row.id)
 
-      await db.deletedTagIds.delete(id)
-
-      const entry = tombstone?.entry
+      const entry = row.entry
 
       if (!entry) {
         continue
@@ -174,7 +185,7 @@ export async function restoreTagEntries(ids: string[]) {
     }
   })
 
-  return { removedTombstoneIds: ids, restoredEntries }
+  return { removedTombstoneIds, restoredEntries }
 }
 
 // Restores rows exactly as they were, even when the same tag is already
