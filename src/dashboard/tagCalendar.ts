@@ -75,12 +75,14 @@ export function buildExploreTagCalendar(
     const metricDate = shiftDate(displayDate, 1)
     const day = daysByDate.get(metricDate) ?? null
 
+    // A cell only counts as tagged when the day matches every selected tag,
+    // the same AND rule the chart and the matching nights log use. Days
+    // carrying just some of the selection stay unmarked so the calendar and
+    // the log agree on days and counts.
     cells.push({
       date: displayDate,
       day,
-      taggedTags: day
-        ? sortedTags.filter((tag) => day.tags.includes(tag))
-        : []
+      taggedTags: day?.matches ? sortedTags : []
     })
 
     date.setDate(date.getDate() + 1)
