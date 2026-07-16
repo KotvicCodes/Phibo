@@ -90,6 +90,13 @@ round-trip test guard against silent data loss. Run those before the rest.
       deleted from during this session, and after a reload those days no
       longer match (the crossed chips are gone).
 
+## Insight confidence and adjusted effects (v0.4.0)
+- [ ] Note a few confidence labels and adjusted effect values on Insights,
+      reload the extension, and confirm they are identical with unchanged
+      data (the shuffle test and model are seeded and deterministic; the
+      math itself is covered by the vitest suite, this checks the real
+      extension wiring).
+
 ## Data edge states
 - [x] Upgrade check: open the extension over an existing pre-0.3.0 database
       and confirm imported data still loads (Dexie v3 migration).
