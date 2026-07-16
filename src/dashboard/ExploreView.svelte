@@ -243,9 +243,14 @@
   $: scatterOption = buildScatterOption(
     exploreDays,
     selectedXDefinition,
-    selectedYDefinition
+    selectedYDefinition,
+    selectedExploreDate
   )
-  $: timelineOption = buildTimelineOption(exploreDays, selectedYDefinition)
+  $: timelineOption = buildTimelineOption(
+    exploreDays,
+    selectedYDefinition,
+    selectedExploreDate
+  )
 
   function sortExploreDaysNewestFirst(days: ExploreDay[]) {
     return [...days].sort((left, right) => right.date.localeCompare(left.date))
@@ -608,6 +613,7 @@
 
         <TagCalendar
           selectedTags={selectedExploreTags}
+          selectedDate={selectedExploreDate}
           calendar={exploreTagCalendar}
           options={exploreTagCalendarOptions}
           selectedRange={selectedExploreTagCalendarRange}
