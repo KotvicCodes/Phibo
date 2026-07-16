@@ -12,6 +12,10 @@
     permutationTestDelta,
     type ConfidenceLevel
   } from "../lib/analysis/stats"
+  import {
+    calculateTagEffectsMemoized,
+    type TagEffectsModel
+  } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
     insightComparisonMetrics,
@@ -105,11 +109,25 @@
     analysisMetrics,
     analysisEntries
   )
+  // Adjusted effects run on the full history (trimmed to the tagging span
+  // inside the model), not the exclude-untagged filtered sample: untagged
+  // days inside the span are what identifies each tag's own contribution.
+  $: sleepEffects = calculateTagEffectsMemoized(
+    dailyMetrics,
+    analysisEntries,
+    "sleepScore"
+  )
+  $: readinessEffects = calculateTagEffectsMemoized(
+    dailyMetrics,
+    analysisEntries,
+    "readinessScore"
+  )
   $: selectedStats = selectedInsight
     ? createInsightStats(
         selectedInsight,
         analysisMetrics,
-        insightConfidence.get(insightKey(selectedInsight)) ?? null
+        insightConfidence.get(insightKey(selectedInsight)) ?? null,
+        selectedInsight.metric === "sleepScore" ? sleepEffects : readinessEffects
       )
     : []
   $: summaries = [
@@ -219,10 +237,58 @@
       : `chance alone shows a gap this size about ${percent}% of the time`
   }
 
+  function adjustedEffectStats(
+    item: TagInsight,
+    model: TagEffectsModel | null
+  ): InsightStat[] {
+    if (model === null) {
+      return [
+        {
+          helper: "not enough data for adjusted effects yet",
+          label: "Adjusted",
+          unit: "",
+          value: "n/a"
+        }
+      ]
+    }
+    const effect = model.effects.get(item.tag)
+    const stats: InsightStat[] = [
+      {
+        helper:
+          effect?.sameDayEffect == null
+            ? "needs more tagged nights inside the model"
+            : `holding other tags, weekday, and trend constant (${confidenceBadgeLabel(effect.sameDayConfidence ?? "low").toLowerCase()} confidence)`,
+        label: "Adjusted",
+        unit: effect?.sameDayEffect == null ? "" : "pts",
+        value:
+          effect?.sameDayEffect == null
+            ? "n/a"
+            : formatDelta(effect.sameDayEffect)
+      }
+    ]
+    if (effect?.nextDayEffect != null) {
+      stats.push({
+        helper: `carry-over on the following day (${confidenceBadgeLabel(effect.nextDayConfidence ?? "low").toLowerCase()} confidence)`,
+        label: "Next day",
+        unit: "pts",
+        value: formatDelta(effect.nextDayEffect)
+      })
+    } else {
+      stats.push({
+        helper: "not enough next-day data",
+        label: "Next day",
+        unit: "",
+        value: "n/a"
+      })
+    }
+    return stats
+  }
+
   function createInsightStats(
     item: TagInsight,
     metrics: DailyMetricRow[],
-    confidence: InsightConfidence | null
+    confidence: InsightConfidence | null,
+    effectsModel: TagEffectsModel | null
   ): InsightStat[] {
     const correlation = correlations.find((correlation) => correlation.tag === item.tag)
     const daysWithoutTag =
@@ -284,11 +350,12 @@
         value: confidenceBadgeLabel(confidence?.level ?? "low")
       },
       {
-        helper: `${metricLabel(item.metric)} difference on tagged nights`,
+        helper: `observed ${metricLabel(item.metric)} difference on tagged nights`,
         label: "Effect",
         unit: "pts",
         value: formatDelta(item.delta)
       },
+      ...adjustedEffectStats(item, effectsModel),
       ...metricStats
     ]
   }
@@ -571,6 +638,40 @@
           </div>
         {/each}
       </div>
+
+      <details class="methodology">
+        <summary>How these numbers work</summary>
+        <p>
+          <strong>Observed</strong> is the plain average difference between
+          tagged and untagged nights in your current analysis sample. It can
+          blame a tag for something a co-occurring tag did.
+        </p>
+        <p>
+          <strong>Adjusted</strong> comes from a model that looks at all your
+          tags, the weekday, and the long-term trend at once, so each tag is
+          credited only with what the others cannot explain.
+          <strong>Next day</strong> is the same model's estimate of the tag's
+          carry-over onto the following day.
+        </p>
+        <p>
+          <strong>Confidence</strong> reflects a shuffle test: how often
+          chance alone would produce a gap at least this large. High means
+          rarely, low means often or too few nights to tell.
+        </p>
+        <p>
+          The adjusted model uses every night in your tagging period,
+          including untagged ones, even when the untagged-days setting
+          excludes them from the observed averages. Nights from before your
+          first tag are ignored, since an untracked night is not the same as
+          a night where nothing happened.
+        </p>
+        <p>
+          A tag logged on back-to-back nights makes its same-day and next-day
+          effects hard to separate; the model then splits the effect between
+          them, so both can look smaller than the observed difference. That
+          is caution, not a bug.
+        </p>
+      </details>
     </div>
   </section>
 
@@ -700,6 +801,31 @@
 
   .correlation-card.low-confidence:not(.selected):not(:hover) {
     opacity: 0.62;
+  }
+
+  .methodology {
+    border-top: 1px solid #d8d8cc;
+    margin-top: 0.8rem;
+    padding-top: 0.7rem;
+  }
+
+  .methodology summary {
+    color: #4f5f53;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .methodology p {
+    color: #6f786f;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin-top: 0.55rem;
+  }
+
+  .methodology p strong {
+    color: #4f5f53;
   }
 
   .correlation-card > strong {
