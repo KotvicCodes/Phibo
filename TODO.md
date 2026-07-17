@@ -9,10 +9,14 @@ it is done rather than checking it off.
    lands.
 
 2. Feed the v0.4.0 adjusted tag effects (ridge model in
-   `src/lib/analysis/tagEffects.ts`) into the Optimal and Explore views,
-   which still run on simple averages. Optimal needs its damped/saturated
-   estimate math rethought around regression coefficients; Explore's impact
-   effect sizes could use the same adjusted effects and confidence levels.
+   `src/lib/analysis/tagEffects.ts`) into the Optimal view, which still
+   runs on simple averages. Optimal needs its damped/saturated estimate
+   math rethought around regression coefficients. Explore landed in v0.4.9
+   (FDR-corrected confidence badges plus adjusted score effects); a
+   follow-up idea there is ranking each category's headline metric by
+   confidence instead of raw effect size, and confidence labels for
+   multi-tag adjusted sums would need coefficient covariances from
+   `fitRidge`.
 
 3. Apply the Insights deferred-paint pattern to the other analytical views
    so no page blocks first paint on heavy computation. Insights now runs its

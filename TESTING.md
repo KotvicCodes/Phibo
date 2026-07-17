@@ -95,7 +95,9 @@ round-trip test guard against silent data loss. Run those before the rest.
       reload the extension, and confirm they are identical with unchanged
       data (the shuffle test and model are seeded and deterministic; the
       math itself is covered by the vitest suite, this checks the real
-      extension wiring).
+      extension wiring). As of v0.4.9 the same check applies to Explore:
+      impact row badges and the adjusted score rows for a fixed tag
+      selection must match across reloads.
 
 ## Data edge states
 - [x] Upgrade check: open the extension over an existing pre-0.3.0 database
