@@ -19,15 +19,16 @@
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
+    buildMetricComparison,
     insightComparisonMetrics,
-    type InsightComparison,
-    type InsightComparisonMetric,
-    type MetricComparison
+    type InsightComparison
   } from "./comparisons"
+  import { deferToIdle } from "./deferToIdle"
   import { impactTone } from "./exploreImpacts"
   import {
     average,
     comparisonWidth,
+    confidenceBadgeLabel,
     formatComparisonAverage,
     formatDelta,
     formatInputDate,
@@ -90,16 +91,10 @@
     formatInputDate(new Date())
   $: discoveries = getTagDiscoveries(analysisEntries, latestMetricDate)
   $: selectedComparisons = selectedInsight
-    ? insightComparisonMetrics.map(
-        (item): InsightComparison => ({
-          ...item,
-          comparison: getMetricComparison(
-            selectedInsight.tag,
-            item.metric,
-            analysisMetrics,
-            analysisEntries
-          )
-        })
+    ? buildSelectedComparisons(
+        selectedInsight.tag,
+        analysisMetrics,
+        analysisEntries
       )
     : []
   // Permutation confidence runs only for the handful of displayed insights
@@ -127,14 +122,6 @@
         effectsReady
       )
     : []
-
-  function deferToIdle(run: () => void) {
-    if (typeof requestIdleCallback === "function") {
-      requestIdleCallback(run, { timeout: 500 })
-    } else {
-      setTimeout(run, 0)
-    }
-  }
 
   // The two model fits are the most expensive work on this view, so they
   // must not run synchronously during mount or the whole page freezes
@@ -257,10 +244,6 @@
       })
     }
     return map
-  }
-
-  function confidenceBadgeLabel(level: ConfidenceLevel) {
-    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
   }
 
   function confidenceHelper(
@@ -452,12 +435,13 @@
     return "Keep observing"
   }
 
-  function getMetricComparison(
+  // One tagged/other day split serves all three metric comparisons, so the
+  // date map is built once per selection instead of once per metric.
+  function buildSelectedComparisons(
     tag: string,
-    metric: InsightComparisonMetric,
     metrics: DailyMetricRow[],
     entries: TagEntryRow[]
-  ): MetricComparison {
+  ): InsightComparison[] {
     const currentTagsByDate = buildTagsByDate(entries)
     const taggedDays = metrics.filter((day) =>
       (currentTagsByDate[day.date] ?? []).includes(tag)
@@ -465,17 +449,11 @@
     const untaggedDays = metrics.filter(
       (day) => !(currentTagsByDate[day.date] ?? []).includes(tag)
     )
-    const taggedAverage = average(taggedDays.map((day) => day[metric]))
-    const baselineAverage = average(untaggedDays.map((day) => day[metric]))
 
-    return {
-      baselineAverage,
-      delta:
-        taggedAverage === null || baselineAverage === null
-          ? null
-          : Math.round((taggedAverage - baselineAverage) * 10) / 10,
-      taggedAverage
-    }
+    return insightComparisonMetrics.map((item) => ({
+      ...item,
+      comparison: buildMetricComparison(taggedDays, untaggedDays, item.metric)
+    }))
   }
 
   function insightKey(item: TagInsight) {

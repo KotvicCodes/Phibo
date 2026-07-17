@@ -23,6 +23,7 @@
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
+    buildMetricComparison,
     insightComparisonMetrics,
     type InsightComparison,
     type InsightComparisonMetric,
@@ -47,9 +48,10 @@
     impactWidth,
     isPrimaryScoreMetric
   } from "./exploreImpacts"
+  import { deferToIdle } from "./deferToIdle"
   import {
-    average,
     comparisonWidth,
+    confidenceBadgeLabel,
     formatComparisonAverage,
     formatDate,
     formatNullableDelta,
@@ -318,14 +320,6 @@
     selectedExploreDate
   )
 
-  function deferToIdle(run: () => void) {
-    if (typeof requestIdleCallback === "function") {
-      requestIdleCallback(run, { timeout: 500 })
-    } else {
-      setTimeout(run, 0)
-    }
-  }
-
   // Same pattern as the Insights model scheduler: cached results apply
   // synchronously (no badge flash on remounts or tag re-selection), fresh
   // computations run in an idle callback, and the token discards stale runs
@@ -356,10 +350,6 @@
       )
       exploreConfidenceReady = true
     })
-  }
-
-  function confidenceBadgeLabel(level: ConfidenceLevel) {
-    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
   }
 
   // Fits are shared with InsightsView through the tagEffects memo, so after
@@ -418,21 +408,11 @@
   function getExploreMetricComparison(
     metric: InsightComparisonMetric
   ): MetricComparison {
-    const taggedAverage = average(
-      matchingExploreDays.map((day) => day.metric[metric])
+    return buildMetricComparison(
+      matchingExploreDays.map((day) => day.metric),
+      otherExploreDays.map((day) => day.metric),
+      metric
     )
-    const baselineAverage = average(
-      otherExploreDays.map((day) => day.metric[metric])
-    )
-
-    return {
-      baselineAverage,
-      delta:
-        taggedAverage === null || baselineAverage === null
-          ? null
-          : Math.round((taggedAverage - baselineAverage) * 10) / 10,
-      taggedAverage
-    }
   }
 
   function isExploreImpactGroupOpen(category: ExploreMetricCategory) {

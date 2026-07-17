@@ -14,8 +14,13 @@
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
+  import { deferToIdle } from "./deferToIdle"
   import { impactTone } from "./exploreImpacts"
-  import { formatDelta, formatNullableDelta } from "./format"
+  import {
+    confidenceBadgeLabel,
+    formatDelta,
+    formatNullableDelta
+  } from "./format"
   import {
     loadOptimalOverrides,
     saveOptimalOverrides
@@ -60,13 +65,8 @@
   let modelsToken = 0
   $: scheduleOptimalModels(dailyMetrics, analysisEntries)
   $: modelsReady = adjustedModels !== null
-  // Both calculations receive the same models, otherwise the "vs optimal"
-  // diff would compare adjusted numbers against naive ones.
-  $: optimalDayFull = calculateOptimalDay(analysisMetrics, analysisEntries, {
-    target: optimalTarget,
-    boundsMetrics: dailyMetrics,
-    adjustedModels: adjustedModels ?? {}
-  })
+  $: optimalHasOverrides =
+    optimalExcludedTags.length > 0 || optimalIncludedTags.length > 0
   $: optimalDay = calculateOptimalDay(analysisMetrics, analysisEntries, {
     target: optimalTarget,
     excludedTags: optimalExcludedTags,
@@ -74,8 +74,17 @@
     boundsMetrics: dailyMetrics,
     adjustedModels: adjustedModels ?? {}
   })
-  $: optimalHasOverrides =
-    optimalExcludedTags.length > 0 || optimalIncludedTags.length > 0
+  // The no-overrides reference only exists for the "vs optimal" diffs, so
+  // without overrides it reuses the main result instead of recomputing.
+  // Both calculations receive the same models, otherwise the diff would
+  // compare adjusted numbers against naive ones.
+  $: optimalDayFull = optimalHasOverrides
+    ? calculateOptimalDay(analysisMetrics, analysisEntries, {
+        target: optimalTarget,
+        boundsMetrics: dailyMetrics,
+        adjustedModels: adjustedModels ?? {}
+      })
+    : optimalDay
   $: optimalEstimateDiffs = scoreCategories.reduce(
     (diffs, category) => {
       const adjusted = optimalDay.estimates[category.key]
@@ -90,12 +99,14 @@
     },
     {} as Record<ScoreCategory, number | null>
   )
-  // Shared bar scale across both optimal lists: the strongest positive
-  // impact and the most harmful negative impact compete for full width, so
-  // green and red bar lengths stay comparable.
+  // Shared bar scale across both optimal lists: every bar is sized against
+  // the largest absolute impact anywhere, so green and red bar lengths stay
+  // comparable and no bar can overflow its track (forced includes can make
+  // every contribution negative).
   $: optimalImpactBarMax = Math.max(
-    optimalDay.contributions[0]?.targetImpact ?? 0,
-    Math.abs(optimalDay.otherEligibleTags.at(-1)?.targetImpact ?? 0)
+    0,
+    ...optimalDay.contributions.map((row) => Math.abs(row.targetImpact)),
+    ...optimalDay.otherEligibleTags.map((row) => Math.abs(row.targetImpact))
   )
   $: optimalTargetCategories =
     optimalTargets.find((option) => option.id === optimalTarget)?.categories ??
@@ -117,14 +128,6 @@
     "readinessScore",
     "activityScore"
   ]
-
-  function deferToIdle(run: () => void) {
-    if (typeof requestIdleCallback === "function") {
-      requestIdleCallback(run, { timeout: 500 })
-    } else {
-      setTimeout(run, 0)
-    }
-  }
 
   // Applies cached fits synchronously and defers only the missing ones,
   // one per idle callback; the models land all at once so the estimates
@@ -170,10 +173,6 @@
     low: 0,
     medium: 1,
     high: 2
-  }
-
-  function confidenceBadgeLabel(level: ConfidenceLevel) {
-    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
   }
 
   // Row badge: the single target category's confidence, or for combined
@@ -392,20 +391,17 @@
         {:else if optimalDay.contributions.length > 0}
           <div class="optimal-tag-list">
             {#each optimalDay.contributions as contribution}
+              {@const confidence = contributionConfidence(contribution)}
               <div
                 class="optimal-tag-row"
-                class:low-confidence={contributionConfidence(contribution) === "low"}
+                class:low-confidence={confidence === "low"}
               >
                 <div class="optimal-tag-name">
                   <div class="optimal-tag-title">
                     <strong>{formatTagLabel(contribution.tag)}</strong>
-                    {#if contributionConfidence(contribution)}
-                      <span
-                        class="confidence-badge {contributionConfidence(contribution)}"
-                      >
-                        {confidenceBadgeLabel(
-                          contributionConfidence(contribution) ?? "low"
-                        )}
+                    {#if confidence}
+                      <span class="confidence-badge {confidence}">
+                        {confidenceBadgeLabel(confidence)}
                       </span>
                     {/if}
                   </div>
@@ -462,20 +458,17 @@
             </summary>
             <div class="optimal-tag-list">
               {#each optimalDay.otherEligibleTags as candidate}
+                {@const confidence = contributionConfidence(candidate)}
                 <div
                   class="optimal-tag-row"
-                  class:low-confidence={contributionConfidence(candidate) === "low"}
+                  class:low-confidence={confidence === "low"}
                 >
                   <div class="optimal-tag-name">
                     <div class="optimal-tag-title">
                       <strong>{formatTagLabel(candidate.tag)}</strong>
-                      {#if contributionConfidence(candidate)}
-                        <span
-                          class="confidence-badge {contributionConfidence(candidate)}"
-                        >
-                          {confidenceBadgeLabel(
-                            contributionConfidence(candidate) ?? "low"
-                          )}
+                      {#if confidence}
+                        <span class="confidence-badge {confidence}">
+                          {confidenceBadgeLabel(confidence)}
                         </span>
                       {/if}
                     </div>
