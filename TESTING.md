@@ -8,17 +8,8 @@ after an update. Invisible backend guarantees, persistence across reloads and
 re-imports, cross-view side effects, and error paths belong here; layout,
 colors, and anything a normal click immediately shows do not.
 
-Highest value first: the re-import resurrection tests and the backup
-round-trip test guard against silent data loss. Run those before the rest.
-
-## Tag deletion and resurrection protection
-- [x] Delete an imported Oura tag on the Tags view, then re-import the same
-      `enhancedtag.csv` and confirm the tag stays deleted.
-- [x] Delete a tag, reload the extension, and confirm the crossed-out chip
-      is gone: the tag stays deleted, but the marker only lasts the session.
-- [x] After deleting an imported Oura tag and reloading (so its crossed chip
-      is gone), re-import the same `enhancedtag.csv` and confirm the tag
-      still does not come back; the tombstone works invisibly.
+Highest value first: the backup round-trip and delete-local-data tests
+guard against silent data loss. Run those before the rest.
 
 ## Tag backup
 - [ ] Export tags from Settings and confirm the downloaded
@@ -90,23 +81,34 @@ round-trip test guard against silent data loss. Run those before the rest.
       deleted from during this session, and after a reload those days no
       longer match (the crossed chips are gone).
 
-## Insight confidence and adjusted effects (v0.4.0)
+## Analysis confidence and adjusted effects
 - [ ] Note a few confidence labels and adjusted effect values on Insights,
       reload the extension, and confirm they are identical with unchanged
       data (the shuffle test and model are seeded and deterministic; the
       math itself is covered by the vitest suite, this checks the real
-      extension wiring). As of v0.4.9 the same check applies to Explore:
-      impact row badges and the adjusted score rows for a fixed tag
-      selection must match across reloads. As of v0.4.12 it also applies to
-      Optimal: estimates, tag order, and row badges for a fixed target must
-      match across reloads.
+      extension wiring). The same reload check applies to Explore's impact
+      row badges and adjusted score rows for a fixed tag selection, and to
+      Optimal's estimates, tag order, and row badges for a fixed target.
+- [ ] Toggle "exclude untagged days" in Settings, then reopen Insights: a
+      tag's observed delta changes but its adjusted effect does not, since
+      the model always fits on your full history regardless of the setting.
+      The same holds for Explore's adjusted score rows.
+- [ ] Re-import your data or rename a tag, then reopen Insights and confirm
+      the adjusted effects reflect the change rather than the pre-change
+      values. The model cache is keyed on the loaded data, so it must refit
+      instead of serving stale numbers.
+- [ ] On Insights with fewer than 60 days of tagged history, confirm a tag's
+      Adjusted and Next day rows read "n/a" while its observed delta and
+      confidence label still render, and that Explore's badges fall back to
+      Low rather than disappearing.
 - [ ] On Optimal with fewer than 60 days of data (or a category with mostly
       null scores, like activity without wear), confirm the observed-averages
       note names the affected categories and the estimates still render from
       the naive fallback rather than showing n/a.
+- [ ] Set an Optimal include or exclude override and pick a non-default
+      target, reload the extension, and confirm both survive and the
+      "vs optimal" line still reflects the override.
 
 ## Data edge states
-- [x] Upgrade check: open the extension over an existing pre-0.3.0 database
-      and confirm imported data still loads (Dexie v3 migration).
 - [ ] With metrics deleted but tags present, confirm the Tags view still
       lists the tags.
