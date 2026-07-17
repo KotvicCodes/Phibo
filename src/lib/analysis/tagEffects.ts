@@ -204,11 +204,24 @@ export function calculateTagEffectsMemoized(
   tags: TagEntryRow[],
   metric: PrimaryInsightMetric
 ): TagEffectsModel | null {
+  const cached = peekTagEffects(metrics, tags, metric)
+  if (cached !== undefined) return cached
+  const result = calculateTagEffects(metrics, tags, metric)
+  memo.set(metric, { metrics, tags, result })
+  return result
+}
+
+// Returns the memoized model without computing: the result (possibly null,
+// when the data is below the model gates) on a cache hit, undefined on a
+// miss. Lets the view skip its deferred "computing" state on remounts.
+export function peekTagEffects(
+  metrics: DailyMetricRow[],
+  tags: TagEntryRow[],
+  metric: PrimaryInsightMetric
+): TagEffectsModel | null | undefined {
   const cached = memo.get(metric)
   if (cached && cached.metrics === metrics && cached.tags === tags) {
     return cached.result
   }
-  const result = calculateTagEffects(metrics, tags, metric)
-  memo.set(metric, { metrics, tags, result })
-  return result
+  return undefined
 }
