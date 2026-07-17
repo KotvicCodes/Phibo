@@ -320,7 +320,8 @@
             </li>
             <li>
               With enough history, each tag's impact comes from a model that
-              looks at all your tags, the weekday, and your long-term trend
+              looks at all your tags, the weekday, the season, and your
+              long-term trend
               at once, so a tag is credited only with what your other habits
               cannot explain. It also counts the tag's carry-over onto the
               next day, because an optimal day is a routine you could repeat.

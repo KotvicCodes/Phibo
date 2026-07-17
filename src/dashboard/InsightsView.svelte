@@ -282,7 +282,7 @@
         helper:
           effect?.sameDayEffect == null
             ? "needs more tagged nights inside the model"
-            : `holding other tags, weekday, and trend constant (${confidenceBadgeLabel(effect.sameDayConfidence ?? "low").toLowerCase()} confidence)`,
+            : `holding other tags, weekday, season, and trend constant (${confidenceBadgeLabel(effect.sameDayConfidence ?? "low").toLowerCase()} confidence)`,
         label: "Adjusted",
         unit: effect?.sameDayEffect == null ? "" : "pts",
         value:
@@ -676,7 +676,8 @@
         </p>
         <p>
           <strong>Adjusted</strong> comes from a model that looks at all your
-          tags, the weekday, and the long-term trend at once, so each tag is
+          tags, the weekday, the season, and the long-term trend at once, so
+          each tag is
           credited only with what the others cannot explain.
           <strong>Next day</strong> is the same model's estimate of the tag's
           carry-over onto the following day.

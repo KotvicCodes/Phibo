@@ -137,6 +137,14 @@ export function calculateTagEffects(
     // Day-of-week dummies, Monday through Saturday, Sunday as reference.
     const weekday = dayOfWeek(day.date)
     for (let dow = 1; dow <= 6; dow += 1) row.push(weekday === dow ? 1 : 0)
+    // Annual seasonality (one sine and cosine over the year), so a tag
+    // logged mostly in one season is not credited with that season's
+    // baseline shift (winter sleep, summer activity). On short spans these
+    // columns are nearly collinear with the trend term; ridge splits such
+    // overlap harmlessly instead of blowing up.
+    const yearAngle = (2 * Math.PI * dayNumber(day.date)) / 365.25
+    row.push(Math.sin(yearAngle))
+    row.push(Math.cos(yearAngle))
     row.push(span === 0 ? 0 : (dayNumber(day.date) - firstDayNumber) / span)
     rows.push(row)
     outcomes.push(day[metric] as number)
