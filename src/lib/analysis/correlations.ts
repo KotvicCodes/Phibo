@@ -1051,7 +1051,9 @@ function metricWeight(metric: MetricKey) {
   return 0.9
 }
 
-function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
+// Also used by the adjusted ranking in insightRanking.ts, so both ranking
+// modes share the per-tag dedupe and top-four semantics.
+export function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
   const seenTags = new Set<string>()
 
   return insights
