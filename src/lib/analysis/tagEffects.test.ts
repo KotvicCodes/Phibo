@@ -9,15 +9,7 @@ import {
   peekTagEffects
 } from "./tagEffects"
 import { createSeededRng } from "./stats"
-
-function isoDate(dayIndex: number, start = "2026-01-01") {
-  const date = new Date(`${start}T12:00:00`)
-  date.setDate(date.getDate() + dayIndex)
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
+import { isoDate, shiftIso, tagRow } from "./testHelpers"
 
 function metricRow(date: string, sleepScore: number | null): DailyMetricRow {
   return {
@@ -26,19 +18,6 @@ function metricRow(date: string, sleepScore: number | null): DailyMetricRow {
     readinessScore: null,
     activityScore: null
   } as DailyMetricRow
-}
-
-let tagId = 0
-function tagRow(date: string, tag: string): TagEntryRow {
-  tagId += 1
-  return {
-    id: `test-${tagId}`,
-    date,
-    tag,
-    comment: null,
-    sourceUpdatedAt: null,
-    syncedAt: "2026-01-01T00:00:00Z"
-  }
 }
 
 interface BuildOptions {
@@ -429,11 +408,3 @@ describe("calculateTagEffectsMemoized", () => {
   })
 })
 
-function shiftIso(date: string, days: number) {
-  const shifted = new Date(`${date}T12:00:00`)
-  shifted.setDate(shifted.getDate() + days)
-  const year = shifted.getFullYear()
-  const month = String(shifted.getMonth() + 1).padStart(2, "0")
-  const day = String(shifted.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
