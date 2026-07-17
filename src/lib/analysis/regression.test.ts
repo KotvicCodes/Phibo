@@ -208,6 +208,57 @@ describe("selectRidgeLambda", () => {
     )
   })
 
+  it("matches a brute-force per-lambda cross-validation exactly", () => {
+    // Reference implementation: refit from scratch for every fold and
+    // lambda. The production version prepares each fold once and reuses it
+    // across lambdas; both must pick the same candidate.
+    const candidates = [1, 4, 16, 64]
+    const folds = 5
+    const bruteForce = (rows: number[][], outcomes: number[]) => {
+      const n = rows.length
+      const foldSize = Math.floor(n / folds)
+      let bestLambda = 16
+      let bestError = Number.POSITIVE_INFINITY
+      for (const lambda of candidates) {
+        let total = 0
+        let scored = 0
+        for (let fold = 0; fold < folds; fold += 1) {
+          const start = fold * foldSize
+          const end = fold === folds - 1 ? n : start + foldSize
+          const fit = fitRidge(
+            [...rows.slice(0, start), ...rows.slice(end)],
+            [...outcomes.slice(0, start), ...outcomes.slice(end)],
+            { lambda, computeStandardErrors: false }
+          )
+          if (fit === null) continue
+          let squared = 0
+          for (let i = start; i < end; i += 1) {
+            let predicted = fit.intercept
+            for (let j = 0; j < rows[i].length; j += 1) {
+              predicted += fit.coefficients[j] * rows[i][j]
+            }
+            squared += (outcomes[i] - predicted) ** 2
+          }
+          total += squared / (end - start)
+          scored += 1
+        }
+        if (scored === 0) continue
+        const mean = total / scored
+        if (mean <= bestError) {
+          bestError = mean
+          bestLambda = lambda
+        }
+      }
+      return bestLambda
+    }
+    for (const seed of [21, 22, 23, 24, 25]) {
+      const { rows, outcomes } = synthetic(seed, 250, [6, -4, 0, 2], 70, 10)
+      expect(selectRidgeLambda(rows, outcomes, { candidates, folds })).toBe(
+        bruteForce(rows, outcomes)
+      )
+    }
+  })
+
   it("always returns a candidate or the fallback", () => {
     const { rows, outcomes } = synthetic(16, 100, [5], 70, 8)
     const lambda = selectRidgeLambda(rows, outcomes, { candidates: [2, 8] })

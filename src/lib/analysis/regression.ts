@@ -116,24 +116,30 @@ function standardizeColumns(rows: number[][], featureCount: number): Standardize
   return { columns, means, scales, constant }
 }
 
-// Closed-form ridge on standardized columns. Coefficients and standard
-// errors are mapped back to the raw feature scale, so with binary tag
-// features a coefficient reads directly in outcome units (score points).
-// Standard errors use the sandwich estimate
-// Var(b) = sigma^2 (Z'Z + lambda I)^-1 Z'Z (Z'Z + lambda I)^-1
-// with sigma^2 = RSS / max(1, n - k), where k approximates the effective
-// degrees of freedom (a slight overcount, so sigma^2 leans conservative).
-export function fitRidge(
+interface RidgePrepared {
+  n: number
+  featureCount: number
+  yMean: number
+  centeredY: number[]
+  columns: number[][]
+  means: number[]
+  scales: number[]
+  constant: boolean[]
+  gram: number[][]
+  zty: number[]
+}
+
+// The expensive, lambda-independent half of a ridge fit: standardization,
+// the Gram matrix Z'Z, and Z'y. Lambda only shifts the Gram diagonal, so
+// one preparation can serve many lambda candidates.
+function prepareRidge(
   rows: number[][],
-  outcomes: number[],
-  options: { lambda: number; computeStandardErrors?: boolean }
-): RidgeFit | null {
+  outcomes: number[]
+): RidgePrepared | null {
   const n = rows.length
   if (n === 0) return null
   const featureCount = rows[0]?.length ?? 0
   if (featureCount === 0) return null
-  const { lambda } = options
-  const computeStandardErrors = options.computeStandardErrors ?? true
 
   const yMean = outcomes.reduce((sum, value) => sum + value, 0) / n
   const centeredY = outcomes.map((value) => value - yMean)
@@ -142,7 +148,6 @@ export function fitRidge(
     featureCount
   )
 
-  // Z'Z + lambda I and Z'y over standardized columns.
   const gram: number[][] = Array.from({ length: featureCount }, () =>
     new Array<number>(featureCount).fill(0)
   )
@@ -160,13 +165,74 @@ export function fitRidge(
     for (let i = 0; i < n; i += 1) dotY += colA[i] * centeredY[i]
     zty[a] = dotY
   }
+
+  return {
+    n,
+    featureCount,
+    yMean,
+    centeredY,
+    columns,
+    means,
+    scales,
+    constant,
+    gram,
+    zty
+  }
+}
+
+interface RidgeSolution {
+  intercept: number
+  coefficients: number[]
+  standardizedCoefficients: number[]
+  penalizedFactor: number[][]
+}
+
+// The cheap, per-lambda half: shift the Gram diagonal, factor, solve, and
+// map the coefficients back to the raw feature scale.
+function solvePrepared(
+  prepared: RidgePrepared,
+  lambda: number
+): RidgeSolution | null {
+  const { featureCount, gram, zty, yMean, means, scales, constant } = prepared
   const penalized = gram.map((row, index) =>
     row.map((value, col) => (index === col ? value + lambda : value))
   )
-
   const penalizedFactor = choleskyDecompose(penalized)
   if (penalizedFactor === null) return null
   const standardizedCoefficients = choleskySolve(penalizedFactor, zty)
+
+  const coefficients = new Array<number>(featureCount).fill(0)
+  let intercept = yMean
+  for (let j = 0; j < featureCount; j += 1) {
+    if (constant[j]) continue
+    coefficients[j] = standardizedCoefficients[j] / scales[j]
+    intercept -= coefficients[j] * means[j]
+  }
+
+  return { intercept, coefficients, standardizedCoefficients, penalizedFactor }
+}
+
+// Closed-form ridge on standardized columns. Coefficients and standard
+// errors are mapped back to the raw feature scale, so with binary tag
+// features a coefficient reads directly in outcome units (score points).
+// Standard errors use the sandwich estimate
+// Var(b) = sigma^2 (Z'Z + lambda I)^-1 Z'Z (Z'Z + lambda I)^-1
+// with sigma^2 = RSS / max(1, n - k), where k approximates the effective
+// degrees of freedom (a slight overcount, so sigma^2 leans conservative).
+export function fitRidge(
+  rows: number[][],
+  outcomes: number[],
+  options: { lambda: number; computeStandardErrors?: boolean }
+): RidgeFit | null {
+  const { lambda } = options
+  const computeStandardErrors = options.computeStandardErrors ?? true
+
+  const prepared = prepareRidge(rows, outcomes)
+  if (prepared === null) return null
+  const solved = solvePrepared(prepared, lambda)
+  if (solved === null) return null
+  const { n, featureCount, columns, centeredY, scales, constant, gram } =
+    prepared
 
   // Standard errors dominate the cost of a fit (matrix inversion), so the
   // cross-validation path skips them; it only needs predictions.
@@ -177,7 +243,7 @@ export function fitRidge(
     for (let i = 0; i < n; i += 1) {
       let predicted = 0
       for (let j = 0; j < featureCount; j += 1) {
-        predicted += columns[j][i] * standardizedCoefficients[j]
+        predicted += columns[j][i] * solved.standardizedCoefficients[j]
       }
       const residual = centeredY[i] - predicted
       rss += residual * residual
@@ -186,7 +252,7 @@ export function fitRidge(
 
     // Sandwich covariance on the standardized scale, reusing the Cholesky
     // factor already computed for the coefficient solve.
-    const penalizedInverse = invertFromCholesky(penalizedFactor)
+    const penalizedInverse = invertFromCholesky(solved.penalizedFactor)
     for (let j = 0; j < featureCount; j += 1) {
       // Var(b_j) = sigma^2 * (P^-1 G P^-1)_jj where P = G + lambda I.
       let variance = 0
@@ -201,41 +267,19 @@ export function fitRidge(
     }
   }
 
-  const coefficients = new Array<number>(featureCount).fill(0)
   const standardErrors = new Array<number>(featureCount).fill(0)
-  let intercept = yMean
   for (let j = 0; j < featureCount; j += 1) {
     if (constant[j]) continue
-    coefficients[j] = standardizedCoefficients[j] / scales[j]
     standardErrors[j] = standardizedErrors[j] / scales[j]
-    intercept -= coefficients[j] * means[j]
   }
 
-  return { intercept, coefficients, standardErrors, lambda, usedDays: n }
-}
-
-function predictionError(
-  trainRows: number[][],
-  trainOutcomes: number[],
-  testRows: number[][],
-  testOutcomes: number[],
-  lambda: number
-): number | null {
-  const fit = fitRidge(trainRows, trainOutcomes, {
+  return {
+    intercept: solved.intercept,
+    coefficients: solved.coefficients,
+    standardErrors,
     lambda,
-    computeStandardErrors: false
-  })
-  if (fit === null) return null
-  let squared = 0
-  for (let i = 0; i < testRows.length; i += 1) {
-    let predicted = fit.intercept
-    for (let j = 0; j < testRows[i].length; j += 1) {
-      predicted += fit.coefficients[j] * testRows[i][j]
-    }
-    const error = testOutcomes[i] - predicted
-    squared += error * error
+    usedDays: n
   }
-  return squared / testRows.length
 }
 
 // Picks lambda by blocked k-fold cross-validation: folds are contiguous in
@@ -252,36 +296,45 @@ export function selectRidgeLambda(
   if (n < MIN_CV_ROWS || candidates.length === 0) return FALLBACK_LAMBDA
 
   const foldSize = Math.floor(n / folds)
+  const totals = new Array<number>(candidates.length).fill(0)
+  const scored = new Array<number>(candidates.length).fill(0)
+  for (let fold = 0; fold < folds; fold += 1) {
+    const start = fold * foldSize
+    const end = fold === folds - 1 ? n : start + foldSize
+    const trainRows = [...rows.slice(0, start), ...rows.slice(end)]
+    const trainOutcomes = [...outcomes.slice(0, start), ...outcomes.slice(end)]
+    const testRows = rows.slice(start, end)
+    const testOutcomes = outcomes.slice(start, end)
+    // One preparation per fold serves every lambda candidate, since lambda
+    // only shifts the Gram diagonal.
+    const prepared = prepareRidge(trainRows, trainOutcomes)
+    if (prepared === null) continue
+    for (let index = 0; index < candidates.length; index += 1) {
+      const solution = solvePrepared(prepared, candidates[index])
+      if (solution === null) continue
+      let squared = 0
+      for (let i = 0; i < testRows.length; i += 1) {
+        let predicted = solution.intercept
+        for (let j = 0; j < testRows[i].length; j += 1) {
+          predicted += solution.coefficients[j] * testRows[i][j]
+        }
+        const error = testOutcomes[i] - predicted
+        squared += error * error
+      }
+      totals[index] += squared / testRows.length
+      scored[index] += 1
+    }
+  }
+
   let bestLambda = FALLBACK_LAMBDA
   let bestError = Number.POSITIVE_INFINITY
-  for (const lambda of candidates) {
-    let total = 0
-    let scored = 0
-    for (let fold = 0; fold < folds; fold += 1) {
-      const start = fold * foldSize
-      const end = fold === folds - 1 ? n : start + foldSize
-      const trainRows = [...rows.slice(0, start), ...rows.slice(end)]
-      const trainOutcomes = [
-        ...outcomes.slice(0, start),
-        ...outcomes.slice(end)
-      ]
-      const error = predictionError(
-        trainRows,
-        trainOutcomes,
-        rows.slice(start, end),
-        outcomes.slice(start, end),
-        lambda
-      )
-      if (error === null) continue
-      total += error
-      scored += 1
-    }
-    if (scored === 0) continue
-    const mean = total / scored
-    // >= so ties move toward more shrinkage (candidates ascend).
+  for (let index = 0; index < candidates.length; index += 1) {
+    if (scored[index] === 0) continue
+    const mean = totals[index] / scored[index]
+    // <= so ties move toward more shrinkage (candidates ascend).
     if (mean <= bestError) {
       bestError = mean
-      bestLambda = lambda
+      bestLambda = candidates[index]
     }
   }
   return bestLambda
