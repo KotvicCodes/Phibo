@@ -267,6 +267,38 @@ describe("calculateTagEffects", () => {
   })
 })
 
+describe("activity metric support", () => {
+  it("recovers an injected activity effect", () => {
+    const { metrics, tags } = build({ tagEvery: { gym: 4 } })
+    const withActivity = metrics.map((day, index) => ({
+      ...day,
+      activityScore:
+        60 + (index % 7) + (index % 4 === 0 && day.sleepScore !== null ? 9 : 0)
+    }))
+    const model = calculateTagEffects(withActivity, tags, "activityScore")
+    expect(model).not.toBeNull()
+    expect(model!.metric).toBe("activityScore")
+    const gym = model!.effects.get("gym")!
+    expect(gym.sameDayEffect).toBeGreaterThan(5)
+  })
+
+  it("memoizes the three metrics independently", () => {
+    const { metrics, tags } = build({ tagEvery: { gym: 4 } })
+    const withActivity = metrics.map((day) => ({ ...day, activityScore: 60 }))
+    const sleep = calculateTagEffectsMemoized(withActivity, tags, "sleepScore")
+    const activity = calculateTagEffectsMemoized(
+      withActivity,
+      tags,
+      "activityScore"
+    )
+    expect(peekTagEffects(withActivity, tags, "sleepScore")).toBe(sleep)
+    expect(peekTagEffects(withActivity, tags, "activityScore")).toBe(activity)
+    expect(peekTagEffects(withActivity, tags, "readinessScore")).toBe(
+      undefined
+    )
+  })
+})
+
 describe("combinedAdjustedEffect", () => {
   it("sums the same-day coefficients of the selected tags", () => {
     const { metrics, tags } = build({
