@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest"
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 import { calculateOptimalDay, OPTIMAL_MIN_TAGGED_DAYS } from "./optimal"
-import { createSeededRng } from "./stats"
+import { createSeededRng, type ConfidenceLevel } from "./stats"
+import {
+  calculateTagEffects,
+  type TagEffect,
+  type TagEffectsModel
+} from "./tagEffects"
 
 function isoDate(dayIndex: number) {
   const date = new Date("2026-01-01T12:00:00")
@@ -263,5 +268,250 @@ describe("calculateOptimalDay naive behavior (characterization)", () => {
     expect(result.eligibleTagCount).toBe(0)
     expect(result.contributions).toEqual([])
     expect(result.baselines.sleepScore).toBeNull()
+    expect(result.adjustedCategories).toEqual([])
+  })
+})
+
+function mockEffect(partial: Partial<TagEffect> & { tag: string }): TagEffect {
+  return {
+    daysWithTag: 0,
+    sameDayEffect: null,
+    sameDayConfidence: null,
+    nextDayEffect: null,
+    nextDayConfidence: null,
+    ...partial
+  }
+}
+
+function mockModel(effects: TagEffect[]): TagEffectsModel {
+  return {
+    metric: "sleepScore",
+    effects: new Map(effects.map((effect) => [effect.tag, effect])),
+    modeledDays: 120,
+    untaggedDays: 40,
+    lambda: 4
+  }
+}
+
+describe("calculateOptimalDay adjusted mode", () => {
+  it("scales the steady-state coefficient by the absence share", () => {
+    // Tag on every 3rd of 120 days: p = 1/3. Coefficients 6 same-day and
+    // 3 next-day give steady state 9, so delta = 9 * (2/3) = 6.
+    const { metrics, tags } = build({ tagEvery: { mag: 3 }, noiseSpread: 0 })
+    const model = mockModel([
+      mockEffect({ tag: "mag", sameDayEffect: 6, nextDayEffect: 3 })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "mag"
+    )!
+    expect(row.deltas.sleepScore).toBeCloseTo(6, 1)
+    expect(row.weightedDeltas.sleepScore).toBeCloseTo(6, 1)
+    expect(result.adjustedCategories).toEqual(["sleepScore"])
+  })
+
+  it("gives a near-daily tag almost nothing despite a large coefficient", () => {
+    const days = 120
+    const { metrics } = build({ days, noiseSpread: 0 })
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < days - 10; i += 1) tags.push(tagRow(isoDate(i), "daily"))
+    const model = mockModel([
+      mockEffect({ tag: "daily", sameDayEffect: 6 })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "daily"
+    )!
+    // 6 * (10 / 120) = 0.5
+    expect(row.deltas.sleepScore).toBeCloseTo(0.5, 1)
+  })
+
+  it("sums adjusted deltas plainly instead of damping them", () => {
+    // Two disjoint tags, boost 6 each, p = 1/4, no noise. The naive delta
+    // for each tag is 3 (the other tag lifts the shared baseline by 1.5,
+    // and the own-frequency share removes another 1.5), while the adjusted
+    // delta is coefficient * (1 - p) = 4.5, since ridge holds the other
+    // tag constant. The naive path additionally damps the second
+    // contribution to half, so the adjusted estimate is strictly higher.
+    const days = 120
+    const { metrics } = build({ days, noiseSpread: 0 })
+    const tags: TagEntryRow[] = []
+    const aDates = new Set<string>()
+    const bDates = new Set<string>()
+    for (let i = 0; i < days; i += 4) {
+      aDates.add(isoDate(i))
+      tags.push(tagRow(isoDate(i), "a"))
+    }
+    for (let i = 2; i < days; i += 4) {
+      bDates.add(isoDate(i))
+      tags.push(tagRow(isoDate(i), "b"))
+    }
+    const boosted = metrics.map((day) => {
+      let sleep = day.sleepScore as number
+      if (aDates.has(day.date)) sleep += 6
+      if (bDates.has(day.date)) sleep += 6
+      return { ...day, sleepScore: sleep } as DailyMetricRow
+    })
+    const naive = calculateOptimalDay(boosted, tags, { target: "sleep" })
+    const model = mockModel([
+      mockEffect({ tag: "a", sameDayEffect: 6 }),
+      mockEffect({ tag: "b", sameDayEffect: 6 })
+    ])
+    const adjusted = calculateOptimalDay(boosted, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const naiveRow = naive.contributions.find((row) => row.tag === "a")!
+    const adjustedRow = adjusted.contributions.find((row) => row.tag === "a")!
+    expect(naiveRow.weightedDeltas.sleepScore).toBeCloseTo(3, 1)
+    expect(adjustedRow.weightedDeltas.sleepScore).toBeCloseTo(4.5, 1)
+    expect(adjusted.estimates.sleepScore!).toBeGreaterThan(
+      naive.estimates.sleepScore!
+    )
+  })
+
+  it("does not double-count co-occurring twins with a real fitted model", () => {
+    // One behavior logged under two tag names on exactly the same days.
+    // Naive gives each twin the full delta; ridge splits the effect, and
+    // the adjusted estimate stays close to the single-tag estimate.
+    const single = build({
+      days: 200,
+      tagEvery: { wine: 4 },
+      sleepBoost: { wine: 8 },
+      noiseSpread: 2
+    })
+    const twins = [
+      ...single.tags,
+      ...single.tags.map((entry) => tagRow(entry.date, "party"))
+    ]
+    const singleModel = calculateTagEffects(
+      single.metrics,
+      single.tags,
+      "sleepScore"
+    )
+    const twinModel = calculateTagEffects(single.metrics, twins, "sleepScore")
+    expect(singleModel).not.toBeNull()
+    expect(twinModel).not.toBeNull()
+    const oneAdjusted = calculateOptimalDay(single.metrics, single.tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: singleModel }
+    })
+    const twinAdjusted = calculateOptimalDay(single.metrics, twins, {
+      target: "sleep",
+      adjustedModels: { sleepScore: twinModel }
+    })
+    expect(twinAdjusted.estimates.sleepScore!).toBeCloseTo(
+      oneAdjusted.estimates.sleepScore!,
+      0
+    )
+  })
+
+  it("counts a lag-only coefficient through the steady state", () => {
+    const { metrics, tags } = build({ tagEvery: { tea: 3 }, noiseSpread: 0 })
+    const model = mockModel([
+      mockEffect({ tag: "tea", nextDayEffect: 6 })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "tea"
+    )!
+    expect(row.deltas.sleepScore).toBeCloseTo(4, 1)
+  })
+
+  it("keeps a tag without model coefficients displayable at zero", () => {
+    const { metrics, tags } = build({
+      tagEvery: { known: 3, unknown: 4 },
+      noiseSpread: 0
+    })
+    const model = mockModel([
+      mockEffect({ tag: "known", sameDayEffect: 6 })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "unknown"
+    )!
+    expect(row.deltas.sleepScore).toBeNull()
+    expect(row.weightedDeltas.sleepScore).toBe(0)
+  })
+
+  it("mixes adjusted and naive categories independently", () => {
+    const { metrics, tags } = build({
+      tagEvery: { boost: 3 },
+      sleepBoost: { boost: 6 },
+      readinessBoost: { boost: 6 },
+      noiseSpread: 0
+    })
+    const model = mockModel([
+      mockEffect({ tag: "boost", sameDayEffect: 9 })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "night",
+      adjustedModels: { sleepScore: model }
+    })
+    expect(result.adjustedCategories).toEqual(["sleepScore"])
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "boost"
+    )!
+    // Adjusted sleep: 9 * (1 - 1/3) = 6. Naive readiness: 6 * (1 - 1/3) = 4.
+    expect(row.deltas.sleepScore).toBeCloseTo(6, 1)
+    expect(row.deltas.readinessScore).toBeCloseTo(4, 1)
+  })
+
+  it("treats a null model entry as naive mode", () => {
+    const { metrics, tags } = build({
+      tagEvery: { boost: 3 },
+      sleepBoost: { boost: 6 },
+      noiseSpread: 0
+    })
+    const plain = calculateOptimalDay(metrics, tags, { target: "sleep" })
+    const withNull = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: null }
+    })
+    expect(withNull.adjustedCategories).toEqual([])
+    expect(withNull.estimates).toEqual(plain.estimates)
+    expect(withNull.contributions).toEqual(plain.contributions)
+  })
+
+  it("passes through the weaker of the two confidence levels", () => {
+    const { metrics, tags } = build({ tagEvery: { mag: 3 } })
+    const model = mockModel([
+      mockEffect({
+        tag: "mag",
+        sameDayEffect: 6,
+        sameDayConfidence: "high" as ConfidenceLevel,
+        nextDayEffect: 2,
+        nextDayConfidence: "medium" as ConfidenceLevel
+      })
+    ])
+    const adjusted = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [
+      ...adjusted.contributions,
+      ...adjusted.otherEligibleTags
+    ].find((item) => item.tag === "mag")!
+    expect(row.confidences.sleepScore).toBe("medium")
+    expect(row.confidences.readinessScore).toBeNull()
+
+    const naive = calculateOptimalDay(metrics, tags, { target: "sleep" })
+    const naiveRow = [
+      ...naive.contributions,
+      ...naive.otherEligibleTags
+    ].find((item) => item.tag === "mag")!
+    expect(naiveRow.confidences.sleepScore).toBeNull()
   })
 })
