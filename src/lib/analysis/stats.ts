@@ -89,6 +89,34 @@ export function permutationTestDelta(
   }
 }
 
+// Benjamini-Hochberg step-up adjustment: converts p-values from a family of
+// simultaneous tests into q-values (false discovery rates). Position
+// preserving; null entries pass through and do not count toward the family
+// size. Uses the cumulative-minimum fix so q-values are monotone in p.
+export function benjaminiHochberg(
+  pValues: Array<number | null>
+): Array<number | null> {
+  const indexed = pValues
+    .map((pValue, index) => ({ pValue, index }))
+    .filter(
+      (entry): entry is { pValue: number; index: number } =>
+        entry.pValue !== null && Number.isFinite(entry.pValue)
+    )
+  const familySize = indexed.length
+  const qValues: Array<number | null> = pValues.map(() => null)
+  if (familySize === 0) return qValues
+
+  indexed.sort((left, right) => left.pValue - right.pValue)
+  let runningMinimum = 1
+  for (let rank = familySize; rank >= 1; rank -= 1) {
+    const entry = indexed[rank - 1]
+    const raw = (entry.pValue * familySize) / rank
+    runningMinimum = Math.min(runningMinimum, raw)
+    qValues[entry.index] = Math.min(1, runningMinimum)
+  }
+  return qValues
+}
+
 function confidenceFromCounts(
   strength: "high" | "medium" | "none",
   taggedCount: number,
