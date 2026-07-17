@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  benjaminiHochberg,
   confidenceFromEffectSe,
   confidenceFromPValue,
   createSeededRng,
@@ -163,6 +164,57 @@ describe("permutationTestDelta", () => {
     })
     expect(result!.pValue).toBeGreaterThan(0.2)
     expect(result!.pValue).toBeLessThan(0.3)
+  })
+})
+
+describe("benjaminiHochberg", () => {
+  it("matches a hand-worked example", () => {
+    // Sorted p: 0.01, 0.02, 0.03, 0.04, 0.05 with m = 5.
+    // Raw q by rank: 0.05, 0.05, 0.05, 0.05, 0.05.
+    const qValues = benjaminiHochberg([0.01, 0.02, 0.03, 0.04, 0.05])
+    for (const q of qValues) expect(q).toBeCloseTo(0.05, 10)
+  })
+
+  it("applies the step-up with the monotonicity fix", () => {
+    // p = [0.005, 0.011, 0.02, 0.8], m = 4: raw q by rank are
+    // [0.02, 0.022, 0.0267, 0.8]. The running minimum walks from the
+    // largest rank down: q4 = 0.8, q3 = min(0.0267, 0.8) = 0.0267,
+    // q2 = min(0.022, 0.0267) = 0.022, q1 = min(0.02, 0.022) = 0.02.
+    const qValues = benjaminiHochberg([0.005, 0.011, 0.02, 0.8]) as number[]
+    expect(qValues[0]).toBeCloseTo(0.02, 10)
+    expect(qValues[1]).toBeCloseTo(0.022, 10)
+    expect(qValues[2]).toBeCloseTo((0.02 * 4) / 3, 10)
+    expect(qValues[3]).toBeCloseTo(0.8, 10)
+    // Monotone in p.
+    for (let i = 1; i < qValues.length; i += 1) {
+      expect(qValues[i]).toBeGreaterThanOrEqual(qValues[i - 1])
+    }
+  })
+
+  it("keeps q-values within [p, 1]", () => {
+    const pValues = [0.001, 0.2, 0.5, 0.9, 0.99]
+    const qValues = benjaminiHochberg(pValues) as number[]
+    for (let i = 0; i < pValues.length; i += 1) {
+      expect(qValues[i]).toBeGreaterThanOrEqual(pValues[i])
+      expect(qValues[i]).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it("passes nulls through without counting them in the family", () => {
+    const qValues = benjaminiHochberg([0.01, null, 0.04])
+    expect(qValues[1]).toBeNull()
+    // m = 2, so q1 = 0.01 * 2 / 1 = 0.02 and q2 = 0.04.
+    expect(qValues[0]).toBeCloseTo(0.02, 10)
+    expect(qValues[2]).toBeCloseTo(0.04, 10)
+  })
+
+  it("returns all nulls for an all-null family", () => {
+    expect(benjaminiHochberg([null, null])).toEqual([null, null])
+    expect(benjaminiHochberg([])).toEqual([])
+  })
+
+  it("is the identity for a single test", () => {
+    expect(benjaminiHochberg([0.037])).toEqual([0.037])
   })
 })
 
