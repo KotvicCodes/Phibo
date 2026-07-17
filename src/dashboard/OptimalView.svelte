@@ -7,6 +7,12 @@
     type OptimalTarget,
     type ScoreCategory
   } from "../lib/analysis/optimal"
+  import type { ConfidenceLevel } from "../lib/analysis/stats"
+  import {
+    calculateTagEffectsMemoized,
+    peekTagEffects,
+    type TagEffectsModel
+  } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import { impactTone } from "./exploreImpacts"
   import { formatDelta, formatNullableDelta } from "./format"
@@ -45,15 +51,28 @@
   let optimalIncludedTags = savedOverrides.includedTags
 
   $: hasLocalData = dailyMetrics.length > 0
+  // Ridge models per category, fit deferred so the view paints first.
+  // Shared with Insights and Explore through the tagEffects memo, so most
+  // visits apply cached fits synchronously. Null means still computing.
+  let adjustedModels: Partial<
+    Record<ScoreCategory, TagEffectsModel | null>
+  > | null = null
+  let modelsToken = 0
+  $: scheduleOptimalModels(dailyMetrics, analysisEntries)
+  $: modelsReady = adjustedModels !== null
+  // Both calculations receive the same models, otherwise the "vs optimal"
+  // diff would compare adjusted numbers against naive ones.
   $: optimalDayFull = calculateOptimalDay(analysisMetrics, analysisEntries, {
     target: optimalTarget,
-    boundsMetrics: dailyMetrics
+    boundsMetrics: dailyMetrics,
+    adjustedModels: adjustedModels ?? {}
   })
   $: optimalDay = calculateOptimalDay(analysisMetrics, analysisEntries, {
     target: optimalTarget,
     excludedTags: optimalExcludedTags,
     includedTags: optimalIncludedTags,
-    boundsMetrics: dailyMetrics
+    boundsMetrics: dailyMetrics,
+    adjustedModels: adjustedModels ?? {}
   })
   $: optimalHasOverrides =
     optimalExcludedTags.length > 0 || optimalIncludedTags.length > 0
@@ -81,6 +100,105 @@
   $: optimalTargetCategories =
     optimalTargets.find((option) => option.id === optimalTarget)?.categories ??
     []
+  // Target categories still running on observed averages because their
+  // model is below its data gates; drives the honesty note above the list.
+  $: fallbackCategories = modelsReady
+    ? optimalTargetCategories.filter(
+        (key) => !optimalDay.adjustedCategories.includes(key)
+      )
+    : []
+  $: fallbackCategoryLabels = scoreCategories
+    .filter((category) => fallbackCategories.includes(category.key))
+    .map((category) => category.label)
+    .join(", ")
+
+  const modelMetrics: ScoreCategory[] = [
+    "sleepScore",
+    "readinessScore",
+    "activityScore"
+  ]
+
+  function deferToIdle(run: () => void) {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 500 })
+    } else {
+      setTimeout(run, 0)
+    }
+  }
+
+  // Applies cached fits synchronously and defers only the missing ones,
+  // one per idle callback; the models land all at once so the estimates
+  // never mix half-adjusted numbers. The token discards stale runs.
+  function scheduleOptimalModels(
+    metrics: DailyMetricRow[],
+    entries: TagEntryRow[]
+  ) {
+    modelsToken += 1
+    const token = modelsToken
+    const resolved: Partial<Record<ScoreCategory, TagEffectsModel | null>> = {}
+    const missing: ScoreCategory[] = []
+    for (const metric of modelMetrics) {
+      const cached = peekTagEffects(metrics, entries, metric)
+      if (cached === undefined) {
+        missing.push(metric)
+      } else {
+        resolved[metric] = cached
+      }
+    }
+    if (missing.length === 0) {
+      adjustedModels = resolved
+      return
+    }
+    adjustedModels = null
+    const fitNext = (index: number) => {
+      if (token !== modelsToken) return
+      if (index >= missing.length) {
+        adjustedModels = resolved
+        return
+      }
+      resolved[missing[index]] = calculateTagEffectsMemoized(
+        metrics,
+        entries,
+        missing[index]
+      )
+      deferToIdle(() => fitNext(index + 1))
+    }
+    deferToIdle(() => fitNext(0))
+  }
+
+  const confidenceRank: Record<ConfidenceLevel, number> = {
+    low: 0,
+    medium: 1,
+    high: 2
+  }
+
+  function confidenceBadgeLabel(level: ConfidenceLevel) {
+    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
+  }
+
+  // Row badge: the single target category's confidence, or for combined
+  // targets the weakest confidence among categories the tag actually moves.
+  function contributionConfidence(contribution: {
+    confidences: Record<ScoreCategory, ConfidenceLevel | null>
+    weightedDeltas: Record<ScoreCategory, number>
+  }): ConfidenceLevel | null {
+    const levels: ConfidenceLevel[] = []
+    for (const key of optimalTargetCategories) {
+      const level = contribution.confidences[key]
+      if (level === null) continue
+      if (
+        optimalTargetCategories.length > 1 &&
+        contribution.weightedDeltas[key] === 0
+      ) {
+        continue
+      }
+      levels.push(level)
+    }
+    if (levels.length === 0) return null
+    return levels.reduce((weakest, level) =>
+      confidenceRank[level] < confidenceRank[weakest] ? level : weakest
+    )
+  }
 
   function formatOptimalScore(value: number | null) {
     return value === null ? "n/a" : `${Math.round(value)}`
@@ -139,15 +257,23 @@
           class:dimmed={!optimalTargetCategories.includes(category.key)}
         >
           <p>{category.label} estimate</p>
-          <strong>{formatOptimalScore(optimalDay.estimates[category.key])}</strong>
+          <strong>
+            {modelsReady
+              ? formatOptimalScore(optimalDay.estimates[category.key])
+              : "..."}
+          </strong>
           <small>
             baseline {formatOptimalScore(optimalDay.baselines[category.key])} ·
             best days {formatOptimalScore(
               optimalDay.bestDayAverages[category.key]
             )}
           </small>
-          <span>{formatNullableDelta(optimalDay.estimateDeltas[category.key])}</span>
-          {#if optimalHasOverrides && optimalEstimateDiffs[category.key] !== null && optimalEstimateDiffs[category.key] !== 0}
+          <span>
+            {modelsReady
+              ? formatNullableDelta(optimalDay.estimateDeltas[category.key])
+              : "..."}
+          </span>
+          {#if modelsReady && optimalHasOverrides && optimalEstimateDiffs[category.key] !== null && optimalEstimateDiffs[category.key] !== 0}
             <span
               class="optimal-vs {(optimalEstimateDiffs[category.key] ?? 0) < 0
                 ? 'down'
@@ -194,16 +320,33 @@
               best days you have actually recorded.
             </li>
             <li>
-              Each tag's impact compares its tagged days with your typical
-              day. Only tags with at least {OPTIMAL_MIN_TAGGED_DAYS} tagged
-              nights count, so one-off outliers do not skew the estimate.
+              With enough history, each tag's impact comes from a model that
+              looks at all your tags, the weekday, and your long-term trend
+              at once, so a tag is credited only with what your other habits
+              cannot explain. It also counts the tag's carry-over onto the
+              next day, because an optimal day is a routine you could repeat.
+              Only tags with at least {OPTIMAL_MIN_TAGGED_DAYS} tagged nights
+              count, so one-off outliers do not skew the estimate.
             </li>
             <li>
-              Tags that lift the selected target (Night = sleep + readiness)
-              are combined with diminishing returns, because they often
-              overlap on the same good days. The optimal set is then tuned so
-              that no single tag added or removed would improve the target
-              estimate.
+              A tag you already log on most days adds little: the baseline
+              already includes it, so only the missing days leave room for
+              improvement.
+            </li>
+            <li>
+              Model impacts for the selected target (Night = sleep +
+              readiness) add up plainly, since the model has already
+              separated overlapping tags. When a category has too little
+              data for the model, its numbers fall back to observed averages
+              combined with diminishing returns, and a note above the list
+              says so. The optimal set is then tuned so that no single tag
+              added or removed would improve the target estimate.
+            </li>
+            <li>
+              Each tag's badge shows how sure the model is about its effect;
+              faded rows mean low confidence, not no effect. Two tags that
+              always appear together cannot be told apart: the model splits
+              their shared effect between them, so each shows about half.
             </li>
             <li>
               Remove tags you cannot realistically use, or add other tags from
@@ -224,6 +367,13 @@
           </ul>
         </details>
 
+        {#if modelsReady && hasLocalData && fallbackCategories.length > 0}
+          <p class="optimal-mode-note">
+            {fallbackCategoryLabels} estimates use observed averages until the
+            model has 60 days of history with at least 8 untagged nights.
+          </p>
+        {/if}
+
         <div class="optimal-list-heading">
           <h3>In your optimal day ({optimalDay.contributions.length})</h3>
           {#if optimalHasOverrides}
@@ -237,12 +387,28 @@
           {/if}
         </div>
 
-        {#if optimalDay.contributions.length > 0}
+        {#if !modelsReady && hasLocalData}
+          <p class="empty-state">Computing adjusted effects...</p>
+        {:else if optimalDay.contributions.length > 0}
           <div class="optimal-tag-list">
             {#each optimalDay.contributions as contribution}
-              <div class="optimal-tag-row">
+              <div
+                class="optimal-tag-row"
+                class:low-confidence={contributionConfidence(contribution) === "low"}
+              >
                 <div class="optimal-tag-name">
-                  <strong>{formatTagLabel(contribution.tag)}</strong>
+                  <div class="optimal-tag-title">
+                    <strong>{formatTagLabel(contribution.tag)}</strong>
+                    {#if contributionConfidence(contribution)}
+                      <span
+                        class="confidence-badge {contributionConfidence(contribution)}"
+                      >
+                        {confidenceBadgeLabel(
+                          contributionConfidence(contribution) ?? "low"
+                        )}
+                      </span>
+                    {/if}
+                  </div>
                   <span>
                     {contribution.daysWithTag} nights{#each scoreCategories as category}
                       &nbsp;· {category.label}
@@ -289,16 +455,30 @@
           </p>
         {/if}
 
-        {#if optimalDay.otherEligibleTags.length > 0}
+        {#if modelsReady && optimalDay.otherEligibleTags.length > 0}
           <details class="optimal-method optimal-others">
             <summary>
               Not in your optimal day ({optimalDay.otherEligibleTags.length})
             </summary>
             <div class="optimal-tag-list">
               {#each optimalDay.otherEligibleTags as candidate}
-                <div class="optimal-tag-row">
+                <div
+                  class="optimal-tag-row"
+                  class:low-confidence={contributionConfidence(candidate) === "low"}
+                >
                   <div class="optimal-tag-name">
-                    <strong>{formatTagLabel(candidate.tag)}</strong>
+                    <div class="optimal-tag-title">
+                      <strong>{formatTagLabel(candidate.tag)}</strong>
+                      {#if contributionConfidence(candidate)}
+                        <span
+                          class="confidence-badge {contributionConfidence(candidate)}"
+                        >
+                          {confidenceBadgeLabel(
+                            contributionConfidence(candidate) ?? "low"
+                          )}
+                        </span>
+                      {/if}
+                    </div>
                     <span>
                       {candidate.daysWithTag} nights{#each scoreCategories as category}
                         &nbsp;· {category.label}
@@ -423,6 +603,39 @@
     font-size: 0.74rem;
     font-weight: 600;
     margin-top: 0.15rem;
+  }
+
+  .optimal-tag-title {
+    align-items: center;
+    display: flex;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .optimal-tag-title strong {
+    min-width: 0;
+  }
+
+  /* Undo the tag-name span rules for the badge. */
+  .optimal-tag-title .confidence-badge {
+    color: #4f5f53;
+    display: inline-block;
+    flex: none;
+    font-size: 0.68rem;
+    font-weight: 800;
+    margin-top: 0;
+    white-space: nowrap;
+  }
+
+  .optimal-tag-row.low-confidence:not(:hover) {
+    opacity: 0.62;
+  }
+
+  .optimal-mode-note {
+    color: #6f786f;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-bottom: 0.55rem;
   }
 
   .optimal-tag-value {
