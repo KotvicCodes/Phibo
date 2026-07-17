@@ -15,6 +15,12 @@
     type ExploreMetricConfidence
   } from "../lib/analysis/exploreConfidence"
   import type { ConfidenceLevel } from "../lib/analysis/stats"
+  import {
+    calculateTagEffectsMemoized,
+    combinedAdjustedEffect,
+    peekTagEffects,
+    type TagEffectsModel
+  } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
     insightComparisonMetrics,
@@ -76,6 +82,10 @@
   // cost nothing here and a fresh mount picks up the latest data.
   export let analysisMetrics: DailyMetricRow[]
   export let analysisEntries: TagEntryRow[]
+  // Full history for the adjusted-effects model, which needs untagged days
+  // inside the tagging span; same array identity InsightsView receives, so
+  // the model memo is shared across the two views.
+  export let dailyMetrics: DailyMetricRow[]
   export let availableTags: string[]
   export let tagNightCounts: Map<string, number>
   export let showTagCounts: boolean
@@ -240,6 +250,47 @@
   let exploreConfidenceToken = 0
   $: scheduleExploreConfidence(exploreDays, selectedExploreTags)
   $: impactConfidence = exploreConfidenceReady ? exploreConfidence : null
+  // Adjusted score effects come from the shared ridge models (sleep and
+  // readiness only); the linear sum over the selected tags is the model's
+  // own prediction for the combination.
+  let sleepEffectsModel: TagEffectsModel | null = null
+  let readinessEffectsModel: TagEffectsModel | null = null
+  let scoreModelsReady = false
+  let scoreModelsToken = 0
+  $: scheduleScoreModels(
+    dailyMetrics,
+    analysisEntries,
+    selectedExploreTags.length > 0
+  )
+  $: adjustedScoreEffects = scoreModelsReady
+    ? new Map<InsightComparisonMetric, number | null>([
+        [
+          "sleepScore",
+          combinedAdjustedEffect(sleepEffectsModel, selectedExploreTags)
+        ],
+        [
+          "readinessScore",
+          combinedAdjustedEffect(readinessEffectsModel, selectedExploreTags)
+        ]
+      ])
+    : null
+  // A sum of coefficients has no standard error without their covariances,
+  // so only single-tag selections carry a confidence label.
+  $: adjustedScoreConfidence =
+    scoreModelsReady && selectedExploreTags.length === 1
+      ? new Map<InsightComparisonMetric, ConfidenceLevel | null>([
+          [
+            "sleepScore",
+            sleepEffectsModel?.effects.get(selectedExploreTags[0])
+              ?.sameDayConfidence ?? null
+          ],
+          [
+            "readinessScore",
+            readinessEffectsModel?.effects.get(selectedExploreTags[0])
+              ?.sameDayConfidence ?? null
+          ]
+        ])
+      : null
   $: matchingExploreDays = sortExploreDaysNewestFirst(
     exploreDays.filter((day) => day.matches)
   )
@@ -309,6 +360,47 @@
 
   function confidenceBadgeLabel(level: ConfidenceLevel) {
     return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
+  }
+
+  // Fits are shared with InsightsView through the tagEffects memo, so after
+  // a visit to Insights both peeks hit and this applies synchronously.
+  function scheduleScoreModels(
+    metrics: DailyMetricRow[],
+    entries: TagEntryRow[],
+    needed: boolean
+  ) {
+    scoreModelsToken += 1
+    const token = scoreModelsToken
+    if (!needed) {
+      scoreModelsReady = false
+      return
+    }
+    const cachedSleep = peekTagEffects(metrics, entries, "sleepScore")
+    const cachedReadiness = peekTagEffects(metrics, entries, "readinessScore")
+    if (cachedSleep !== undefined && cachedReadiness !== undefined) {
+      sleepEffectsModel = cachedSleep
+      readinessEffectsModel = cachedReadiness
+      scoreModelsReady = true
+      return
+    }
+    scoreModelsReady = false
+    deferToIdle(() => {
+      if (token !== scoreModelsToken) return
+      sleepEffectsModel = calculateTagEffectsMemoized(
+        metrics,
+        entries,
+        "sleepScore"
+      )
+      deferToIdle(() => {
+        if (token !== scoreModelsToken) return
+        readinessEffectsModel = calculateTagEffectsMemoized(
+          metrics,
+          entries,
+          "readinessScore"
+        )
+        scoreModelsReady = true
+      })
+    })
   }
 
   function sortExploreDaysNewestFirst(days: ExploreDay[]) {
@@ -538,7 +630,18 @@
                 <article>
                   <div class="comparison-heading">
                     <strong>{item.label}</strong>
-                    <span>{formatNullableDelta(item.comparison.delta)}</span>
+                    <span class="comparison-delta">
+                      {#if impactConfidence?.get(item.metric)}
+                        <span
+                          class="confidence-badge {impactConfidence.get(item.metric)?.level ?? "low"}"
+                        >
+                          {confidenceBadgeLabel(
+                            impactConfidence.get(item.metric)?.level ?? "low"
+                          )}
+                        </span>
+                      {/if}
+                      <span>{formatNullableDelta(item.comparison.delta)}</span>
+                    </span>
                   </div>
                   <div class="bar-row">
                     <span>Tagged</span>
@@ -564,9 +667,35 @@
                     </div>
                     <strong>{formatComparisonAverage(item.comparison.baselineAverage)}</strong>
                   </div>
+                  <div class="adjusted-row">
+                    <span>Adjusted</span>
+                    <span class="adjusted-value">
+                      {#if adjustedScoreConfidence?.get(item.metric)}
+                        <span
+                          class="confidence-badge {adjustedScoreConfidence.get(item.metric)}"
+                        >
+                          {confidenceBadgeLabel(
+                            adjustedScoreConfidence.get(item.metric) ?? "low"
+                          )}
+                        </span>
+                      {/if}
+                      <strong>
+                        {adjustedScoreEffects === null
+                          ? "..."
+                          : formatNullableDelta(
+                              adjustedScoreEffects.get(item.metric) ?? null
+                            )}
+                      </strong>
+                    </span>
+                  </div>
                 </article>
               {/each}
             </div>
+            <p class="adjusted-note">
+              Adjusted holds your other tags, weekday, and trend constant. It
+              assumes tag effects add up, and it models your whole tagging
+              period, while the bars use the current analysis sample.
+            </p>
           {:else}
             <p class="empty-state">Select tags with matching nights to compare scores.</p>
           {/if}
@@ -986,6 +1115,45 @@
 
   .impact-metric.low-confidence:not(:hover) {
     opacity: 0.62;
+  }
+
+  .comparison-delta {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.4rem;
+  }
+
+  .comparison-delta .confidence-badge,
+  .adjusted-value .confidence-badge {
+    font-size: 0.68rem;
+  }
+
+  .adjusted-row {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: space-between;
+  }
+
+  .adjusted-row > span:first-child {
+    color: #6f786f;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .adjusted-value {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.4rem;
+    white-space: nowrap;
+  }
+
+  .adjusted-note {
+    color: #6f786f;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    margin-top: 0.55rem;
   }
 
   .impact-metric .score-impact {
