@@ -8,25 +8,13 @@ it is done rather than checking it off.
    end, so the API-dependent tests in TESTING.md are on hold until this
    lands.
 
-2. Feed the v0.4.0 adjusted tag effects (ridge model in
-   `src/lib/analysis/tagEffects.ts`) into the Optimal view, which still
-   runs on simple averages. Optimal needs its damped/saturated estimate
-   math rethought around regression coefficients. Explore landed in v0.4.9
-   (FDR-corrected confidence badges plus adjusted score effects); a
-   follow-up idea there is ranking each category's headline metric by
-   confidence instead of raw effect size, and confidence labels for
-   multi-tag adjusted sums would need coefficient covariances from
-   `fitRidge`.
+2. Adjusted-effects follow-up ideas, now that all three views run on the
+   ridge model (Insights v0.4.0, Explore v0.4.9, Optimal v0.4.12): rank each
+   Explore category's headline metric by confidence instead of raw effect
+   size; confidence labels for multi-tag adjusted sums and for Optimal's
+   combined estimate would need coefficient covariances from `fitRidge`;
+   consider letting Optimal's selection weigh confidence, not just point
+   estimates.
 
-3. Apply the Insights deferred-paint pattern to the other analytical views
-   so no page blocks first paint on heavy computation. Insights now runs its
-   ridge fits in requestIdleCallback with a token guard and a synchronous
-   memo peek for instant remounts (see scheduleTagEffects in
-   `src/dashboard/InsightsView.svelte` and peekTagEffects in
-   `src/lib/analysis/tagEffects.ts`). Optimal (calculateOptimalDay with its
-   greedy selection) and Explore (buildExploreDays plus impact math) are the
-   candidates; profile each first, since only work heavy enough to freeze
-   the page is worth deferring.
-
-4. Rewrite the project as a webapp instead of a browser extension. The
+3. Rewrite the project as a webapp instead of a browser extension. The
    extension form factor adds no value for a local-first dashboard.
