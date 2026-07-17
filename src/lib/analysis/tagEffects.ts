@@ -5,6 +5,11 @@ import { fitRidge, selectRidgeLambda } from "./regression"
 import { groupTagsByName } from "./shared"
 import { confidenceFromEffectSe, type ConfidenceLevel } from "./stats"
 
+// Every score the ridge model can target. The string values deliberately
+// coincide with optimal.ts's ScoreCategory so Optimal can key its adjusted
+// models by category without a mapping layer.
+export type AdjustedEffectMetric = PrimaryInsightMetric | "activityScore"
+
 export interface TagEffect {
   tag: string
   daysWithTag: number
@@ -15,7 +20,7 @@ export interface TagEffect {
 }
 
 export interface TagEffectsModel {
-  metric: PrimaryInsightMetric
+  metric: AdjustedEffectMetric
   effects: Map<string, TagEffect>
   modeledDays: number
   untaggedDays: number
@@ -61,7 +66,7 @@ function dayNumber(date: string) {
 export function calculateTagEffects(
   metrics: DailyMetricRow[],
   tags: TagEntryRow[],
-  metric: PrimaryInsightMetric
+  metric: AdjustedEffectMetric
 ): TagEffectsModel | null {
   if (tags.length === 0) return null
 
@@ -191,7 +196,7 @@ export function calculateTagEffects(
 // memoize on input identities; DashboardPage only replaces the arrays when
 // the underlying data or analysis settings actually change.
 const memo = new Map<
-  PrimaryInsightMetric,
+  AdjustedEffectMetric,
   {
     metrics: DailyMetricRow[]
     tags: TagEntryRow[]
@@ -202,7 +207,7 @@ const memo = new Map<
 export function calculateTagEffectsMemoized(
   metrics: DailyMetricRow[],
   tags: TagEntryRow[],
-  metric: PrimaryInsightMetric
+  metric: AdjustedEffectMetric
 ): TagEffectsModel | null {
   const cached = peekTagEffects(metrics, tags, metric)
   if (cached !== undefined) return cached
@@ -236,7 +241,7 @@ export function combinedAdjustedEffect(
 export function peekTagEffects(
   metrics: DailyMetricRow[],
   tags: TagEntryRow[],
-  metric: PrimaryInsightMetric
+  metric: AdjustedEffectMetric
 ): TagEffectsModel | null | undefined {
   const cached = memo.get(metric)
   if (cached && cached.metrics === metrics && cached.tags === tags) {
