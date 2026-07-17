@@ -46,6 +46,27 @@ export function impactTone(value: number | null) {
   return "warning"
 }
 
+// The strongest effect in a pass is scanned once per impacts array, not
+// once per rendered row: tone and width run for every one of ~65 rows.
+const maxEffectSizeCache = new WeakMap<ExploreMetricImpact[], number>()
+
+function maxEffectSize(impacts: ExploreMetricImpact[]) {
+  const cached = maxEffectSizeCache.get(impacts)
+
+  if (cached !== undefined) {
+    return cached
+  }
+
+  const max = Math.max(
+    ...impacts.map((impact) => Math.abs(impact.effectSize ?? 0)),
+    0.1
+  )
+
+  maxEffectSizeCache.set(impacts, max)
+
+  return max
+}
+
 function effectIntensity(
   effectSize: number | null,
   impacts: ExploreMetricImpact[]
@@ -54,12 +75,7 @@ function effectIntensity(
     return 0
   }
 
-  const maxEffectSize = Math.max(
-    ...impacts.map((impact) => Math.abs(impact.effectSize ?? 0)),
-    0.1
-  )
-
-  return Math.min(Math.abs(effectSize) / maxEffectSize, 1)
+  return Math.min(Math.abs(effectSize) / maxEffectSize(impacts), 1)
 }
 
 export function impactEffectTone(

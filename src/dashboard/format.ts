@@ -1,4 +1,5 @@
 import type { PrimaryInsightMetric } from "../lib/analysis/correlations"
+import type { ConfidenceLevel } from "../lib/analysis/stats"
 
 // Local calendar date, not UTC: toISOString would report yesterday
 // between local midnight and the UTC offset.
@@ -58,6 +59,10 @@ export function formatSleepNightDate(metricDate: string) {
 }
 
 export { average } from "../lib/analysis/shared"
+
+export function confidenceBadgeLabel(level: ConfidenceLevel) {
+  return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
+}
 
 export function formatDelta(value: number) {
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}`
