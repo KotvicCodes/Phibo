@@ -24,6 +24,7 @@
     "@types/chrome": "^0.1.40",
     "@types/node": "^24.0.2",
     "@types/papaparse": "^5.5.2",
+    "fake-indexeddb": "^6.2.5",
     "svelte-preprocess": "^6.0.3",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
