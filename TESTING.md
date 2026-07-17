@@ -97,7 +97,13 @@ round-trip test guard against silent data loss. Run those before the rest.
       math itself is covered by the vitest suite, this checks the real
       extension wiring). As of v0.4.9 the same check applies to Explore:
       impact row badges and the adjusted score rows for a fixed tag
-      selection must match across reloads.
+      selection must match across reloads. As of v0.4.12 it also applies to
+      Optimal: estimates, tag order, and row badges for a fixed target must
+      match across reloads.
+- [ ] On Optimal with fewer than 60 days of data (or a category with mostly
+      null scores, like activity without wear), confirm the observed-averages
+      note names the affected categories and the estimates still render from
+      the naive fallback rather than showing n/a.
 
 ## Data edge states
 - [x] Upgrade check: open the extension over an existing pre-0.3.0 database
