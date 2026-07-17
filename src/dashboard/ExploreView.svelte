@@ -9,6 +9,12 @@
     type ExploreMetricCategory,
     type ExploreMetricKey
   } from "../lib/analysis/correlations"
+  import {
+    calculateExploreConfidenceMemoized,
+    peekExploreConfidence,
+    type ExploreMetricConfidence
+  } from "../lib/analysis/exploreConfidence"
+  import type { ConfidenceLevel } from "../lib/analysis/stats"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
   import {
     insightComparisonMetrics,
@@ -225,6 +231,15 @@
     (row) => !isPrimaryScoreMetric(row.metric.key)
   )
   $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
+  // The permutation confidence pass (68 seeded tests plus the FDR
+  // adjustment) is too heavy for a synchronous reactive block, so it runs
+  // deferred: bars and deltas update instantly, badges follow a beat later.
+  let exploreConfidence: Map<ExploreMetricKey, ExploreMetricConfidence> =
+    new Map()
+  let exploreConfidenceReady = false
+  let exploreConfidenceToken = 0
+  $: scheduleExploreConfidence(exploreDays, selectedExploreTags)
+  $: impactConfidence = exploreConfidenceReady ? exploreConfidence : null
   $: matchingExploreDays = sortExploreDaysNewestFirst(
     exploreDays.filter((day) => day.matches)
   )
@@ -251,6 +266,50 @@
     selectedYDefinition,
     selectedExploreDate
   )
+
+  function deferToIdle(run: () => void) {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 500 })
+    } else {
+      setTimeout(run, 0)
+    }
+  }
+
+  // Same pattern as the Insights model scheduler: cached results apply
+  // synchronously (no badge flash on remounts or tag re-selection), fresh
+  // computations run in an idle callback, and the token discards stale runs
+  // when the selection changes mid-flight. The empty-selection early return
+  // also covers the reactive pass that runs before localStorage restore.
+  function scheduleExploreConfidence(days: ExploreDay[], tags: string[]) {
+    exploreConfidenceToken += 1
+    const token = exploreConfidenceToken
+    if (tags.length === 0 || !days.some((day) => day.matches)) {
+      exploreConfidence = new Map()
+      exploreConfidenceReady = false
+      return
+    }
+    const cached = peekExploreConfidence(analysisMetrics, analysisEntries, tags)
+    if (cached !== undefined) {
+      exploreConfidence = cached
+      exploreConfidenceReady = true
+      return
+    }
+    exploreConfidenceReady = false
+    deferToIdle(() => {
+      if (token !== exploreConfidenceToken) return
+      exploreConfidence = calculateExploreConfidenceMemoized(
+        analysisMetrics,
+        analysisEntries,
+        days,
+        tags
+      )
+      exploreConfidenceReady = true
+    })
+  }
+
+  function confidenceBadgeLabel(level: ConfidenceLevel) {
+    return level === "high" ? "High" : level === "medium" ? "Medium" : "Low"
+  }
 
   function sortExploreDaysNewestFirst(days: ExploreDay[]) {
     return [...days].sort((left, right) => right.date.localeCompare(left.date))
@@ -570,10 +629,24 @@
 
                 <div class="impact-grid">
                   {#each group.rows as row}
-                    <article class="impact-metric">
+                    <article
+                      class="impact-metric"
+                      class:low-confidence={impactConfidence?.get(row.metric.key)?.level === "low"}
+                    >
                       <div class="impact-metric-heading">
                         <div>
-                          <strong>{row.metric.label}</strong>
+                          <div class="impact-metric-title">
+                            <strong>{row.metric.label}</strong>
+                            {#if impactConfidence}
+                              <span
+                                class="confidence-badge {impactConfidence.get(row.metric.key)?.level ?? "low"}"
+                              >
+                                {confidenceBadgeLabel(
+                                  impactConfidence.get(row.metric.key)?.level ?? "low"
+                                )}
+                              </span>
+                            {/if}
+                          </div>
                           <span>
                             {formatAverage(row.taggedAverage, row.metric)} tagged vs
                             {formatAverage(row.otherAverage, row.metric)} other
@@ -893,6 +966,26 @@
 
   .impact-metric-heading > div {
     min-width: 0;
+  }
+
+  .impact-metric-title {
+    align-items: center;
+    display: flex;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+
+  /* Undo the heading's block/ellipsis span rules for the badge. */
+  .impact-metric-title .confidence-badge {
+    color: #4f5f53;
+    display: inline-block;
+    flex: none;
+    font-size: 0.68rem;
+    overflow: visible;
+  }
+
+  .impact-metric.low-confidence:not(:hover) {
+    opacity: 0.62;
   }
 
   .impact-metric .score-impact {
