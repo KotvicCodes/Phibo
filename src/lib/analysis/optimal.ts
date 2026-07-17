@@ -1,6 +1,8 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import { calculateSupportScore } from "./correlations"
 import { average, groupTagsByName, roundToOne } from "./shared"
+import type { ConfidenceLevel } from "./stats"
+import type { TagEffect, TagEffectsModel } from "./tagEffects"
 
 export const OPTIMAL_MIN_TAGGED_DAYS = 10
 const OPTIMAL_MIN_UNTAGGED_DAYS = 8
@@ -25,6 +27,9 @@ interface OptimalTagContribution {
   supportScore: number
   deltas: Record<ScoreCategory, number | null>
   weightedDeltas: Record<ScoreCategory, number>
+  // Model confidence per category in adjusted mode (the weaker of the
+  // same-day and next-day levels); all null in naive mode.
+  confidences: Record<ScoreCategory, ConfidenceLevel | null>
   targetContribution: number
   // Marginal effect on the summed target estimate of toggling this tag
   // against the current selection: for selected tags the cost of removing
@@ -41,6 +46,9 @@ interface OptimalDayResult {
   contributions: OptimalTagContribution[]
   otherEligibleTags: OptimalTagContribution[]
   eligibleTagCount: number
+  // Categories whose deltas come from the ridge adjusted-effects model
+  // instead of observed averages.
+  adjustedCategories: ScoreCategory[]
 }
 
 export const scoreCategories: { key: ScoreCategory; label: string }[] = [
@@ -74,12 +82,25 @@ export function calculateOptimalDay(
     // physical limits: the optimal day cannot beat the user's actual best
     // days, tagged or not. Defaults to `metrics`.
     boundsMetrics?: DailyMetricRow[]
+    // Ridge models per category. A category with a non-null model switches
+    // to adjusted deltas: the tag's steady-state coefficient (same-day plus
+    // next-day carry-over) scaled by its absence share, with no support
+    // weighting and no harmonic damping, since the regression already
+    // shrinks thin coefficients and holds co-occurring tags constant.
+    // Categories without a model keep the naive path unchanged.
+    adjustedModels?: Partial<Record<ScoreCategory, TagEffectsModel | null>>
   } = {}
 ): OptimalDayResult {
   const target = options.target ?? "total"
   const excludedTags = new Set(options.excludedTags ?? [])
   const includedTags = new Set(options.includedTags ?? [])
   const boundsMetrics = options.boundsMetrics ?? metrics
+  const adjustedModels = options.adjustedModels ?? {}
+  const adjustedCategories = new Set<ScoreCategory>(
+    scoreCategories
+      .map((category) => category.key)
+      .filter((key) => adjustedModels[key] != null)
+  )
   const targetCategories =
     optimalTargets.find((option) => option.id === target)?.categories ?? []
   const baselines = mapCategories((key) =>
@@ -93,13 +114,28 @@ export function calculateOptimalDay(
       const daysWithoutTag = metrics.filter(
         (day) => !taggedDates.has(day.date)
       )
-      // Deltas compare tagged days against ALL days, not just untagged
-      // ones. The baseline already contains the tagged days, so a
+      // Naive deltas compare tagged days against ALL days, not just
+      // untagged ones. The baseline already contains the tagged days, so a
       // tagged-vs-untagged delta would be double-counted when added back,
       // and a near-daily tag would get a huge delta from a handful of
       // untagged nights. Against the overall average, a tag applied to
       // almost every day correctly contributes almost nothing.
+      //
+      // Adjusted deltas apply the same reasoning to the ridge coefficient:
+      // it measures a tagged-vs-untagged contrast (holding other tags,
+      // weekday, and trend constant), so scaling by the tag's absence share
+      // (1 - daysWithTag / days) converts it into the same baseline-relative
+      // offset, and a near-daily tag again contributes almost nothing. The
+      // steady-state effect includes next-day carry-over: an optimal day is
+      // a repeatable routine, so each day earns today's same-day effect and
+      // yesterday's lag effect.
       const deltas = mapCategories((key) => {
+        if (adjustedCategories.has(key)) {
+          const effect = adjustedModels[key]?.effects.get(tag)
+          const steadyState = steadyStateEffect(effect)
+          if (steadyState === null || metrics.length === 0) return null
+          return steadyState * (1 - daysWithTag.length / metrics.length)
+        }
         const taggedAverage = average(daysWithTag.map((day) => day[key]))
         const overallAverage = baselines[key]
 
@@ -111,8 +147,17 @@ export function calculateOptimalDay(
         daysWithTag.length,
         daysWithoutTag.length
       )
-      const weightedDeltas = mapCategories(
-        (key) => roundToOne((deltas[key] ?? 0) * supportScore)
+      // Adjusted deltas take no support weighting: the ridge penalty
+      // already shrinks coefficients backed by few days.
+      const weightedDeltas = mapCategories((key) =>
+        roundToOne(
+          (deltas[key] ?? 0) * (adjustedCategories.has(key) ? 1 : supportScore)
+        )
+      )
+      const confidences = mapCategories((key) =>
+        adjustedCategories.has(key)
+          ? effectConfidence(adjustedModels[key]?.effects.get(tag))
+          : null
       )
 
       return {
@@ -126,6 +171,7 @@ export function calculateOptimalDay(
           return delta === null ? null : roundToOne(delta)
         }),
         weightedDeltas,
+        confidences,
         targetContribution: roundToOne(
           targetCategories.reduce(
             (total, key) => total + weightedDeltas[key],
@@ -167,7 +213,8 @@ export function calculateOptimalDay(
     targetCategories,
     baselines,
     bestDayAverages,
-    worstDayAverages
+    worstDayAverages,
+    adjustedCategories
   )
 
   for (const tag of excludedTags) {
@@ -190,7 +237,8 @@ export function calculateOptimalDay(
     targetCategories,
     baselines,
     bestDayAverages,
-    worstDayAverages
+    worstDayAverages,
+    adjustedCategories
   )
 
   const withTargetImpact = (candidate: (typeof eligibleTags)[number]) => {
@@ -208,7 +256,8 @@ export function calculateOptimalDay(
       targetCategories,
       baselines,
       bestDayAverages,
-      worstDayAverages
+      worstDayAverages,
+      adjustedCategories
     )
     const { daysWithoutTag, ...contribution } = candidate
 
@@ -243,7 +292,7 @@ export function calculateOptimalDay(
       clampScore(
         saturatedEstimate(
           baseline,
-          dampedContributionSum(contributions, key),
+          contributionSum(contributions, key, adjustedCategories.has(key)),
           bestDayAverages[key] ?? baseline,
           worstDayAverages[key] ?? baseline
         )
@@ -274,8 +323,43 @@ export function calculateOptimalDay(
     }),
     contributions,
     otherEligibleTags,
-    eligibleTagCount: eligibleTags.length
+    eligibleTagCount: eligibleTags.length,
+    adjustedCategories: scoreCategories
+      .map((category) => category.key)
+      .filter((key) => adjustedCategories.has(key))
   }
+}
+
+// The per-day effect of repeating a tag daily: today's same-day coefficient
+// plus yesterday's carry-over. Null only when the model has neither column
+// for the tag (a tag can carry only a lag coefficient, so the columns are
+// treated symmetrically). Bonus: ridge splits a back-to-back tag's effect
+// between the two collinear columns, and this sum recombines it.
+function steadyStateEffect(effect: TagEffect | undefined) {
+  if (effect == null) return null
+  if (effect.sameDayEffect === null && effect.nextDayEffect === null) {
+    return null
+  }
+  return (effect.sameDayEffect ?? 0) + (effect.nextDayEffect ?? 0)
+}
+
+const confidenceRank: Record<ConfidenceLevel, number> = {
+  low: 0,
+  medium: 1,
+  high: 2
+}
+
+// The weaker of the tag's same-day and next-day confidence levels; a chain
+// is only as trustworthy as its weakest coefficient.
+function effectConfidence(effect: TagEffect | undefined) {
+  if (effect == null) return null
+  const levels = [effect.sameDayConfidence, effect.nextDayConfidence].filter(
+    (level): level is ConfidenceLevel => level !== null
+  )
+  if (levels.length === 0) return null
+  return levels.reduce((weakest, level) =>
+    confidenceRank[level] < confidenceRank[weakest] ? level : weakest
+  )
 }
 
 // The optimal day cannot be better than the user's actually-observed best
@@ -324,18 +408,25 @@ function tailAverage(values: number[], tail: "bottom" | "top") {
   return slice.reduce((total, value) => total + value, 0) / count
 }
 
-// Selected tags overlap heavily on the same good days, so summing their
-// deltas would double-count. Harmonic rank damping keeps the strongest
-// signal at full weight and gives correlated extras diminishing returns.
-// Positive and negative values are damped separately: a large negative
-// delta must not steal a top rank and demote every positive contribution.
-function dampedContributionSum(
+// Naive deltas of selected tags overlap heavily on the same good days, so
+// summing them would double-count. Harmonic rank damping keeps the
+// strongest signal at full weight and gives correlated extras diminishing
+// returns. Positive and negative values are damped separately: a large
+// negative delta must not steal a top rank and demote every positive
+// contribution. Adjusted (ridge) deltas already hold co-occurring tags
+// constant, so they sum plainly; damping them would double-correct.
+function contributionSum(
   contributions: Array<Pick<OptimalTagContribution, "weightedDeltas">>,
-  key: ScoreCategory
+  key: ScoreCategory,
+  adjusted: boolean
 ) {
   const values = contributions
     .map((contribution) => contribution.weightedDeltas[key])
     .filter((value) => value !== 0)
+
+  if (adjusted) {
+    return values.reduce((total, value) => total + value, 0)
+  }
 
   return (
     dampedSum(values.filter((value) => value > 0)) +
@@ -362,7 +453,8 @@ function selectionTargetScore(
   targetCategories: ScoreCategory[],
   baselines: Record<ScoreCategory, number | null>,
   bestDayAverages: Record<ScoreCategory, number | null>,
-  worstDayAverages: Record<ScoreCategory, number | null>
+  worstDayAverages: Record<ScoreCategory, number | null>,
+  adjustedCategories: Set<ScoreCategory>
 ) {
   const selected = candidates.filter((candidate) =>
     selection.has(candidate.tag)
@@ -380,7 +472,7 @@ function selectionTargetScore(
       clampScore(
         saturatedEstimate(
           baseline,
-          dampedContributionSum(selected, key),
+          contributionSum(selected, key, adjustedCategories.has(key)),
           bestDayAverages[key] ?? baseline,
           worstDayAverages[key] ?? baseline
         )
@@ -394,7 +486,8 @@ function optimizeSelection(
   targetCategories: ScoreCategory[],
   baselines: Record<ScoreCategory, number | null>,
   bestDayAverages: Record<ScoreCategory, number | null>,
-  worstDayAverages: Record<ScoreCategory, number | null>
+  worstDayAverages: Record<ScoreCategory, number | null>,
+  adjustedCategories: Set<ScoreCategory>
 ) {
   const scoreSelection = (selection: Set<string>) =>
     selectionTargetScore(
@@ -403,7 +496,8 @@ function optimizeSelection(
       targetCategories,
       baselines,
       bestDayAverages,
-      worstDayAverages
+      worstDayAverages,
+      adjustedCategories
     )
 
   const selection = new Set(
