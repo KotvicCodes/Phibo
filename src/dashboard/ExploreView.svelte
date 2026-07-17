@@ -672,7 +672,8 @@
               {/each}
             </div>
             <p class="adjusted-note">
-              Adjusted holds your other tags, weekday, and trend constant. It
+              Adjusted holds your other tags, weekday, season, and trend
+              constant. It
               assumes tag effects add up, and it models your whole tagging
               period, while the bars use the current analysis sample.
             </p>

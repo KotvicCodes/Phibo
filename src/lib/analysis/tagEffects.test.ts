@@ -267,6 +267,48 @@ describe("calculateTagEffects", () => {
   })
 })
 
+describe("annual seasonality controls", () => {
+  // Two years of data with a strong annual sleep rhythm and a tag logged
+  // only during the high season.
+  function buildSeasonal(options: { tagEffect: number; seed?: number }) {
+    const rng = createSeededRng(options.seed ?? 21)
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < 730; i += 1) {
+      const date = isoDate(i)
+      const season = Math.sin((2 * Math.PI * i) / 365.25)
+      const tagged = season > 0.5 && i % 3 === 0
+      if (tagged) tags.push(tagRow(date, "winter habit"))
+      metrics.push(
+        metricRow(
+          date,
+          70 +
+            season * 6 +
+            (tagged ? options.tagEffect : 0) +
+            (rng() - 0.5) * 4
+        )
+      )
+    }
+    return { metrics, tags }
+  }
+
+  it("absorbs a seasonal rhythm instead of crediting a season-bound tag", () => {
+    const { metrics, tags } = buildSeasonal({ tagEffect: 0 })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const effect = model.effects.get("winter habit")!
+    // Without the sin/cos columns this tag would soak up several points of
+    // the +6 seasonal swing it always co-occurs with.
+    expect(Math.abs(effect.sameDayEffect!)).toBeLessThan(1.5)
+  })
+
+  it("still recovers a real effect from a season-bound tag", () => {
+    const { metrics, tags } = buildSeasonal({ tagEffect: 7 })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const effect = model.effects.get("winter habit")!
+    expect(effect.sameDayEffect!).toBeGreaterThan(4)
+  })
+})
+
 describe("activity metric support", () => {
   it("recovers an injected activity effect", () => {
     const { metrics, tags } = build({ tagEvery: { gym: 4 } })
