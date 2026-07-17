@@ -14,6 +14,7 @@
   } from "../lib/analysis/stats"
   import {
     calculateTagEffectsMemoized,
+    peekTagEffects,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
@@ -112,24 +113,63 @@
   // Adjusted effects run on the full history (trimmed to the tagging span
   // inside the model), not the exclude-untagged filtered sample: untagged
   // days inside the span are what identifies each tag's own contribution.
-  $: sleepEffects = calculateTagEffectsMemoized(
-    dailyMetrics,
-    analysisEntries,
-    "sleepScore"
-  )
-  $: readinessEffects = calculateTagEffectsMemoized(
-    dailyMetrics,
-    analysisEntries,
-    "readinessScore"
-  )
+  let sleepEffects: TagEffectsModel | null = null
+  let readinessEffects: TagEffectsModel | null = null
+  let effectsReady = false
+  let effectsToken = 0
+  $: scheduleTagEffects(dailyMetrics, analysisEntries)
   $: selectedStats = selectedInsight
     ? createInsightStats(
         selectedInsight,
         analysisMetrics,
         insightConfidence.get(insightKey(selectedInsight)) ?? null,
-        selectedInsight.metric === "sleepScore" ? sleepEffects : readinessEffects
+        selectedInsight.metric === "sleepScore" ? sleepEffects : readinessEffects,
+        effectsReady
       )
     : []
+
+  function deferToIdle(run: () => void) {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(run, { timeout: 500 })
+    } else {
+      setTimeout(run, 0)
+    }
+  }
+
+  // The two model fits are the most expensive work on this view, so they
+  // must not run synchronously during mount or the whole page freezes
+  // before first paint. Cached results apply immediately; otherwise each
+  // metric gets its own idle callback so no single block runs long, and
+  // the token discards stale runs when the inputs change mid-flight.
+  function scheduleTagEffects(
+    metrics: DailyMetricRow[],
+    entries: TagEntryRow[]
+  ) {
+    effectsToken += 1
+    const token = effectsToken
+    const cachedSleep = peekTagEffects(metrics, entries, "sleepScore")
+    const cachedReadiness = peekTagEffects(metrics, entries, "readinessScore")
+    if (cachedSleep !== undefined && cachedReadiness !== undefined) {
+      sleepEffects = cachedSleep
+      readinessEffects = cachedReadiness
+      effectsReady = true
+      return
+    }
+    effectsReady = false
+    deferToIdle(() => {
+      if (token !== effectsToken) return
+      sleepEffects = calculateTagEffectsMemoized(metrics, entries, "sleepScore")
+      deferToIdle(() => {
+        if (token !== effectsToken) return
+        readinessEffects = calculateTagEffectsMemoized(
+          metrics,
+          entries,
+          "readinessScore"
+        )
+        effectsReady = true
+      })
+    })
+  }
   $: summaries = [
     createSummary("Sleep", "sleepScore", analysisMetrics),
     createSummary("Readiness", "readinessScore", analysisMetrics),
@@ -239,8 +279,19 @@
 
   function adjustedEffectStats(
     item: TagInsight,
-    model: TagEffectsModel | null
+    model: TagEffectsModel | null,
+    ready: boolean
   ): InsightStat[] {
+    if (!ready) {
+      return [
+        {
+          helper: "computing adjusted effects",
+          label: "Adjusted",
+          unit: "",
+          value: "..."
+        }
+      ]
+    }
     if (model === null) {
       return [
         {
@@ -288,7 +339,8 @@
     item: TagInsight,
     metrics: DailyMetricRow[],
     confidence: InsightConfidence | null,
-    effectsModel: TagEffectsModel | null
+    effectsModel: TagEffectsModel | null,
+    effectsModelReady: boolean
   ): InsightStat[] {
     const correlation = correlations.find((correlation) => correlation.tag === item.tag)
     const daysWithoutTag =
@@ -355,7 +407,7 @@
         unit: "pts",
         value: formatDelta(item.delta)
       },
-      ...adjustedEffectStats(item, effectsModel),
+      ...adjustedEffectStats(item, effectsModel, effectsModelReady),
       ...metricStats
     ]
   }

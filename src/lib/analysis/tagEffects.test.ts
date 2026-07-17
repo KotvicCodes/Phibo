@@ -4,7 +4,8 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 import {
   calculateTagEffects,
-  calculateTagEffectsMemoized
+  calculateTagEffectsMemoized,
+  peekTagEffects
 } from "./tagEffects"
 import { createSeededRng } from "./stats"
 
@@ -274,6 +275,21 @@ describe("calculateTagEffectsMemoized", () => {
     const third = calculateTagEffectsMemoized([...metrics], tags, "sleepScore")
     expect(third).not.toBe(first)
     expect(third).toEqual(first)
+  })
+
+  it("peek returns undefined on a miss and the cached result on a hit", () => {
+    const { metrics, tags } = build({ tagEvery: { tea: 3 } })
+    expect(peekTagEffects(metrics, tags, "sleepScore")).toBeUndefined()
+    const computed = calculateTagEffectsMemoized(metrics, tags, "sleepScore")
+    expect(peekTagEffects(metrics, tags, "sleepScore")).toBe(computed)
+    expect(peekTagEffects([...metrics], tags, "sleepScore")).toBeUndefined()
+  })
+
+  it("peek distinguishes a cached null from a miss", () => {
+    const { metrics, tags } = build({ days: 40, tagEvery: { tea: 3 } })
+    expect(peekTagEffects(metrics, tags, "sleepScore")).toBeUndefined()
+    expect(calculateTagEffectsMemoized(metrics, tags, "sleepScore")).toBeNull()
+    expect(peekTagEffects(metrics, tags, "sleepScore")).toBeNull()
   })
 
   it("caches per metric independently", () => {
