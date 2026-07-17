@@ -1,11 +1,11 @@
 <script lang="ts">
   import {
     calculateTagCorrelations,
-    getRankedTagInsights,
     getTagDiscoveries,
     type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
+  import { getAdjustedTagInsights } from "../lib/analysis/insightRanking"
   import {
     calculateInsightConfidenceMemoized,
     peekInsightConfidence,
@@ -73,7 +73,16 @@
   export let selectedInsightKey: string
 
   $: correlations = calculateTagCorrelations(analysisMetrics, analysisEntries)
-  $: insights = getRankedTagInsights(correlations)
+  // Cards rank by the model's adjusted steady-state effects once the fits
+  // land (falling back to observed averages per metric when a model is
+  // below its gates); until then the lists show a computing state instead
+  // of naive rankings that would reorder a beat later.
+  $: insights = effectsReady
+    ? getAdjustedTagInsights(
+        { sleepScore: sleepEffects, readinessScore: readinessEffects },
+        correlations
+      )
+    : { rewarding: [], concerning: [] }
   $: allInsights = [
     ...insights.rewarding,
     ...insights.concerning
@@ -382,7 +391,9 @@
         helper: `observed ${metricLabel(item.metric)} difference on tagged nights`,
         label: "Effect",
         unit: "pts",
-        value: formatDelta(item.delta)
+        // The card's delta is the adjusted steady-state effect once models
+        // land, so the observed row reads from the raw correlation instead.
+        value: formatMetricDelta(correlation?.deltas[item.metric] ?? null)
       },
       ...adjustedEffectStats(item, effectsModel, effectsModelReady),
       ...metricStats
@@ -483,6 +494,9 @@
         <section class="insight-column">
           <h3>Rewarding</h3>
           <div class="insight-stack">
+            {#if !effectsReady}
+              <p class="empty-state">Computing adjusted effects...</p>
+            {/if}
             {#each insights.rewarding as item}
               <button
                 type="button"
@@ -506,7 +520,9 @@
                 </strong>
               </button>
             {:else}
-              <p class="empty-state">No supported positive pattern yet.</p>
+              {#if effectsReady}
+                <p class="empty-state">No supported positive pattern yet.</p>
+              {/if}
             {/each}
           </div>
         </section>
@@ -514,6 +530,9 @@
         <section class="insight-column">
           <h3>Concerning</h3>
           <div class="insight-stack">
+            {#if !effectsReady}
+              <p class="empty-state">Computing adjusted effects...</p>
+            {/if}
             {#each insights.concerning as item}
               <button
                 type="button"
@@ -537,7 +556,9 @@
                 </strong>
               </button>
             {:else}
-              <p class="empty-state">No supported concerning pattern yet.</p>
+              {#if effectsReady}
+                <p class="empty-state">No supported concerning pattern yet.</p>
+              {/if}
             {/each}
           </div>
         </section>
@@ -680,7 +701,10 @@
           each tag is
           credited only with what the others cannot explain.
           <strong>Next day</strong> is the same model's estimate of the tag's
-          carry-over onto the following day.
+          carry-over onto the following day. The rewarding and concerning
+          cards rank tags by the model's total effect, today plus the
+          next-day carry-over, and fall back to observed averages while
+          there is not enough data for the model.
         </p>
         <p>
           <strong>Confidence</strong> reflects a shuffle test: how often
