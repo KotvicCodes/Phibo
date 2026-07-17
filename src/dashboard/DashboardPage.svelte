@@ -651,6 +651,7 @@
     <ExploreView
       analysisMetrics={analysisDailyMetrics}
       analysisEntries={effectiveTagEntries}
+      {dailyMetrics}
       {availableTags}
       {tagNightCounts}
       {showTagCounts}
