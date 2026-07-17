@@ -409,6 +409,29 @@ h4 {
     color: #a8423e;
   }
 
+  .confidence-badge {
+    border: 1px solid #cbd3c3;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 0.16rem 0.42rem;
+    text-transform: uppercase;
+  }
+
+  .confidence-badge.high {
+    background: #e9efe2;
+  }
+
+  .confidence-badge.medium {
+    background: #f3eadf;
+  }
+
+  .confidence-badge.low {
+    background: #ececec;
+    border-color: #d4d4d4;
+    color: #7a7a74;
+  }
+
   .panel-heading.compact {
     margin-bottom: 0.7rem;
   }

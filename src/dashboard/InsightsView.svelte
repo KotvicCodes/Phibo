@@ -824,31 +824,10 @@
     white-space: nowrap;
   }
 
-  .confidence-badge {
-    border: 1px solid #cbd3c3;
-    border-radius: 999px;
-    font-size: 0.68rem;
-    font-weight: 800;
-    padding: 0.16rem 0.42rem;
-    text-transform: uppercase;
-  }
-
+  /* Badge base styles live in shared.css; this only adjusts the color
+     inside correlation card titles. */
   .correlation-title .confidence-badge {
     color: #4f5f53;
-  }
-
-  .confidence-badge.high {
-    background: #e9efe2;
-  }
-
-  .confidence-badge.medium {
-    background: #f3eadf;
-  }
-
-  .confidence-badge.low {
-    background: #ececec;
-    border-color: #d4d4d4;
-    color: #7a7a74;
   }
 
   .correlation-card.low-confidence:not(.selected):not(:hover) {
