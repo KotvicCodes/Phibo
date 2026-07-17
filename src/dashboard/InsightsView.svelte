@@ -7,11 +7,11 @@
     type TagInsight
   } from "../lib/analysis/correlations"
   import {
-    confidenceFromPValue,
-    hashSeed,
-    permutationTestDelta,
-    type ConfidenceLevel
-  } from "../lib/analysis/stats"
+    calculateInsightConfidenceMemoized,
+    peekInsightConfidence,
+    type InsightConfidenceModel,
+    type InsightPairConfidence
+  } from "../lib/analysis/insightConfidence"
   import {
     calculateTagEffectsMemoized,
     peekTagEffects,
@@ -57,10 +57,6 @@
     value: string
   }
 
-  interface InsightConfidence {
-    level: ConfidenceLevel
-    pValue: number | null
-  }
 
   const scoreWeekDays = 7
 
@@ -97,14 +93,16 @@
         analysisEntries
       )
     : []
-  // Permutation confidence runs only for the handful of displayed insights
-  // (at most eight), on the same analysis sample as the shown deltas, so the
-  // label always matches the number next to it.
-  $: insightConfidence = buildInsightConfidence(
-    allInsights,
-    analysisMetrics,
-    analysisEntries
-  )
+  // Confidence tests the WHOLE candidate pool the ranking selected from
+  // and corrects across it (Benjamini-Hochberg), because the displayed
+  // insights are picked for having extreme deltas and raw p-values on the
+  // winners would be optimistic. Testing every tag is too heavy for a
+  // synchronous reactive, so it runs deferred like the model fits.
+  let insightConfidenceModel: InsightConfidenceModel | null = null
+  let insightConfidenceToken = 0
+  $: scheduleInsightConfidence(analysisMetrics, analysisEntries)
+  $: insightConfidenceMap = insightConfidenceModel?.results ?? null
+  $: insightFamilySize = insightConfidenceModel?.familySize ?? 0
   // Adjusted effects run on the full history (trimmed to the tagging span
   // inside the model), not the exclude-untagged filtered sample: untagged
   // days inside the span are what identifies each tag's own contribution.
@@ -117,11 +115,36 @@
     ? createInsightStats(
         selectedInsight,
         analysisMetrics,
-        insightConfidence.get(insightKey(selectedInsight)) ?? null,
+        // Undefined while the deferred pass is still computing, null when
+        // the pair was untestable.
+        insightConfidenceMap === null
+          ? undefined
+          : (insightConfidenceMap.get(insightKey(selectedInsight)) ?? null),
         selectedInsight.metric === "sleepScore" ? sleepEffects : readinessEffects,
         effectsReady
       )
     : []
+
+  function scheduleInsightConfidence(
+    metrics: DailyMetricRow[],
+    entries: TagEntryRow[]
+  ) {
+    insightConfidenceToken += 1
+    const token = insightConfidenceToken
+    const cached = peekInsightConfidence(metrics, entries)
+    if (cached !== undefined) {
+      insightConfidenceModel = cached
+      return
+    }
+    insightConfidenceModel = null
+    deferToIdle(() => {
+      if (token !== insightConfidenceToken) return
+      insightConfidenceModel = calculateInsightConfidenceMemoized(
+        metrics,
+        entries
+      )
+    })
+  }
 
   // The two model fits are the most expensive work on this view, so they
   // must not run synchronously during mount or the whole page freezes
@@ -210,54 +233,22 @@
     return Math.round((currentAverage - previousAverage) * 10) / 10
   }
 
-  function buildInsightConfidence(
-    items: TagInsight[],
-    metrics: DailyMetricRow[],
-    entries: TagEntryRow[]
-  ) {
-    const tagsByDate = buildTagsByDate(entries)
-    const map = new Map<string, InsightConfidence>()
-    for (const item of items) {
-      const tagged: number[] = []
-      const untagged: number[] = []
-      for (const day of metrics) {
-        const value = day[item.metric]
-        if (value == null) continue
-        if ((tagsByDate[day.date] ?? []).includes(item.tag)) {
-          tagged.push(value)
-        } else {
-          untagged.push(value)
-        }
-      }
-      // Stable seed per tag, metric, and sample size keeps the label
-      // deterministic across reloads of the same data.
-      const result = permutationTestDelta(tagged, untagged, {
-        seed: hashSeed(item.tag, item.metric, metrics.length)
-      })
-      map.set(insightKey(item), {
-        level: confidenceFromPValue(
-          result?.pValue ?? null,
-          tagged.length,
-          untagged.length
-        ),
-        pValue: result?.pValue ?? null
-      })
-    }
-    return map
-  }
-
   function confidenceHelper(
-    confidence: InsightConfidence | null,
+    confidence: InsightPairConfidence | null | undefined,
     daysWithTag: number,
     daysWithoutTag: number
   ) {
-    if (confidence?.pValue == null) {
+    if (confidence === undefined) {
+      return "checking this gap against your other tags"
+    }
+    if (confidence?.qValue == null) {
       return `${daysWithTag} of ${daysWithTag + daysWithoutTag} nights tagged`
     }
-    const percent = Math.round(confidence.pValue * 100)
+    const percent = Math.round(confidence.qValue * 100)
+    const family = `after checking all ${insightFamilySize} tag and score pairs`
     return percent < 1
-      ? "chance alone shows a gap this size under 1% of the time"
-      : `chance alone shows a gap this size about ${percent}% of the time`
+      ? `${family}, under 1% of gaps this striking would be flukes`
+      : `${family}, about ${percent}% of gaps this striking would be flukes`
   }
 
   function adjustedEffectStats(
@@ -321,7 +312,7 @@
   function createInsightStats(
     item: TagInsight,
     metrics: DailyMetricRow[],
-    confidence: InsightConfidence | null,
+    confidence: InsightPairConfidence | null | undefined,
     effectsModel: TagEffectsModel | null,
     effectsModelReady: boolean
   ): InsightStat[] {
@@ -382,7 +373,10 @@
         helper: confidenceHelper(confidence, item.daysWithTag, daysWithoutTag),
         label: "Confidence",
         unit: "",
-        value: confidenceBadgeLabel(confidence?.level ?? "low")
+        value:
+          confidence === undefined
+            ? "..."
+            : confidenceBadgeLabel(confidence?.level ?? "low")
       },
       {
         helper: `observed ${metricLabel(item.metric)} difference on tagged nights`,
@@ -493,16 +487,18 @@
               <button
                 type="button"
                 class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
-                class:low-confidence={(insightConfidence.get(insightKey(item))?.level ?? "low") === "low"}
+                class:low-confidence={insightConfidenceMap?.get(insightKey(item))?.level === "low"}
                 class="correlation-card rewarding"
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
-                  <span class="confidence-badge {insightConfidence.get(insightKey(item))?.level ?? "low"}">
-                    {confidenceBadgeLabel(insightConfidence.get(insightKey(item))?.level ?? "low")}
-                  </span>
+                  {#if insightConfidenceMap}
+                    <span class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}">
+                      {confidenceBadgeLabel(insightConfidenceMap.get(insightKey(item))?.level ?? "low")}
+                    </span>
+                  {/if}
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
                   <span>{metricLabel(item.metric)}</span>
@@ -522,16 +518,18 @@
               <button
                 type="button"
                 class:selected={selectedInsight && insightKey(item) === insightKey(selectedInsight)}
-                class:low-confidence={(insightConfidence.get(insightKey(item))?.level ?? "low") === "low"}
+                class:low-confidence={insightConfidenceMap?.get(insightKey(item))?.level === "low"}
                 class="correlation-card concerning"
                 on:click={() => selectInsight(item)}
               >
                 <div class="correlation-title">
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
-                  <span class="confidence-badge {insightConfidence.get(insightKey(item))?.level ?? "low"}">
-                    {confidenceBadgeLabel(insightConfidence.get(insightKey(item))?.level ?? "low")}
-                  </span>
+                  {#if insightConfidenceMap}
+                    <span class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}">
+                      {confidenceBadgeLabel(insightConfidenceMap.get(insightKey(item))?.level ?? "low")}
+                    </span>
+                  {/if}
                 </div>
                 <strong class="score-impact {impactTone(item.delta)}">
                   <span>{metricLabel(item.metric)}</span>
@@ -685,8 +683,13 @@
         </p>
         <p>
           <strong>Confidence</strong> reflects a shuffle test: how often
-          chance alone would produce a gap at least this large. High means
-          rarely, low means often or too few nights to tell.
+          chance alone would produce a gap at least this large. Because
+          these cards show your most extreme tags, the test is corrected
+          for every tag and score pair that was searched; picking winners
+          means chance alone always produces a few big gaps, so the bar
+          rises with the number of tags you track. High means a gap that
+          survives that correction, low means chance could explain it or
+          there are too few nights to tell.
         </p>
         <p>
           The adjusted model uses every night in your tagging period,
