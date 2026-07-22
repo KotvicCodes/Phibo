@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest"
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 import {
+  adjustedHeadlineEffect,
   calculateTagEffects,
   calculateTagEffectsMemoized,
   combinedAdjustedEffect,
-  peekTagEffects
+  combinedGuardedSameDayEffect,
+  peekTagEffects,
+  type TagEffect,
+  type TagEffectsModel
 } from "./tagEffects"
 import { createSeededRng } from "./stats"
 import { isoDate, shiftIso, tagRow } from "./testHelpers"
@@ -369,6 +373,107 @@ describe("combinedAdjustedEffect", () => {
     expect(effect?.nextDayEffect).not.toBeNull()
     expect(effect?.sameDayEffect ?? null).toBeNull()
     expect(combinedAdjustedEffect(model, ["melatonin"])).toBeNull()
+  })
+})
+
+function guardEffect(partial: Partial<TagEffect> & { tag: string }): TagEffect {
+  return {
+    daysWithTag: 20,
+    sameDayEffect: null,
+    sameDayConfidence: null,
+    nextDayEffect: null,
+    nextDayConfidence: null,
+    ...partial
+  }
+}
+
+function guardModel(effects: TagEffect[]): TagEffectsModel {
+  return {
+    metric: "sleepScore",
+    effects: new Map(effects.map((effect) => [effect.tag, effect])),
+    modeledDays: 200,
+    untaggedDays: 60,
+    lambda: 4
+  }
+}
+
+describe("adjustedHeadlineEffect", () => {
+  it("sums only medium-plus components", () => {
+    expect(
+      adjustedHeadlineEffect(
+        guardEffect({
+          tag: "a",
+          sameDayEffect: 3,
+          sameDayConfidence: "high",
+          nextDayEffect: 2,
+          nextDayConfidence: "medium"
+        })
+      )
+    ).toBe(5)
+    // A low-confidence next-day component must not swing the headline.
+    expect(
+      adjustedHeadlineEffect(
+        guardEffect({
+          tag: "a",
+          sameDayEffect: 3,
+          sameDayConfidence: "medium",
+          nextDayEffect: 4,
+          nextDayConfidence: "low"
+        })
+      )
+    ).toBe(3)
+    expect(
+      adjustedHeadlineEffect(
+        guardEffect({
+          tag: "a",
+          sameDayEffect: 3,
+          sameDayConfidence: "low",
+          nextDayEffect: -2,
+          nextDayConfidence: "medium"
+        })
+      )
+    ).toBe(-2)
+  })
+
+  it("returns null when no component is trustworthy or present", () => {
+    expect(adjustedHeadlineEffect(null)).toBeNull()
+    expect(adjustedHeadlineEffect(undefined)).toBeNull()
+    expect(
+      adjustedHeadlineEffect(
+        guardEffect({
+          tag: "a",
+          sameDayEffect: 3,
+          sameDayConfidence: "low",
+          nextDayEffect: 4,
+          nextDayConfidence: "low"
+        })
+      )
+    ).toBeNull()
+    expect(adjustedHeadlineEffect(guardEffect({ tag: "a" }))).toBeNull()
+  })
+})
+
+describe("combinedGuardedSameDayEffect", () => {
+  const model = guardModel([
+    guardEffect({ tag: "solid", sameDayEffect: 4, sameDayConfidence: "high" }),
+    guardEffect({ tag: "shaky", sameDayEffect: 3, sameDayConfidence: "low" }),
+    guardEffect({
+      tag: "second",
+      sameDayEffect: -1,
+      sameDayConfidence: "medium"
+    })
+  ])
+
+  it("sums medium-plus same-day coefficients over the selection", () => {
+    expect(combinedGuardedSameDayEffect(model, ["solid"])).toBe(4)
+    expect(combinedGuardedSameDayEffect(model, ["solid", "second"])).toBe(3)
+  })
+
+  it("returns null when any selected tag lacks a trustworthy coefficient", () => {
+    expect(combinedGuardedSameDayEffect(model, ["solid", "shaky"])).toBeNull()
+    expect(combinedGuardedSameDayEffect(model, ["missing"])).toBeNull()
+    expect(combinedGuardedSameDayEffect(model, [])).toBeNull()
+    expect(combinedGuardedSameDayEffect(null, ["solid"])).toBeNull()
   })
 })
 

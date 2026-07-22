@@ -243,6 +243,62 @@ export function combinedAdjustedEffect(
   return sum
 }
 
+function meetsMediumConfidence(level: ConfidenceLevel | null) {
+  return level === "medium" || level === "high"
+}
+
+// The steady-state effect a headline (ranking, optimal contribution) may
+// use: only components the model is at least medium-confident about count,
+// so a noisy lag coefficient cannot swing a verdict. Null when neither
+// component qualifies, which callers treat as "the model cannot speak".
+// Confidence here measures precision, not truth: a confounded coefficient
+// can be tightly estimated, so callers must still guard the sign against
+// the observed effect.
+export function adjustedHeadlineEffect(
+  effect: TagEffect | null | undefined
+): number | null {
+  if (effect == null) return null
+  let sum = 0
+  let hasComponent = false
+  if (
+    effect.sameDayEffect !== null &&
+    meetsMediumConfidence(effect.sameDayConfidence)
+  ) {
+    sum += effect.sameDayEffect
+    hasComponent = true
+  }
+  if (
+    effect.nextDayEffect !== null &&
+    meetsMediumConfidence(effect.nextDayConfidence)
+  ) {
+    sum += effect.nextDayEffect
+    hasComponent = true
+  }
+  return hasComponent ? sum : null
+}
+
+// Guarded variant of the combined same-day prediction for a tag selection:
+// every selected tag must carry a medium+ same-day coefficient, otherwise
+// the sum would predict a different combination than the one selected.
+export function combinedGuardedSameDayEffect(
+  model: TagEffectsModel | null,
+  tags: string[]
+): number | null {
+  if (model === null || tags.length === 0) return null
+  let sum = 0
+  for (const tag of tags) {
+    const effect = model.effects.get(tag)
+    if (
+      effect?.sameDayEffect == null ||
+      !meetsMediumConfidence(effect.sameDayConfidence)
+    ) {
+      return null
+    }
+    sum += effect.sameDayEffect
+  }
+  return sum
+}
+
 // Returns the memoized model without computing: the result (possibly null,
 // when the data is below the model gates) on a cache hit, undefined on a
 // miss. Lets the view skip its deferred "computing" state on remounts.
