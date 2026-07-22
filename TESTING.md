@@ -124,6 +124,12 @@ guard against silent data loss. Run those before the rest.
       observed one, and that a card showing an observed effect (the conflict
       or fallback cases) shows only the observed badge.
 
+- [ ] Heavy-tagger model (v0.4.30): if you log something every single day,
+      confirm Insights still produces adjusted effects rather than falling
+      back to naive numbers everywhere. The model no longer needs days with
+      no tags at all, only days without the particular tag being estimated,
+      and the old gate failed silently with nothing on screen to explain it.
+
 ## Data edge states
 - [ ] With metrics deleted but tags present, confirm the Tags view still
       lists the tags.
