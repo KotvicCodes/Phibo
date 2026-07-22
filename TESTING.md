@@ -108,6 +108,12 @@ guard against silent data loss. Run those before the rest.
 - [ ] Set an Optimal include or exclude override and pick a non-default
       target, reload the extension, and confirm both survive and the
       "vs optimal" line still reflects the override.
+- [ ] Sign-guard check (v0.4.20): find a tag with a strongly negative
+      observed effect (like Beer was) and confirm it never appears as
+      rewarding on Insights, is never selected into Optimal's tag set, and
+      Explore's adjusted row shows n/a with the disagree note rather than
+      a positive number. The detail panel should carry the conflict note
+      when the observed effect leads.
 
 ## Data edge states
 - [ ] With metrics deleted but tags present, confirm the Tags view still
