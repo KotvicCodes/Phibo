@@ -217,6 +217,13 @@ export function calculateOptimalDay(
       // co-occurring tags; saturation bounds the damage and conflicts are
       // rare by construction.
       //
+      // The naive support weight below is a no-op in practice, not a
+      // safeguard to rely on: the support score saturates at 5 tagged and
+      // 8 comparison days, while the eligibility gates already demand 10
+      // and 8, so every tag that reaches this point scores exactly 1. It
+      // stays because the gates and the saturation points are independent
+      // constants, and lowering a gate should not silently drop weighting.
+      //
       // The raw values stay unrounded: they get summed, damped, saturated,
       // and compared by the optimizer, and rounding every term to 0.1 first
       // lets the error pile up across a long selection and lets sub-rounding
