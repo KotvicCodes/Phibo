@@ -3,21 +3,14 @@
 Open items from the review that have not been fixed yet. Delete an item once
 it is done rather than checking it off.
 
-1. Unify the adjusted-effect semantics and export the ridge covariance (do
-   these together, the covariance work naturally rewrites the shared
-   helper). `combinedAdjustedEffect` in `src/lib/analysis/tagEffects.ts`
-   (used by Explore's adjusted score rows) sums same-day coefficients only
-   and nulls out when any selected tag lacks one, while Insights ranking
-   and Optimal use the steady-state rule (same-day plus next-day, null only
-   when both are missing), so the same tag can show different adjusted
-   numbers across views. Exporting the coefficient covariance from
-   `fitRidge` (already computed inside the sandwich step, then discarded)
-   then unlocks: honest confidence for Optimal's steady-state sums,
-   replacing the deliberately harsh weakest-link rule that suppresses High
-   badges there; badges on Explore's multi-tag sums; and a model-side badge
-   for Insights cards that matches the displayed adjusted number instead of
-   testing the observed contrast. Update Explore's caveat copy to mention
-   carry-over when unifying.
+1. Export the ridge coefficient covariance from `fitRidge` (already
+   computed inside the sandwich step, then discarded). The v0.4.17-20
+   sign-guard work unified the adjusted-effect semantics (guarded helpers
+   in `src/lib/analysis/tagEffects.ts`); the covariance unlocks the next
+   honesty tier: proper standard errors for headline sums (so the
+   observed-vs-adjusted sign guard can weigh a real SE instead of
+   magnitude bars), badges on Explore's multi-tag sums, and a model-side
+   badge for Insights cards that matches the displayed adjusted number.
 
 2. Small ranking cleanup in `src/lib/analysis/insightRanking.ts`: naive
    fallback candidates keep the old metricWeight heuristic (sleep x1.2) in
