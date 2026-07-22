@@ -14,10 +14,13 @@
     peekExploreConfidence,
     type ExploreMetricConfidence
   } from "../lib/analysis/exploreConfidence"
-  import type { ConfidenceLevel } from "../lib/analysis/stats"
+  import {
+    confidenceFromEffectSe,
+    type ConfidenceLevel
+  } from "../lib/analysis/stats"
   import {
     calculateTagEffectsMemoized,
-    combinedGuardedSameDayEffect,
+    combinedGuardedSameDayEffectWithSe,
     peekTagEffects,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
@@ -273,7 +276,9 @@
             "sleepScore",
             selectedExploreTags,
             exploreScoreComparisons,
-            impactConfidence
+            impactConfidence,
+            matchingExploreDays.length,
+            otherExploreDays.length
           )
         ],
         [
@@ -283,7 +288,9 @@
             "readinessScore",
             selectedExploreTags,
             exploreScoreComparisons,
-            impactConfidence
+            impactConfidence,
+            matchingExploreDays.length,
+            otherExploreDays.length
           )
         ]
       ])
@@ -294,23 +301,17 @@
         .map((item) => item.label)
         .join(" and ")
     : ""
-  // A sum of coefficients has no standard error without their covariances,
-  // so only single-tag selections carry a confidence label.
-  $: adjustedScoreConfidence =
-    scoreModelsReady && selectedExploreTags.length === 1
-      ? new Map<InsightComparisonMetric, ConfidenceLevel | null>([
-          [
-            "sleepScore",
-            sleepEffectsModel?.effects.get(selectedExploreTags[0])
-              ?.sameDayConfidence ?? null
-          ],
-          [
-            "readinessScore",
-            readinessEffectsModel?.effects.get(selectedExploreTags[0])
-              ?.sameDayConfidence ?? null
-          ]
+  // Every selection carries a confidence label, multi-tag ones included:
+  // the model exports the coefficient covariance, so the sum of the selected
+  // tags' effects has a real standard error behind its badge.
+  $: adjustedScoreConfidence = adjustedScoreEffects
+    ? new Map<InsightComparisonMetric, ConfidenceLevel | null>(
+        insightComparisonMetrics.map((item) => [
+          item.metric,
+          adjustedScoreEffects?.get(item.metric)?.confidence ?? null
         ])
-      : null
+      )
+    : null
   $: matchingExploreDays = sortExploreDaysNewestFirst(
     exploreDays.filter((day) => day.matches)
   )
@@ -373,6 +374,7 @@
   interface AdjustedScoreEntry {
     value: number | null
     conflicted: boolean
+    confidence: ConfidenceLevel | null
   }
 
   // A model value must be meaningful before its direction counts as a
@@ -388,10 +390,14 @@
     metric: InsightComparisonMetric,
     tags: string[],
     comparisons: InsightComparison[],
-    confidence: Map<ExploreMetricKey, ExploreMetricConfidence> | null
+    confidence: Map<ExploreMetricKey, ExploreMetricConfidence> | null,
+    matchingCount: number,
+    otherCount: number
   ): AdjustedScoreEntry {
-    const guarded = combinedGuardedSameDayEffect(model, tags)
-    if (guarded === null) return { value: null, conflicted: false }
+    const guarded = combinedGuardedSameDayEffectWithSe(model, tags)
+    if (guarded === null) {
+      return { value: null, conflicted: false, confidence: null }
+    }
     const observed =
       comparisons.find((item) => item.metric === metric)?.comparison.delta ??
       null
@@ -400,12 +406,30 @@
     const conflicted =
       significant &&
       observed !== null &&
-      Math.abs(guarded) >= scoreConflictMinEffect &&
+      Math.abs(guarded.effect) >= scoreConflictMinEffect &&
       Math.sign(observed) !== 0 &&
-      Math.sign(guarded) !== Math.sign(observed)
-    return conflicted
-      ? { value: null, conflicted: true }
-      : { value: guarded, conflicted: false }
+      Math.sign(guarded.effect) !== Math.sign(observed)
+    if (conflicted) {
+      return { value: null, conflicted: true, confidence: null }
+    }
+    // The badge prices the number actually shown: the whole sum, including
+    // the covariance between the selected tags' coefficients. Selections
+    // that overlap on the same nights are estimated together, so their
+    // errors partly cancel and treating them as independent would be wrong
+    // in either direction.
+    return {
+      value: guarded.effect,
+      conflicted: false,
+      confidence:
+        guarded.standardError === null
+          ? null
+          : confidenceFromEffectSe(
+              guarded.effect,
+              guarded.standardError,
+              matchingCount,
+              otherCount
+            )
+    }
   }
 
   // Fits are shared with InsightsView through the tagEffects memo, so after

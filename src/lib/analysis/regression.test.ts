@@ -168,6 +168,75 @@ describe("fitRidge", () => {
     expect(fast.intercept).toBe(full.intercept)
     expect(fast.standardErrors.every((value) => value === 0)).toBe(true)
     expect(full.standardErrors.some((value) => value > 0)).toBe(true)
+    expect(fast.covariance).toBeNull()
+    expect(full.covariance).not.toBeNull()
+  })
+
+  it("returns a covariance whose diagonal matches the standard errors", () => {
+    const { rows, outcomes } = synthetic(21, 300, [5, -3, 2], 70, 6)
+    const fit = fitRidge(rows, outcomes, { lambda: 4 })!
+
+    expect(fit.covariance).not.toBeNull()
+    for (let j = 0; j < 3; j += 1) {
+      expect(Math.sqrt(fit.covariance![j][j])).toBeCloseTo(
+        fit.standardErrors[j],
+        10
+      )
+    }
+  })
+
+  it("returns an exactly symmetric covariance", () => {
+    const { rows, outcomes } = synthetic(22, 300, [5, -3, 2], 70, 6)
+    const fit = fitRidge(rows, outcomes, { lambda: 4 })!
+
+    for (let j = 0; j < 3; j += 1) {
+      for (let k = 0; k < 3; k += 1) {
+        expect(fit.covariance![j][k]).toBe(fit.covariance![k][j])
+      }
+    }
+  })
+
+  it("gives positively correlated columns a negative covariance", () => {
+    // Two columns that fire together on most rows: the fit cannot tell which
+    // one earned the effect, so raising one estimate lowers the other. The
+    // sum of the two is therefore far better determined than either part,
+    // which is exactly what the off-diagonal terms are for.
+    const rng = createSeededRng(5)
+    const rows: number[][] = []
+    const outcomes: number[] = []
+    for (let i = 0; i < 300; i += 1) {
+      const shared = rng() < 0.4 ? 1 : 0
+      const drift = rng() < 0.1 ? 1 : 0
+      const left = shared
+      const right = shared === 1 && drift === 1 ? 0 : shared
+      rows.push([left, right])
+      outcomes.push(70 + 4 * left + 4 * right + (rng() - 0.5) * 6)
+    }
+    const fit = fitRidge(rows, outcomes, { lambda: 1 })!
+
+    expect(fit.covariance![0][1]).toBeLessThan(0)
+    const sumVariance =
+      fit.covariance![0][0] + fit.covariance![1][1] + 2 * fit.covariance![0][1]
+    const independentVariance =
+      fit.covariance![0][0] + fit.covariance![1][1]
+    expect(sumVariance).toBeGreaterThan(0)
+    expect(sumVariance).toBeLessThan(independentVariance)
+  })
+
+  it("zeroes the covariance of a constant column", () => {
+    const rng = createSeededRng(6)
+    const rows: number[][] = []
+    const outcomes: number[] = []
+    for (let i = 0; i < 120; i += 1) {
+      const flag = rng() < 0.4 ? 1 : 0
+      rows.push([flag, 1])
+      outcomes.push(70 + 5 * flag + (rng() - 0.5) * 4)
+    }
+    const fit = fitRidge(rows, outcomes, { lambda: 1 })!
+
+    expect(fit.covariance![1][1]).toBe(0)
+    expect(fit.covariance![0][1]).toBe(0)
+    expect(fit.covariance![0][0]).toBeGreaterThan(0)
   })
 
   it("returns null on empty input", () => {

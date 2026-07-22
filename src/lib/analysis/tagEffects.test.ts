@@ -4,9 +4,11 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 import {
   adjustedHeadlineEffect,
+  adjustedHeadlineEffectWithSe,
   calculateTagEffects,
   calculateTagEffectsMemoized,
   combinedGuardedSameDayEffect,
+  combinedGuardedSameDayEffectWithSe,
   peekTagEffects,
   type TagEffect,
   type TagEffectsModel
@@ -328,8 +330,12 @@ function guardEffect(partial: Partial<TagEffect> & { tag: string }): TagEffect {
     daysWithTag: 20,
     sameDayEffect: null,
     sameDayConfidence: null,
+    sameDayStandardError: null,
+    sameDayIndex: null,
     nextDayEffect: null,
     nextDayConfidence: null,
+    nextDayStandardError: null,
+    nextDayIndex: null,
     ...partial
   }
 }
@@ -340,7 +346,8 @@ function guardModel(effects: TagEffect[]): TagEffectsModel {
     effects: new Map(effects.map((effect) => [effect.tag, effect])),
     modeledDays: 200,
     untaggedDays: 60,
-    lambda: 4
+    lambda: 4,
+    covariance: null
   }
 }
 
@@ -460,3 +467,119 @@ describe("calculateTagEffectsMemoized", () => {
   })
 })
 
+
+describe("standard errors for summed effects", () => {
+  it("prices a pair of near-independent tags like independent errors", () => {
+    // Cadences 4 and 5 only coincide every 20 days, so the two columns are
+    // almost uncorrelated and the sum's error should land near the
+    // root-sum-of-squares of the parts.
+    const { metrics, tags } = build({
+      days: 300,
+      tagEvery: { alpha: 4, beta: 5 },
+      sameDayBoost: { alpha: -8, beta: 6 }
+    })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const alpha = model.effects.get("alpha")!
+    const beta = model.effects.get("beta")!
+    const combined = combinedGuardedSameDayEffectWithSe(model, [
+      "alpha",
+      "beta"
+    ])!
+    const independent = Math.hypot(
+      alpha.sameDayStandardError!,
+      beta.sameDayStandardError!
+    )
+
+    expect(combined.effect).toBeCloseTo(
+      alpha.sameDayEffect! + beta.sameDayEffect!,
+      10
+    )
+    expect(combined.standardError! / independent).toBeGreaterThan(0.85)
+    expect(combined.standardError! / independent).toBeLessThan(1.15)
+  })
+
+  it("prices an identical-twin pair above the independent-errors guess", () => {
+    // Two tags always logged on the same nights are one column as far as the
+    // fit is concerned: it splits the effect evenly and noise moves both
+    // halves together, so their errors add rather than cancel. Treating the
+    // pair as independent would understate how loose the sum really is,
+    // which is the case a diagonal-only fit gets backwards.
+    const { metrics, tags } = build({
+      days: 300,
+      tagEvery: { twinA: 4, twinB: 4 },
+      sameDayBoost: { twinA: -4, twinB: -4 }
+    })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const first = model.effects.get("twinA")!
+    const second = model.effects.get("twinB")!
+    const combined = combinedGuardedSameDayEffectWithSe(model, [
+      "twinA",
+      "twinB"
+    ])!
+    const independent = Math.hypot(
+      first.sameDayStandardError!,
+      second.sameDayStandardError!
+    )
+
+    expect(combined.standardError!).toBeGreaterThan(independent)
+    expect(
+      model.covariance![first.sameDayIndex!][second.sameDayIndex!]
+    ).toBeGreaterThan(0)
+  })
+
+  it("prices the steady-state sum of a tag's own two coefficients", () => {
+    const { metrics, tags } = build({
+      days: 300,
+      tagEvery: { magnesium: 4 },
+      sameDayBoost: { magnesium: 5 },
+      nextDayBoost: { magnesium: 4 }
+    })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const effect = model.effects.get("magnesium")!
+    const headline = adjustedHeadlineEffectWithSe(model, "magnesium")!
+
+    expect(headline.effect).toBe(adjustedHeadlineEffect(effect))
+    expect(headline.standardError).not.toBeNull()
+    expect(headline.standardError!).toBeGreaterThan(0)
+    // The sum is priced from the covariance, not from either component or
+    // from treating the two as unrelated.
+    expect(headline.standardError).not.toBe(effect.sameDayStandardError)
+    expect(headline.standardError).not.toBe(effect.nextDayStandardError)
+  })
+
+  it("agrees with the scalar helpers and keeps their null semantics", () => {
+    const { metrics, tags } = build({
+      days: 300,
+      tagEvery: { alpha: 4, beta: 5 },
+      sameDayBoost: { alpha: -8 }
+    })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+
+    expect(combinedGuardedSameDayEffectWithSe(model, ["alpha"])?.effect).toBe(
+      combinedGuardedSameDayEffect(model, ["alpha"])
+    )
+    // "beta" has no real effect, so it never earns a trusted coefficient and
+    // the whole selection stays null rather than reporting a partial sum.
+    expect(model.effects.get("beta")?.sameDayConfidence).not.toBe("high")
+    expect(combinedGuardedSameDayEffectWithSe(model, ["alpha", "unknown"])).toBeNull()
+    expect(combinedGuardedSameDayEffectWithSe(model, [])).toBeNull()
+    expect(combinedGuardedSameDayEffectWithSe(null, ["alpha"])).toBeNull()
+    expect(adjustedHeadlineEffectWithSe(model, "unknown")).toBeNull()
+    expect(adjustedHeadlineEffectWithSe(null, "alpha")).toBeNull()
+  })
+
+  it("reports no standard error when the fit produced no covariance", () => {
+    const { metrics, tags } = build({
+      days: 300,
+      tagEvery: { alpha: 4 },
+      sameDayBoost: { alpha: -8 }
+    })
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const without: TagEffectsModel = { ...model, covariance: null }
+
+    expect(combinedGuardedSameDayEffectWithSe(without, ["alpha"])).toEqual({
+      effect: combinedGuardedSameDayEffect(model, ["alpha"]),
+      standardError: null
+    })
+  })
+})

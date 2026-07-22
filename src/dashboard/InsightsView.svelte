@@ -13,8 +13,14 @@
     type InsightPairConfidence
   } from "../lib/analysis/insightConfidence"
   import {
+    confidenceFromEffectSe,
+    type ConfidenceLevel
+  } from "../lib/analysis/stats"
+  import {
+    adjustedHeadlineEffectWithSe,
     calculateTagEffectsMemoized,
     peekTagEffects,
+    type TagEffect,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
@@ -318,7 +324,44 @@
         value: "n/a"
       })
     }
+    // When both components clear the trust bar the card ranks on their sum,
+    // and the sum has its own precision: the two coefficients come from
+    // overlapping design columns, so it is neither the weaker component's
+    // confidence nor what adding their errors separately would suggest.
+    const headline = adjustedHeadlineEffectWithSe(model, item.tag)
+    if (headline !== null && usesBothComponents(effect)) {
+      const level =
+        headline.standardError === null
+          ? null
+          : confidenceFromEffectSe(
+              headline.effect,
+              headline.standardError,
+              item.daysWithTag,
+              model.modeledDays - item.daysWithTag
+            )
+      stats.push({
+        helper:
+          level === null
+            ? "same-day plus carry-over, the effect the card ranks on"
+            : `same-day plus carry-over, the effect the card ranks on (${confidenceBadgeLabel(level).toLowerCase()} confidence)`,
+        label: "Steady state",
+        unit: "pts",
+        value: formatDelta(headline.effect)
+      })
+    }
     return stats
+  }
+
+  function usesBothComponents(effect: TagEffect | undefined) {
+    const trusted = (level: ConfidenceLevel | null) =>
+      level === "medium" || level === "high"
+
+    return (
+      effect?.sameDayEffect != null &&
+      trusted(effect.sameDayConfidence) &&
+      effect.nextDayEffect != null &&
+      trusted(effect.nextDayConfidence)
+    )
   }
 
   function createInsightStats(
@@ -512,8 +555,19 @@
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
                   {#if insightConfidenceMap}
-                    <span class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}">
+                    <span
+                      class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}"
+                      title="Confidence in the observed contrast between tagged and untagged nights"
+                    >
                       {confidenceBadgeLabel(insightConfidenceMap.get(insightKey(item))?.level ?? "low")}
+                    </span>
+                  {/if}
+                  {#if item.adjustedConfidence}
+                    <span
+                      class="confidence-badge model {item.adjustedConfidence}"
+                      title="Confidence in the adjusted effect the card shows, from the model"
+                    >
+                      {confidenceBadgeLabel(item.adjustedConfidence)} model
                     </span>
                   {/if}
                 </div>
@@ -548,8 +602,19 @@
                   <h4>{formatTagLabel(item.tag)}</h4>
                   <span>{item.daysWithTag} nights</span>
                   {#if insightConfidenceMap}
-                    <span class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}">
+                    <span
+                      class="confidence-badge {insightConfidenceMap.get(insightKey(item))?.level ?? "low"}"
+                      title="Confidence in the observed contrast between tagged and untagged nights"
+                    >
                       {confidenceBadgeLabel(insightConfidenceMap.get(insightKey(item))?.level ?? "low")}
+                    </span>
+                  {/if}
+                  {#if item.adjustedConfidence}
+                    <span
+                      class="confidence-badge model {item.adjustedConfidence}"
+                      title="Confidence in the adjusted effect the card shows, from the model"
+                    >
+                      {confidenceBadgeLabel(item.adjustedConfidence)} model
                     </span>
                   {/if}
                 </div>
@@ -855,6 +920,12 @@
      inside correlation card titles. */
   .correlation-title .confidence-badge {
     color: #4f5f53;
+  }
+
+  /* The model-side badge sits next to the observed one, so it needs a
+     difference the eye catches before the label is read. */
+  .correlation-title .confidence-badge.model {
+    border-style: dashed;
   }
 
   .correlation-card.low-confidence:not(.selected):not(:hover) {

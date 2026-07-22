@@ -74,6 +74,11 @@ export interface RidgeFit {
   intercept: number
   coefficients: number[]
   standardErrors: number[]
+  // Full coefficient covariance on the raw feature scale, so callers can
+  // put a standard error on a SUM of coefficients. Null when standard
+  // errors were not requested. Rows and columns of constant (dropped)
+  // features are zero.
+  covariance: number[][] | null
   lambda: number
   usedDays: number
 }
@@ -236,7 +241,8 @@ export function fitRidge(
 
   // Standard errors dominate the cost of a fit (matrix inversion), so the
   // cross-validation path skips them; it only needs predictions.
-  const standardizedErrors = new Array<number>(featureCount).fill(0)
+  const standardErrors = new Array<number>(featureCount).fill(0)
+  let covariance: number[][] | null = null
   if (computeStandardErrors) {
     // Residual variance on the standardized fit.
     let rss = 0
@@ -251,32 +257,60 @@ export function fitRidge(
     const sigmaSquared = rss / Math.max(1, n - featureCount)
 
     // Sandwich covariance on the standardized scale, reusing the Cholesky
-    // factor already computed for the coefficient solve.
+    // factor already computed for the coefficient solve. The whole matrix
+    // is kept, not only its diagonal: a caller that reports the SUM of
+    // several coefficients (same-day plus next-day carry-over, or every tag
+    // in a selection) needs the off-diagonal terms, and collinear tag
+    // columns carry large ones. Adding variances alone would badly misstate
+    // the precision of those sums.
     const penalizedInverse = invertFromCholesky(solved.penalizedFactor)
-    for (let j = 0; j < featureCount; j += 1) {
-      // Var(b_j) = sigma^2 * (P^-1 G P^-1)_jj where P = G + lambda I.
-      let variance = 0
-      for (let a = 0; a < featureCount; a += 1) {
-        let inner = 0
+    // G P^-1, computed once and reused for every row of the product below.
+    const gramTimesInverse: number[][] = Array.from(
+      { length: featureCount },
+      () => new Array<number>(featureCount).fill(0)
+    )
+    for (let a = 0; a < featureCount; a += 1) {
+      for (let k = 0; k < featureCount; k += 1) {
+        let sum = 0
         for (let b = 0; b < featureCount; b += 1) {
-          inner += gram[a][b] * penalizedInverse[b][j]
+          sum += gram[a][b] * penalizedInverse[b][k]
         }
-        variance += penalizedInverse[j][a] * inner
+        gramTimesInverse[a][k] = sum
       }
-      standardizedErrors[j] = Math.sqrt(Math.max(0, sigmaSquared * variance))
     }
-  }
 
-  const standardErrors = new Array<number>(featureCount).fill(0)
-  for (let j = 0; j < featureCount; j += 1) {
-    if (constant[j]) continue
-    standardErrors[j] = standardizedErrors[j] / scales[j]
+    // Cov(b) = sigma^2 * P^-1 G P^-1 where P = G + lambda I, then divided
+    // back onto the raw feature scale. Only the upper triangle is computed
+    // and mirrored, so the result is exactly symmetric.
+    covariance = Array.from({ length: featureCount }, () =>
+      new Array<number>(featureCount).fill(0)
+    )
+    for (let j = 0; j < featureCount; j += 1) {
+      if (constant[j]) continue
+      for (let k = j; k < featureCount; k += 1) {
+        if (constant[k]) continue
+        let sum = 0
+        for (let a = 0; a < featureCount; a += 1) {
+          sum += penalizedInverse[j][a] * gramTimesInverse[a][k]
+        }
+        const value = (sigmaSquared * sum) / (scales[j] * scales[k])
+        covariance[j][k] = value
+        covariance[k][j] = value
+      }
+    }
+
+    // Derived from the same matrix so a variance and its standard error can
+    // never disagree.
+    for (let j = 0; j < featureCount; j += 1) {
+      standardErrors[j] = Math.sqrt(Math.max(0, covariance[j][j]))
+    }
   }
 
   return {
     intercept: solved.intercept,
     coefficients: solved.coefficients,
     standardErrors,
+    covariance,
     lambda,
     usedDays: n
   }

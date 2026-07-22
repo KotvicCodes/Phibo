@@ -7,7 +7,11 @@ import {
 } from "./correlations"
 import type { InsightConfidenceModel } from "./insightConfidence"
 import { roundToOne } from "./shared"
-import { adjustedHeadlineEffect, type TagEffectsModel } from "./tagEffects"
+import { confidenceFromEffectSe, type ConfidenceLevel } from "./stats"
+import {
+  adjustedHeadlineEffectWithSe,
+  type TagEffectsModel
+} from "./tagEffects"
 
 const primaryMetrics: PrimaryInsightMetric[] = ["sleepScore", "readinessScore"]
 
@@ -73,7 +77,8 @@ export function getAdjustedTagInsights(
     }
     for (const correlation of correlations) {
       const effect = model.effects.get(correlation.tag)
-      const guarded = adjustedHeadlineEffect(effect)
+      const guardedWithSe = adjustedHeadlineEffectWithSe(model, correlation.tag)
+      const guarded = guardedWithSe?.effect ?? null
       // The raw ungated sum distinguishes "the model estimated this tag
       // but cannot attest a reliable effect" from "the model was never
       // able to estimate it". Without this, a confounded tag partialled
@@ -95,6 +100,12 @@ export function getAdjustedTagInsights(
       // A model value only makes a directional claim when it is itself
       // meaningful: a coefficient partialled to near zero with the
       // opposite sign is the desired confounding outcome, not a flip.
+      //
+      // The bar stays a magnitude bar even though the summed standard error
+      // is now available. Requiring the model to be SE-significant before a
+      // conflict counts would let an imprecise opposing coefficient through,
+      // which is the sign flip this guard exists to stop. Precision is not
+      // truth: a confounded coefficient can be tightly estimated.
       const opposes = (modelValue: number) =>
         observedSignificant &&
         Math.abs(modelValue) >= MIN_ADJUSTED_IMPACT &&
@@ -103,6 +114,10 @@ export function getAdjustedTagInsights(
 
       let value: number
       let evidence: TagInsight["evidence"]
+      // Only the model-sourced branch earns a model-side badge. The
+      // observed branches show a number the model did not produce, so its
+      // precision would be describing something else.
+      let adjustedConfidence: ConfidenceLevel | undefined
       if (guarded !== null) {
         // Sign comparisons run on unrounded values; a guarded effect near
         // zero is the desired partialling outcome, not a flip.
@@ -112,6 +127,18 @@ export function getAdjustedTagInsights(
         } else {
           value = guarded
           evidence = "adjusted"
+          // No standard error means no badge at all: a fabricated "low"
+          // would read as a claim about precision the fit never made.
+          const standardError = guardedWithSe?.standardError ?? null
+          adjustedConfidence =
+            standardError === null
+              ? undefined
+              : confidenceFromEffectSe(
+                  guarded,
+                  standardError,
+                  correlation.daysWithTag,
+                  model.modeledDays - correlation.daysWithTag
+                )
         }
       } else if (rawSum !== null) {
         // All components are low confidence. The model still estimated
@@ -153,7 +180,8 @@ export function getAdjustedTagInsights(
         delta,
         supportScore: 1,
         weightedImpact: Math.abs(delta),
-        evidence
+        evidence,
+        adjustedConfidence
       })
     }
   }
