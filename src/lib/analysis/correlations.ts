@@ -1,5 +1,6 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import { average, groupTagsByName, roundToOne } from "./shared"
+import type { ConfidenceLevel } from "./stats"
 
 type MetricKey =
   | "averageHrv"
@@ -128,6 +129,12 @@ export interface TagInsight {
   // observed delta because the model contradicted a significant observed
   // direction. Absent on naive-ranking insights.
   evidence?: "adjusted" | "observed" | "observed-conflict"
+  // How precisely the model estimated the adjusted effect the card shows,
+  // from the standard error of the summed coefficients. Only set when the
+  // displayed number came from the model, since it says nothing about an
+  // observed delta. Separate from the observed-contrast badge, which is a
+  // permutation result over the whole tag and metric family.
+  adjustedConfidence?: ConfidenceLevel
 }
 
 interface TagDiscovery {

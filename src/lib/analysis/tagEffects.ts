@@ -15,8 +15,15 @@ export interface TagEffect {
   daysWithTag: number
   sameDayEffect: number | null
   sameDayConfidence: ConfidenceLevel | null
+  sameDayStandardError: number | null
+  // Design-matrix column of each coefficient, so a caller summing several
+  // of them can look their covariances up on the model. Null when the tag
+  // did not earn that column.
+  sameDayIndex: number | null
   nextDayEffect: number | null
   nextDayConfidence: ConfidenceLevel | null
+  nextDayStandardError: number | null
+  nextDayIndex: number | null
 }
 
 export interface TagEffectsModel {
@@ -25,6 +32,9 @@ export interface TagEffectsModel {
   modeledDays: number
   untaggedDays: number
   lambda: number
+  // Coefficient covariance on the score-point scale, indexed by the column
+  // numbers on TagEffect. Null when the fit did not produce one.
+  covariance: number[][] | null
 }
 
 const MIN_MODELED_DAYS = 60
@@ -163,8 +173,12 @@ export function calculateTagEffects(
       daysWithTag: 0,
       sameDayEffect: null,
       sameDayConfidence: null,
+      sameDayStandardError: null,
+      sameDayIndex: null,
       nextDayEffect: null,
-      nextDayConfidence: null
+      nextDayConfidence: null,
+      nextDayStandardError: null,
+      nextDayIndex: null
     }
     effects.set(tag, created)
     return created
@@ -173,6 +187,8 @@ export function calculateTagEffects(
     const effect = effectFor(column.tag)
     effect.daysWithTag = column.count
     effect.sameDayEffect = fit.coefficients[index]
+    effect.sameDayStandardError = fit.standardErrors[index]
+    effect.sameDayIndex = index
     effect.sameDayConfidence = confidenceFromEffectSe(
       fit.coefficients[index],
       fit.standardErrors[index],
@@ -189,6 +205,8 @@ export function calculateTagEffects(
       ).length
     }
     effect.nextDayEffect = fit.coefficients[index]
+    effect.nextDayStandardError = fit.standardErrors[index]
+    effect.nextDayIndex = index
     effect.nextDayConfidence = confidenceFromEffectSe(
       fit.coefficients[index],
       fit.standardErrors[index],
@@ -197,7 +215,14 @@ export function calculateTagEffects(
     )
   })
 
-  return { metric, effects, modeledDays, untaggedDays, lambda }
+  return {
+    metric,
+    effects,
+    modeledDays,
+    untaggedDays,
+    lambda,
+    covariance: fit.covariance
+  }
 }
 
 // The dashboard recomputes reactive blocks on unrelated state changes, so
@@ -238,24 +263,25 @@ function meetsMediumConfidence(level: ConfidenceLevel | null) {
 export function adjustedHeadlineEffect(
   effect: TagEffect | null | undefined
 ): number | null {
-  if (effect == null) return null
-  let sum = 0
-  let hasComponent = false
-  if (
-    effect.sameDayEffect !== null &&
-    meetsMediumConfidence(effect.sameDayConfidence)
-  ) {
-    sum += effect.sameDayEffect
-    hasComponent = true
+  return guardedComponents(effect)?.sum ?? null
+}
+
+// The same guarded steady-state effect with a standard error for the SUM,
+// which needs the covariance between the two coefficients and therefore the
+// whole model, not just the tag's own row. A tag logged on consecutive days
+// puts correlated columns in the design, so adding the two variances alone
+// would misstate the precision in either direction.
+export function adjustedHeadlineEffectWithSe(
+  model: TagEffectsModel | null,
+  tag: string
+): { effect: number; standardError: number | null } | null {
+  if (model === null) return null
+  const parts = guardedComponents(model.effects.get(tag))
+  if (parts === null) return null
+  return {
+    effect: parts.sum,
+    standardError: sumStandardError(model.covariance, parts.indices)
   }
-  if (
-    effect.nextDayEffect !== null &&
-    meetsMediumConfidence(effect.nextDayConfidence)
-  ) {
-    sum += effect.nextDayEffect
-    hasComponent = true
-  }
-  return hasComponent ? sum : null
 }
 
 // Guarded variant of the combined same-day prediction for a tag selection:
@@ -265,8 +291,16 @@ export function combinedGuardedSameDayEffect(
   model: TagEffectsModel | null,
   tags: string[]
 ): number | null {
+  return combinedGuardedSameDayEffectWithSe(model, tags)?.effect ?? null
+}
+
+export function combinedGuardedSameDayEffectWithSe(
+  model: TagEffectsModel | null,
+  tags: string[]
+): { effect: number; standardError: number | null } | null {
   if (model === null || tags.length === 0) return null
   let sum = 0
+  const indices: Array<number | null> = []
   for (const tag of tags) {
     const effect = model.effects.get(tag)
     if (
@@ -276,8 +310,59 @@ export function combinedGuardedSameDayEffect(
       return null
     }
     sum += effect.sameDayEffect
+    indices.push(effect.sameDayIndex)
   }
-  return sum
+  return {
+    effect: sum,
+    standardError: sumStandardError(model.covariance, indices)
+  }
+}
+
+// The components that clear the medium-plus bar, with their design columns
+// so a caller can price the sum. Null when nothing qualifies.
+function guardedComponents(effect: TagEffect | null | undefined) {
+  if (effect == null) return null
+  let sum = 0
+  const indices: Array<number | null> = []
+  if (
+    effect.sameDayEffect !== null &&
+    meetsMediumConfidence(effect.sameDayConfidence)
+  ) {
+    sum += effect.sameDayEffect
+    indices.push(effect.sameDayIndex)
+  }
+  if (
+    effect.nextDayEffect !== null &&
+    meetsMediumConfidence(effect.nextDayConfidence)
+  ) {
+    sum += effect.nextDayEffect
+    indices.push(effect.nextDayIndex)
+  }
+  return indices.length === 0 ? null : { sum, indices }
+}
+
+// Var(sum of coefficients) is the sum of every entry of their covariance
+// submatrix, off-diagonal terms included. Null when the covariance is
+// missing or a component has no column to look up, since a partial answer
+// would understate the uncertainty.
+function sumStandardError(
+  covariance: number[][] | null,
+  indices: Array<number | null>
+) {
+  if (covariance === null || indices.length === 0) return null
+  const columns: number[] = []
+  for (const index of indices) {
+    if (index === null || covariance[index] === undefined) return null
+    columns.push(index)
+  }
+  let variance = 0
+  for (const row of columns) {
+    for (const column of columns) {
+      variance += covariance[row][column]
+    }
+  }
+  // Rounding noise can push a near-zero variance slightly negative.
+  return Math.sqrt(Math.max(0, variance))
 }
 
 // Returns the memoized model without computing: the result (possibly null,

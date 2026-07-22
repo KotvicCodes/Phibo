@@ -256,8 +256,12 @@ function mockEffect(partial: Partial<TagEffect> & { tag: string }): TagEffect {
     daysWithTag: 0,
     sameDayEffect: null,
     sameDayConfidence: null,
+    sameDayStandardError: null,
+    sameDayIndex: null,
     nextDayEffect: null,
     nextDayConfidence: null,
+    nextDayStandardError: null,
+    nextDayIndex: null,
     ...partial
   }
 }
@@ -268,7 +272,8 @@ function mockModel(effects: TagEffect[]): TagEffectsModel {
     effects: new Map(effects.map((effect) => [effect.tag, effect])),
     modeledDays: 120,
     untaggedDays: 40,
-    lambda: 4
+    lambda: 4,
+    covariance: null
   }
 }
 

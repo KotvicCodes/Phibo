@@ -25,8 +25,12 @@ function mockEffect(partial: Partial<TagEffect> & { tag: string }): TagEffect {
     daysWithTag: 30,
     sameDayEffect: null,
     sameDayConfidence: null,
+    sameDayStandardError: null,
+    sameDayIndex: null,
     nextDayEffect: null,
     nextDayConfidence: null,
+    nextDayStandardError: null,
+    nextDayIndex: null,
     ...partial
   }
 }
@@ -37,7 +41,8 @@ function mockModel(effects: TagEffect[]): TagEffectsModel {
     effects: new Map(effects.map((effect) => [effect.tag, effect])),
     modeledDays: 200,
     untaggedDays: 60,
-    lambda: 4
+    lambda: 4,
+    covariance: null
   }
 }
 
@@ -434,5 +439,54 @@ describe("getAdjustedTagInsights mixed-mode ranking", () => {
     expect(
       naive.rewarding.find((insight) => insight.tag === "sauna")?.weightedImpact
     ).toBe(2.4)
+  })
+})
+
+describe("getAdjustedTagInsights model confidence", () => {
+  it("badges the adjusted number and leaves observed ones unbadged", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    // A real fit, so the covariance behind the summed effect is real too.
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      mockObserved({ "alcohol-sleepScore": "high" })
+    )
+    const all = [...adjusted.rewarding, ...adjusted.concerning]
+
+    for (const insight of all) {
+      if (insight.evidence === "adjusted") {
+        expect(insight.adjustedConfidence).toBeTruthy()
+      } else {
+        expect(insight.adjustedConfidence).toBeUndefined()
+      }
+    }
+    expect(
+      all.some((insight) => insight.evidence === "adjusted")
+    ).toBe(true)
+  })
+
+  it("shows no model badge when the fit exported no covariance", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = mockModel([
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: -6,
+        sameDayConfidence: "high"
+      })
+    ])
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      null
+    )
+    const alcohol = adjusted.concerning.find(
+      (insight) => insight.tag === "alcohol"
+    )
+
+    expect(alcohol?.evidence).toBe("adjusted")
+    expect(alcohol?.adjustedConfidence).toBeUndefined()
   })
 })
