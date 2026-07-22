@@ -349,6 +349,13 @@
               their shared effect between them, so each shows about half.
             </li>
             <li>
+              The model may refine a tag's effect but never reverse it:
+              when its estimate points against a solid observed difference,
+              the row falls back to the observed averages and dims, so a
+              tag that clearly hurts you can never be recommended for your
+              optimal day.
+            </li>
+            <li>
               Remove tags you cannot realistically use, or add other tags from
               the list below. The cards then show how far your adjusted day
               sits from the most optimal one.

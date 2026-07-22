@@ -2,10 +2,19 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import { calculateSupportScore } from "./correlations"
 import { average, groupTagsByName, roundToOne } from "./shared"
 import type { ConfidenceLevel } from "./stats"
-import type { TagEffect, TagEffectsModel } from "./tagEffects"
+import {
+  adjustedHeadlineEffect,
+  type TagEffect,
+  type TagEffectsModel
+} from "./tagEffects"
 
 export const OPTIMAL_MIN_TAGGED_DAYS = 10
 const OPTIMAL_MIN_UNTAGGED_DAYS = 8
+// Sign-guard thresholds: the observed delta must be this large (points)
+// before it can overrule the model, and a model value must be this large
+// before its direction counts as a claim at all.
+const OBSERVED_CONFLICT_MIN_DELTA = 2
+const ADJUSTED_CONFLICT_MIN_EFFECT = 1.5
 
 export type ScoreCategory = "activityScore" | "readinessScore" | "sleepScore"
 export type OptimalTarget =
@@ -129,13 +138,7 @@ export function calculateOptimalDay(
       // steady-state effect includes next-day carry-over: an optimal day is
       // a repeatable routine, so each day earns today's same-day effect and
       // yesterday's lag effect.
-      const deltas = mapCategories((key) => {
-        if (adjustedCategories.has(key)) {
-          const effect = adjustedModels[key]?.effects.get(tag)
-          const steadyState = steadyStateEffect(effect)
-          if (steadyState === null || metrics.length === 0) return null
-          return steadyState * (1 - daysWithTag.length / metrics.length)
-        }
+      const observedDeltas = mapCategories((key) => {
         const taggedAverage = average(daysWithTag.map((day) => day[key]))
         const overallAverage = baselines[key]
 
@@ -143,12 +146,70 @@ export function calculateOptimalDay(
           ? null
           : taggedAverage - overallAverage
       })
+      // Fallback flags per category: set when an adjusted category uses the
+      // observed delta instead of the model (conflict or missing estimate),
+      // so the row's confidence dims to low. Filled while deltas compute.
+      const usedObservedFallback = mapCategories(() => false)
+      const deltas = mapCategories((key) => {
+        if (!adjustedCategories.has(key)) return observedDeltas[key]
+        const effect = adjustedModels[key]?.effects.get(tag)
+        const observed = observedDeltas[key]
+        const guarded = adjustedHeadlineEffect(effect)
+        const rawSum =
+          effect == null ||
+          (effect.sameDayEffect === null && effect.nextDayEffect === null)
+            ? null
+            : (effect.sameDayEffect ?? 0) + (effect.nextDayEffect ?? 0)
+        // The model may refine an effect but never reverse the direction
+        // of a solid observed one: at low n a collinear ridge fit can flip
+        // signs, and its own confidence cannot detect that. Both sides
+        // must be meaningful before a conflict is declared; a coefficient
+        // partialled to near zero is the desired outcome, not a flip.
+        const opposes = (value: number) =>
+          observed !== null &&
+          Math.abs(observed) >= OBSERVED_CONFLICT_MIN_DELTA &&
+          Math.abs(value) >= ADJUSTED_CONFLICT_MIN_EFFECT &&
+          Math.sign(observed) !== 0 &&
+          Math.sign(value) !== Math.sign(observed)
+        if (guarded !== null) {
+          if (opposes(guarded)) {
+            usedObservedFallback[key] = true
+            return observed
+          }
+          if (metrics.length === 0) return null
+          return guarded * (1 - daysWithTag.length / metrics.length)
+        }
+        if (rawSum !== null) {
+          if (opposes(rawSum)) {
+            usedObservedFallback[key] = true
+            return observed
+          }
+          // Only low-confidence components and no conflict: contribute
+          // nothing. Unlike the Insights lists, Optimal SUMS contributions,
+          // so falling back to observed bundles here would double-count
+          // co-occurring tags whose adjusted coefficients are also summed.
+          return null
+        }
+        // No model estimate for this tag at all: the observed delta keeps
+        // the row honest, exactly what the naive path would produce.
+        if (observed !== null) {
+          usedObservedFallback[key] = true
+          return observed
+        }
+        return null
+      })
       const supportScore = calculateSupportScore(
         daysWithTag.length,
         daysWithoutTag.length
       )
       // Adjusted deltas take no support weighting: the ridge penalty
-      // already shrinks coefficients backed by few days.
+      // already shrinks coefficients backed by few days. Observed
+      // fallbacks in adjusted categories carry their own frequency
+      // anchoring (delta vs the overall baseline), so weight 1 is right
+      // for them too. Bounded double-count caveat: a conflict fallback is
+      // an observed bundle plain-summed next to partialled coefficients of
+      // co-occurring tags; saturation bounds the damage and conflicts are
+      // rare by construction.
       const weightedDeltas = mapCategories((key) =>
         roundToOne(
           (deltas[key] ?? 0) * (adjustedCategories.has(key) ? 1 : supportScore)
@@ -156,7 +217,9 @@ export function calculateOptimalDay(
       )
       const confidences = mapCategories((key) =>
         adjustedCategories.has(key)
-          ? effectConfidence(adjustedModels[key]?.effects.get(tag))
+          ? usedObservedFallback[key]
+            ? "low"
+            : guardedEffectConfidence(adjustedModels[key]?.effects.get(tag))
           : null
       )
 
@@ -330,31 +393,23 @@ export function calculateOptimalDay(
   }
 }
 
-// The per-day effect of repeating a tag daily: today's same-day coefficient
-// plus yesterday's carry-over. Null only when the model has neither column
-// for the tag (a tag can carry only a lag coefficient, so the columns are
-// treated symmetrically). Bonus: ridge splits a back-to-back tag's effect
-// between the two collinear columns, and this sum recombines it.
-function steadyStateEffect(effect: TagEffect | undefined) {
-  if (effect == null) return null
-  if (effect.sameDayEffect === null && effect.nextDayEffect === null) {
-    return null
-  }
-  return (effect.sameDayEffect ?? 0) + (effect.nextDayEffect ?? 0)
-}
-
 const confidenceRank: Record<ConfidenceLevel, number> = {
   low: 0,
   medium: 1,
   high: 2
 }
 
-// The weaker of the tag's same-day and next-day confidence levels; a chain
-// is only as trustworthy as its weakest coefficient.
-function effectConfidence(effect: TagEffect | undefined) {
+// The weaker confidence among the components that actually feed the
+// guarded headline (medium-plus only); a chain is only as trustworthy as
+// its weakest used link. Null when no component qualifies.
+function guardedEffectConfidence(effect: TagEffect | undefined) {
   if (effect == null) return null
-  const levels = [effect.sameDayConfidence, effect.nextDayConfidence].filter(
-    (level): level is ConfidenceLevel => level !== null
+  const levels = [
+    effect.sameDayEffect !== null ? effect.sameDayConfidence : null,
+    effect.nextDayEffect !== null ? effect.nextDayConfidence : null
+  ].filter(
+    (level): level is ConfidenceLevel =>
+      level === "medium" || level === "high"
   )
   if (levels.length === 0) return null
   return levels.reduce((weakest, level) =>

@@ -278,7 +278,13 @@ describe("calculateOptimalDay adjusted mode", () => {
     // 3 next-day give steady state 9, so delta = 9 * (2/3) = 6.
     const { metrics, tags } = build({ tagEvery: { mag: 3 }, noiseSpread: 0 })
     const model = mockModel([
-      mockEffect({ tag: "mag", sameDayEffect: 6, nextDayEffect: 3 })
+      mockEffect({
+        tag: "mag",
+        sameDayEffect: 6,
+        sameDayConfidence: "high",
+        nextDayEffect: 3,
+        nextDayConfidence: "high"
+      })
     ])
     const result = calculateOptimalDay(metrics, tags, {
       target: "sleep",
@@ -298,7 +304,7 @@ describe("calculateOptimalDay adjusted mode", () => {
     const tags: TagEntryRow[] = []
     for (let i = 0; i < days - 10; i += 1) tags.push(tagRow(isoDate(i), "daily"))
     const model = mockModel([
-      mockEffect({ tag: "daily", sameDayEffect: 6 })
+      mockEffect({ tag: "daily", sameDayEffect: 6, sameDayConfidence: "high" })
     ])
     const result = calculateOptimalDay(metrics, tags, {
       target: "sleep",
@@ -339,8 +345,8 @@ describe("calculateOptimalDay adjusted mode", () => {
     })
     const naive = calculateOptimalDay(boosted, tags, { target: "sleep" })
     const model = mockModel([
-      mockEffect({ tag: "a", sameDayEffect: 6 }),
-      mockEffect({ tag: "b", sameDayEffect: 6 })
+      mockEffect({ tag: "a", sameDayEffect: 6, sameDayConfidence: "high" }),
+      mockEffect({ tag: "b", sameDayEffect: 6, sameDayConfidence: "high" })
     ])
     const adjusted = calculateOptimalDay(boosted, tags, {
       target: "sleep",
@@ -394,7 +400,7 @@ describe("calculateOptimalDay adjusted mode", () => {
   it("counts a lag-only coefficient through the steady state", () => {
     const { metrics, tags } = build({ tagEvery: { tea: 3 }, noiseSpread: 0 })
     const model = mockModel([
-      mockEffect({ tag: "tea", nextDayEffect: 6 })
+      mockEffect({ tag: "tea", nextDayEffect: 6, nextDayConfidence: "medium" })
     ])
     const result = calculateOptimalDay(metrics, tags, {
       target: "sleep",
@@ -406,13 +412,25 @@ describe("calculateOptimalDay adjusted mode", () => {
     expect(row.deltas.sleepScore).toBeCloseTo(4, 1)
   })
 
-  it("keeps a tag without model coefficients displayable at zero", () => {
-    const { metrics, tags } = build({
+  it("falls back to the observed delta for a tag the model never estimated", () => {
+    const { metrics: baseMetrics, tags } = build({
       tagEvery: { known: 3, unknown: 4 },
       noiseSpread: 0
     })
+    // The unknown tag has a real observed sleep effect on its days.
+    const unknownDates = new Set(
+      tags.filter((entry) => entry.tag === "unknown").map((entry) => entry.date)
+    )
+    const metrics = baseMetrics.map((day) =>
+      unknownDates.has(day.date)
+        ? ({
+            ...day,
+            sleepScore: (day.sleepScore as number) - 6
+          } as DailyMetricRow)
+        : day
+    )
     const model = mockModel([
-      mockEffect({ tag: "known", sameDayEffect: 6 })
+      mockEffect({ tag: "known", sameDayEffect: 6, sameDayConfidence: "high" })
     ])
     const result = calculateOptimalDay(metrics, tags, {
       target: "sleep",
@@ -421,8 +439,91 @@ describe("calculateOptimalDay adjusted mode", () => {
     const row = [...result.contributions, ...result.otherEligibleTags].find(
       (item) => item.tag === "unknown"
     )!
+    // Observed vs overall: -6 * (1 - 1/4) = -4.5, with low row confidence.
+    expect(row.deltas.sleepScore).toBeCloseTo(-4.5, 1)
+    expect(row.confidences.sleepScore).toBe("low")
+    expect(result.contributions.map((item) => item.tag)).not.toContain(
+      "unknown"
+    )
+  })
+
+  it("keeps a low-confidence non-conflicting estimate out of the sums", () => {
+    const { metrics, tags } = build({
+      tagEvery: { shaky: 3 },
+      noiseSpread: 0
+    })
+    const model = mockModel([
+      mockEffect({ tag: "shaky", sameDayEffect: 4, sameDayConfidence: "low" })
+    ])
+    const result = calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "shaky"
+    )!
+    // No observed effect to conflict with and no trustworthy component:
+    // Optimal sums contributions, so an untrusted estimate contributes
+    // nothing rather than an observed bundle that could double-count.
     expect(row.deltas.sleepScore).toBeNull()
     expect(row.weightedDeltas.sleepScore).toBe(0)
+  })
+
+  it("never lets a flipped model recommend a harmful tag (Beer scenario)", () => {
+    // Beer every 8th day with a strong observed negative readiness effect;
+    // the model reports a flipped positive with a low-confidence chaser.
+    const { metrics: baseMetrics, tags } = build({
+      days: 160,
+      noiseSpread: 2
+    })
+    const beerDates = new Set<string>()
+    const beerTags: TagEntryRow[] = []
+    for (let i = 0; i < 160; i += 8) {
+      beerDates.add(isoDate(i))
+      beerTags.push(tagRow(isoDate(i), "beer"))
+    }
+    const metrics = baseMetrics.map((day) =>
+      beerDates.has(day.date)
+        ? ({
+            ...day,
+            readinessScore: (day.readinessScore as number) - 10
+          } as DailyMetricRow)
+        : day
+    )
+    const model: TagEffectsModel = {
+      ...mockModel([
+        mockEffect({
+          tag: "beer",
+          sameDayEffect: 3.5,
+          sameDayConfidence: "medium",
+          nextDayEffect: 3.1,
+          nextDayConfidence: "low"
+        })
+      ]),
+      metric: "readinessScore"
+    }
+    const result = calculateOptimalDay(metrics, [...tags, ...beerTags], {
+      target: "readiness",
+      adjustedModels: { readinessScore: model }
+    })
+    const row = [...result.contributions, ...result.otherEligibleTags].find(
+      (item) => item.tag === "beer"
+    )!
+    // The observed delta overrules the flipped estimate: negative, dimmed,
+    // and never selected for the optimal day.
+    expect(row.deltas.readinessScore!).toBeLessThan(-5)
+    expect(row.confidences.readinessScore).toBe("low")
+    expect(result.contributions.map((item) => item.tag)).not.toContain("beer")
+
+    // Force-including beer must lower the estimate, not flatter it.
+    const forced = calculateOptimalDay(metrics, [...tags, ...beerTags], {
+      target: "readiness",
+      includedTags: ["beer"],
+      adjustedModels: { readinessScore: model }
+    })
+    expect(forced.estimates.readinessScore!).toBeLessThan(
+      result.estimates.readinessScore!
+    )
   })
 
   it("mixes adjusted and naive categories independently", () => {
@@ -433,7 +534,7 @@ describe("calculateOptimalDay adjusted mode", () => {
       noiseSpread: 0
     })
     const model = mockModel([
-      mockEffect({ tag: "boost", sameDayEffect: 9 })
+      mockEffect({ tag: "boost", sameDayEffect: 9, sameDayConfidence: "high" })
     ])
     const result = calculateOptimalDay(metrics, tags, {
       target: "night",
