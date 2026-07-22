@@ -117,6 +117,24 @@ export function benjaminiHochberg(
   return qValues
 }
 
+// Two-sided normal tail probability for a z-score, so coefficient
+// significance can enter the same Benjamini-Hochberg machinery the
+// permutation families use. Abramowitz and Stegun 7.1.26 for erf, accurate
+// to about 1.5e-7, far tighter than the 0.05 and 0.15 cuts it feeds.
+export function normalPValueFromZ(z: number): number | null {
+  if (!Number.isFinite(z)) return null
+  const x = Math.abs(z) / Math.SQRT2
+  const t = 1 / (1 + 0.3275911 * x)
+  const erf =
+    1 -
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) *
+      t +
+      0.254829592) *
+      t *
+      Math.exp(-x * x)
+  return Math.min(1, Math.max(0, 1 - erf))
+}
+
 function confidenceFromCounts(
   strength: "high" | "medium" | "none",
   taggedCount: number,
