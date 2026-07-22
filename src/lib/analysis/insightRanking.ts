@@ -148,6 +148,11 @@ export function getAdjustedTagInsights(
           //
           // No standard error means no badge at all: a fabricated "low"
           // would read as a claim about precision the fit never made.
+          //
+          // The counts come from the model's own sample, never from the
+          // correlations: those are computed over the analysis sample,
+          // which by default drops untagged days, so subtracting one from
+          // the model's day count would mix two different histories.
           const standardError = guardedWithSe?.standardError ?? null
           adjustedConfidence =
             standardError === null
@@ -155,8 +160,8 @@ export function getAdjustedTagInsights(
               : confidenceFromEffectSe(
                   guarded,
                   standardError,
-                  correlation.daysWithTag,
-                  model.modeledDays - correlation.daysWithTag
+                  effect?.daysWithTag ?? 0,
+                  model.modeledDays - (effect?.daysWithTag ?? 0)
                 )
         }
       } else if (rawSum !== null) {
@@ -246,6 +251,9 @@ export function getDiscoveryImpact(
       observedDelta !== null
     const model = models[metric]
     const guarded = adjustedHeadlineEffectWithSe(model, correlation.tag)
+    // From the model's own sample, not the correlation's: the two count
+    // different histories, since the analysis sample drops untagged days.
+    const modeledTagDays = model?.effects.get(correlation.tag)?.daysWithTag ?? 0
 
     let candidate: DiscoveryImpact | null = null
     if (
@@ -261,8 +269,8 @@ export function getDiscoveryImpact(
             : confidenceFromEffectSe(
                 guarded.effect,
                 guarded.standardError,
-                correlation.daysWithTag,
-                model.modeledDays - correlation.daysWithTag
+                modeledTagDays,
+                model.modeledDays - modeledTagDays
               ),
         evidence: "adjusted"
       }

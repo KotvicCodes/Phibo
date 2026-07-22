@@ -595,3 +595,72 @@ describe("getDiscoveryImpact", () => {
     return { metrics, tags }
   }
 })
+
+describe("model-side confidence counts", () => {
+  // Tagged nights whose score never synced are still tag-days to the
+  // correlations but invisible to the model, so the two disagree about how
+  // much evidence backs the coefficient. The badge must follow the model.
+  function buildPartlyScored() {
+    const rng = createSeededRng(21)
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    const tagDays = new Set<number>()
+    for (let i = 0; i < 200; i += 10) tagDays.add(i)
+    for (let i = 0; i < 200; i += 1) {
+      const date = isoDate(i)
+      const tagged = tagDays.has(i)
+      if (tagged) tags.push(tagRow(date, "focus"))
+      // Only every third tagged night carries a score.
+      const scoreMissing = tagged && i % 30 !== 0
+      metrics.push({
+        date,
+        sleepScore: scoreMissing
+          ? null
+          : 70 + (rng() - 0.5) * 4 + (tagged ? 9 : 0),
+        readinessScore: null,
+        activityScore: null
+      } as DailyMetricRow)
+    }
+    return { metrics, tags }
+  }
+
+  it("counts tagged nights the way the model saw them", () => {
+    const { metrics, tags } = buildPartlyScored()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const correlation = correlations.find((item) => item.tag === "focus")!
+    const effect = model.effects.get("focus")!
+
+    // The premise: the two samples really do disagree.
+    expect(correlation.daysWithTag).toBe(20)
+    expect(effect.daysWithTag).toBe(7)
+
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      null
+    )
+    const focus = [...adjusted.rewarding, ...adjusted.concerning].find(
+      (insight) => insight.tag === "focus"
+    )
+
+    expect(focus?.evidence).toBe("adjusted")
+    // Seven modeled nights cannot reach the ten the high badge requires.
+    // Passing the correlation's twenty would have promoted it.
+    expect(focus?.adjustedConfidence).toBe("medium")
+  })
+
+  it("uses the model's counts for discoveries too", () => {
+    const { metrics, tags } = buildPartlyScored()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const impact = getDiscoveryImpact(
+      correlations.find((item) => item.tag === "focus"),
+      { sleepScore: model, readinessScore: null },
+      null
+    )
+
+    expect(impact?.evidence).toBe("adjusted")
+    expect(impact?.confidence).toBe("medium")
+  })
+})
