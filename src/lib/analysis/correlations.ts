@@ -969,14 +969,15 @@ export function calculateExploreMetricImpacts(
         ? null
         : roundToOne(taggedAverage - otherAverage)
     const toneDelta = delta === null ? null : metricToneDelta(definition, delta)
-    const deviation = standardDeviation(
-      days.map((day) => day.metric[definition.key])
+    const deviation = pooledStandardDeviation(
+      taggedDays.map((day) => day[definition.key]),
+      otherDays.map((day) => day[definition.key])
     )
 
     return {
       delta,
       effectSize:
-        toneDelta === null || deviation === null || deviation === 0
+        toneDelta === null || deviation === null
           ? null
           : roundToTwo(toneDelta / deviation),
       metric: definition,
@@ -1075,21 +1076,46 @@ export function takeTopInsights(insights: TagInsight[], kind: InsightKind) {
     .slice(0, 4)
 }
 
-function standardDeviation(values: Array<number | null | undefined>) {
-  const usableValues = values.filter((value): value is number => value != null)
+// Cohen's d denominator: the spread WITHIN the two groups, never the spread
+// across all days pooled together. A pooled-over-everything deviation carries
+// the between-group gap inside it, so a real effect inflates its own
+// denominator and the effect size shrinks exactly when the effect is strongest.
+function pooledStandardDeviation(
+  taggedValues: Array<number | null | undefined>,
+  otherValues: Array<number | null | undefined>
+) {
+  const tagged = usableNumbers(taggedValues)
+  const other = usableNumbers(otherValues)
 
-  if (usableValues.length < 2) {
+  if (tagged.length < 2 || other.length < 2) {
     return null
   }
 
-  const mean =
-    usableValues.reduce((total, value) => total + value, 0) /
-    usableValues.length
-  const variance =
-    usableValues.reduce((total, value) => total + (value - mean) ** 2, 0) /
-    (usableValues.length - 1)
+  const pooledVariance =
+    ((tagged.length - 1) * sampleVariance(tagged) +
+      (other.length - 1) * sampleVariance(other)) /
+    (tagged.length + other.length - 2)
 
-  return Math.sqrt(variance)
+  if (!Number.isFinite(pooledVariance) || pooledVariance <= 0) {
+    return null
+  }
+
+  return Math.sqrt(pooledVariance)
+}
+
+function sampleVariance(values: number[]) {
+  const mean = values.reduce((total, value) => total + value, 0) / values.length
+
+  return (
+    values.reduce((total, value) => total + (value - mean) ** 2, 0) /
+    (values.length - 1)
+  )
+}
+
+function usableNumbers(values: Array<number | null | undefined>) {
+  return values.filter(
+    (value): value is number => value != null && Number.isFinite(value)
+  )
 }
 
 function roundToTwo(value: number) {
