@@ -46,6 +46,12 @@ interface OptimalTagContribution {
   targetImpact: number
 }
 
+// Internal shape carrying the unrounded contribution values. It never leaves
+// this module: everything the UI reads is rounded on the way out.
+interface RawWeightedContribution {
+  rawWeightedDeltas: Record<ScoreCategory, number>
+}
+
 interface OptimalDayResult {
   target: OptimalTarget
   baselines: Record<ScoreCategory, number | null>
@@ -210,10 +216,18 @@ export function calculateOptimalDay(
       // an observed bundle plain-summed next to partialled coefficients of
       // co-occurring tags; saturation bounds the damage and conflicts are
       // rare by construction.
-      const weightedDeltas = mapCategories((key) =>
-        roundToOne(
+      //
+      // The raw values stay unrounded: they get summed, damped, saturated,
+      // and compared by the optimizer, and rounding every term to 0.1 first
+      // lets the error pile up across a long selection and lets sub-rounding
+      // differences decide which tags make the cut. Only the copy the UI
+      // reads is rounded.
+      const rawWeightedDeltas = mapCategories(
+        (key) =>
           (deltas[key] ?? 0) * (adjustedCategories.has(key) ? 1 : supportScore)
-        )
+      )
+      const weightedDeltas = mapCategories((key) =>
+        roundToOne(rawWeightedDeltas[key])
       )
       const confidences = mapCategories((key) =>
         adjustedCategories.has(key)
@@ -221,6 +235,11 @@ export function calculateOptimalDay(
             ? "low"
             : guardedEffectConfidence(adjustedModels[key]?.effects.get(tag))
           : null
+      )
+
+      const rawTargetContribution = targetCategories.reduce(
+        (total, key) => total + rawWeightedDeltas[key],
+        0
       )
 
       return {
@@ -233,14 +252,11 @@ export function calculateOptimalDay(
 
           return delta === null ? null : roundToOne(delta)
         }),
+        rawWeightedDeltas,
         weightedDeltas,
         confidences,
-        targetContribution: roundToOne(
-          targetCategories.reduce(
-            (total, key) => total + weightedDeltas[key],
-            0
-          )
-        )
+        rawTargetContribution,
+        targetContribution: roundToOne(rawTargetContribution)
       }
     })
     .filter(
@@ -322,7 +338,7 @@ export function calculateOptimalDay(
       worstDayAverages,
       adjustedCategories
     )
-    const { daysWithoutTag, ...contribution } = candidate
+    const { daysWithoutTag, rawTargetContribution, ...contribution } = candidate
 
     return {
       ...contribution,
@@ -384,13 +400,21 @@ export function calculateOptimalDay(
         ? null
         : roundToOne(estimate - baseline)
     }),
-    contributions,
-    otherEligibleTags,
+    contributions: contributions.map(stripRawWeights),
+    otherEligibleTags: otherEligibleTags.map(stripRawWeights),
     eligibleTagCount: eligibleTags.length,
     adjustedCategories: scoreCategories
       .map((category) => category.key)
       .filter((key) => adjustedCategories.has(key))
   }
+}
+
+function stripRawWeights<Contribution extends RawWeightedContribution>(
+  candidate: Contribution
+) {
+  const { rawWeightedDeltas, ...contribution } = candidate
+
+  return contribution
 }
 
 const confidenceRank: Record<ConfidenceLevel, number> = {
@@ -471,12 +495,12 @@ function tailAverage(values: number[], tail: "bottom" | "top") {
 // contribution. Adjusted (ridge) deltas already hold co-occurring tags
 // constant, so they sum plainly; damping them would double-correct.
 function contributionSum(
-  contributions: Array<Pick<OptimalTagContribution, "weightedDeltas">>,
+  contributions: Array<RawWeightedContribution>,
   key: ScoreCategory,
   adjusted: boolean
 ) {
   const values = contributions
-    .map((contribution) => contribution.weightedDeltas[key])
+    .map((contribution) => contribution.rawWeightedDeltas[key])
     .filter((value) => value !== 0)
 
   if (adjusted) {
@@ -503,7 +527,7 @@ function dampedSum(values: number[]) {
 // The summed target estimate for a candidate selection, shared by the
 // optimizer and by the per-tag marginal impact numbers shown in the UI.
 function selectionTargetScore(
-  candidates: Array<{ tag: string } & Pick<OptimalTagContribution, "weightedDeltas">>,
+  candidates: Array<{ tag: string } & RawWeightedContribution>,
   selection: Set<string>,
   targetCategories: ScoreCategory[],
   baselines: Record<ScoreCategory, number | null>,
@@ -537,7 +561,9 @@ function selectionTargetScore(
 }
 
 function optimizeSelection(
-  candidates: Array<{ tag: string } & Pick<OptimalTagContribution, "weightedDeltas" | "targetContribution">>,
+  candidates: Array<
+    { tag: string; rawTargetContribution: number } & RawWeightedContribution
+  >,
   targetCategories: ScoreCategory[],
   baselines: Record<ScoreCategory, number | null>,
   bestDayAverages: Record<ScoreCategory, number | null>,
@@ -557,7 +583,7 @@ function optimizeSelection(
 
   const selection = new Set(
     candidates
-      .filter((candidate) => candidate.targetContribution > 0)
+      .filter((candidate) => candidate.rawTargetContribution > 0)
       .map((candidate) => candidate.tag)
   )
   let currentScore = scoreSelection(selection)

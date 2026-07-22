@@ -595,3 +595,79 @@ describe("calculateOptimalDay adjusted mode", () => {
     expect(naiveRow.confidences.sleepScore).toBeNull()
   })
 })
+
+describe("calculateOptimalDay contribution rounding", () => {
+  // Every tag lands on the same 30 of 120 days, so the absence share is 0.75
+  // and a same-day coefficient of e becomes a delta of 0.75 * e.
+  function subRoundingScenario(coefficient: number, tagCount: number, spread = 4) {
+    const tagNames = Array.from({ length: tagCount }, (_, i) => `tag${i}`)
+    const { metrics, tags } = build({
+      base: spread > 40 ? 50 : 70,
+      noiseSpread: spread,
+      tagEvery: Object.fromEntries(tagNames.map((tag) => [tag, 4]))
+    })
+    const model = mockModel(
+      tagNames.map((tag) =>
+        mockEffect({
+          tag,
+          sameDayEffect: coefficient,
+          sameDayConfidence: "high" as ConfidenceLevel
+        })
+      )
+    )
+    return calculateOptimalDay(metrics, tags, {
+      target: "sleep",
+      adjustedModels: { sleepScore: model }
+    })
+  }
+
+  it("sums contributions that each round away to nothing", () => {
+    // 0.04 points per tag: every displayed contribution is 0.0, but eight of
+    // them are worth a third of a point together. Rounding before the sum
+    // discarded them entirely and pinned the estimate to the baseline.
+    const result = subRoundingScenario(0.04 / 0.75, 8)
+    const rows = [...result.contributions, ...result.otherEligibleTags]
+
+    expect(rows).toHaveLength(8)
+    for (const row of rows) {
+      expect(row.weightedDeltas.sleepScore).toBe(0)
+      expect(row.deltas.sleepScore).toBe(0)
+    }
+    expect(result.estimateDeltas.sleepScore ?? 0).toBeGreaterThan(0)
+  })
+
+  it("selects a tag whose contribution is real but rounds to zero", () => {
+    const result = subRoundingScenario(0.04 / 0.75, 8)
+
+    expect(result.contributions.map((row) => row.tag).sort()).toEqual(
+      Array.from({ length: 8 }, (_, i) => `tag${i}`).sort()
+    )
+    expect(result.otherEligibleTags).toEqual([])
+  })
+
+  it("keeps sub-rounding differences out of the estimate comparison", () => {
+    // 1.049 versus 1.000 per tag: identical once rounded to 0.1, so the old
+    // pre-rounded sums made these two worlds indistinguishable.
+    const nudged = subRoundingScenario(1.049 / 0.75, 16, 80)
+    const plain = subRoundingScenario(1 / 0.75, 16, 80)
+
+    expect(nudged.estimateDeltas.sleepScore ?? 0).toBeGreaterThan(
+      plain.estimateDeltas.sleepScore ?? 0
+    )
+  })
+
+  it("still rounds the numbers the cards display", () => {
+    const result = subRoundingScenario(1.04 / 0.75, 4)
+    const rows = [...result.contributions, ...result.otherEligibleTags]
+
+    for (const row of rows) {
+      expect(row.weightedDeltas.sleepScore).toBe(1)
+      expect(row.deltas.sleepScore).toBe(1)
+      expect(row.targetContribution).toBe(1)
+      expect(row.targetImpact * 10).toBeCloseTo(
+        Math.round(row.targetImpact * 10),
+        10
+      )
+    }
+  })
+})
