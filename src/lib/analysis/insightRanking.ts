@@ -3,7 +3,8 @@ import {
   takeTopInsights,
   type calculateTagCorrelations,
   type PrimaryInsightMetric,
-  type TagInsight
+  type TagInsight,
+  type TagMetricCorrelation
 } from "./correlations"
 import type { InsightConfidenceModel } from "./insightConfidence"
 import { roundToOne } from "./shared"
@@ -19,6 +20,30 @@ const primaryMetrics: PrimaryInsightMetric[] = ["sleepScore", "readinessScore"]
 // score points: the ridge coefficients need no support weighting (the
 // penalty already shrinks thin tags) and no per-metric weight heuristic.
 const MIN_ADJUSTED_IMPACT = 1.5
+
+// Whether a model value contradicts the observed direction hard enough to
+// be overruled. A model value only makes a directional claim when it is
+// itself meaningful: a coefficient partialled to near zero with the
+// opposite sign is the desired confounding outcome, not a flip.
+//
+// The bar stays a magnitude bar even though the summed standard error is
+// now available. Requiring the model to be SE-significant before a conflict
+// counts would let an imprecise opposing coefficient through, which is the
+// sign flip this guard exists to stop. Precision is not truth: a confounded
+// coefficient can be tightly estimated.
+function opposesObserved(
+  modelValue: number,
+  observedDelta: number | null,
+  observedSignificant: boolean
+) {
+  return (
+    observedSignificant &&
+    observedDelta !== null &&
+    Math.abs(modelValue) >= MIN_ADJUSTED_IMPACT &&
+    Math.sign(observedDelta) !== 0 &&
+    Math.sign(modelValue) !== Math.sign(observedDelta)
+  )
+}
 
 // Ranks the rewarding and concerning insights by the model's guarded
 // steady-state effect (only medium-plus components count), with the
@@ -97,20 +122,8 @@ export function getAdjustedTagInsights(
         (observedLevel === "medium" || observedLevel === "high") &&
         observedDelta !== null
 
-      // A model value only makes a directional claim when it is itself
-      // meaningful: a coefficient partialled to near zero with the
-      // opposite sign is the desired confounding outcome, not a flip.
-      //
-      // The bar stays a magnitude bar even though the summed standard error
-      // is now available. Requiring the model to be SE-significant before a
-      // conflict counts would let an imprecise opposing coefficient through,
-      // which is the sign flip this guard exists to stop. Precision is not
-      // truth: a confounded coefficient can be tightly estimated.
       const opposes = (modelValue: number) =>
-        observedSignificant &&
-        Math.abs(modelValue) >= MIN_ADJUSTED_IMPACT &&
-        Math.sign(observedDelta as number) !== 0 &&
-        Math.sign(modelValue) !== Math.sign(observedDelta as number)
+        opposesObserved(modelValue, observedDelta, observedSignificant)
 
       let value: number
       let evidence: TagInsight["evidence"]
@@ -196,4 +209,78 @@ export function getAdjustedTagInsights(
     rewarding: takeTopInsights(candidates, "rewarding"),
     concerning: takeTopInsights(candidates, "concerning")
   }
+}
+
+export interface DiscoveryImpact {
+  metric: PrimaryInsightMetric
+  delta: number
+  confidence: ConfidenceLevel | null
+  evidence: NonNullable<TagInsight["evidence"]>
+}
+
+// The single number a discovery card shows, picked from the primary scores
+// by largest magnitude. Discoveries are about novelty rather than proven
+// effect, but the number still has to obey the same rules as everywhere
+// else: prefer the model's guarded effect when it speaks, never let it
+// reverse a significant observed direction, and say which evidence the
+// number came from so the badge describes the right thing.
+//
+// Most discoveries are new or long-unused tags with too few nights for the
+// model to have a coefficient at all, so the observed delta is the normal
+// case here and a low badge on it is the honest answer, not a defect.
+export function getDiscoveryImpact(
+  correlation: TagMetricCorrelation | undefined,
+  models: Record<PrimaryInsightMetric, TagEffectsModel | null>,
+  observedConfidence: InsightConfidenceModel | null
+): DiscoveryImpact | null {
+  if (correlation == null) return null
+
+  let best: DiscoveryImpact | null = null
+  for (const metric of primaryMetrics) {
+    const observedDelta = correlation.deltas[metric] ?? null
+    const observedLevel =
+      observedConfidence?.results.get(`${correlation.tag}-${metric}`)?.level ??
+      null
+    const observedSignificant =
+      (observedLevel === "medium" || observedLevel === "high") &&
+      observedDelta !== null
+    const model = models[metric]
+    const guarded = adjustedHeadlineEffectWithSe(model, correlation.tag)
+
+    let candidate: DiscoveryImpact | null = null
+    if (
+      guarded !== null &&
+      !opposesObserved(guarded.effect, observedDelta, observedSignificant)
+    ) {
+      candidate = {
+        metric,
+        delta: roundToOne(guarded.effect),
+        confidence:
+          guarded.standardError === null || model === null
+            ? null
+            : confidenceFromEffectSe(
+                guarded.effect,
+                guarded.standardError,
+                correlation.daysWithTag,
+                model.modeledDays - correlation.daysWithTag
+              ),
+        evidence: "adjusted"
+      }
+    } else if (observedDelta !== null) {
+      candidate = {
+        metric,
+        delta: observedDelta,
+        confidence: observedLevel,
+        evidence: guarded === null ? "observed" : "observed-conflict"
+      }
+    }
+
+    if (
+      candidate !== null &&
+      (best === null || Math.abs(candidate.delta) > Math.abs(best.delta))
+    ) {
+      best = candidate
+    }
+  }
+  return best
 }

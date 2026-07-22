@@ -114,6 +114,15 @@ guard against silent data loss. Run those before the rest.
       Explore's adjusted row shows n/a with the disagree note rather than
       a positive number. The detail panel should carry the conflict note
       when the observed effect leads.
+- [ ] Multi-tag Explore badge (v0.4.24): select two or more tags whose
+      adjusted score rows show a number, and confirm each row now carries a
+      confidence badge. Before the coefficient covariance existed, only
+      single-tag selections could be badged, so a silent regression here
+      would look like the badge simply not rendering.
+- [ ] Model badge on Insights cards (v0.4.24): confirm a card whose number
+      came from the model shows a second, dashed-border badge next to the
+      observed one, and that a card showing an observed effect (the conflict
+      or fallback cases) shows only the observed badge.
 
 ## Data edge states
 - [ ] With metrics deleted but tags present, confirm the Tags view still

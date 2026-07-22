@@ -3,30 +3,31 @@
 Open items from the review that have not been fixed yet. Delete an item once
 it is done rather than checking it off.
 
-1. Export the ridge coefficient covariance from `fitRidge` (already
-   computed inside the sandwich step, then discarded). The v0.4.17-20
-   sign-guard work unified the adjusted-effect semantics (guarded helpers
-   in `src/lib/analysis/tagEffects.ts`); the covariance unlocks the next
-   honesty tier: proper standard errors for headline sums (so the
-   observed-vs-adjusted sign guard can weigh a real SE instead of
-   magnitude bars), badges on Explore's multi-tag sums, and a model-side
-   badge for Insights cards that matches the displayed adjusted number.
+1. Robustness of the group contrasts. Every observed delta, the
+   permutation null, and Optimal's observed baselines are plain arithmetic
+   means (`calculateMetricDeltas`, `buildMetricComparison`,
+   `permutationTestDelta`, `optimal.ts` observed deltas). One extreme night
+   can swing a tag's delta far enough to flip its rewarding/concerning
+   classification. Consider a trimmed or winsorized estimator, keeping in
+   mind the permutation test's null has to move with it.
 
-2. Small ranking cleanup in `src/lib/analysis/insightRanking.ts`: naive
-   fallback candidates keep the old metricWeight heuristic (sleep x1.2) in
-   their ranking weight while adjusted candidates use plain points, so
-   mixed-mode ordering (one model present, one below its gates) mixes
-   scales. Strip the metric weight from fallback candidates' ranking.
+2. Ridge residual variance uses `rss / max(1, n - featureCount)`, treating
+   every column as a full degree of freedom when ridge's effective degrees
+   of freedom (trace of the hat matrix) are fewer, and the RSS itself comes
+   from penalized coefficients that do not minimize it. The net direction is
+   conservative, and lambda is also chosen by cross-validation on the same
+   data with no post-selection adjustment. Every model-side confidence
+   inherits the approximation.
 
-3. Remaining winner's-curse gap on the model side: the adjusted ranking
-   picks top coefficients without multiplicity correction on the SE-based
-   confidences shown in the detail rows (the Benjamini-Hochberg family only
-   covers the observed-contrast badges). A BH pass over coefficient
-   z-scores would mirror the rest of the system.
+3. The next-day confidence gate passes `lagCount` (days whose PREVIOUS day
+   carried the tag) as the tagged count into `confidenceFromCounts`, whose
+   thresholds are written for tag-day counts. A reasonable proxy for the lag
+   coefficient's support, but not the quantity the thresholds assume.
 
-4. Convert the Insights Discoveries section, the last naive corner: it
-   shows per-tag deltas with no badges or adjustment. Low stakes (it is
-   about novelty, not effect claims) but inconsistent with the rest.
+4. `confidenceFromEffectSe` returns "low" when the standard error is zero or
+   negative, so a perfectly estimated large effect is downgraded rather than
+   promoted. Unreachable with real ridge standard errors, but asymmetric
+   with the p-value path next to it.
 
 5. Rewrite README.md, which predates the whole v0.4 analysis arc: no
    mention of the ridge model, confidence badges, FDR correction, next-day

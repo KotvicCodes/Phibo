@@ -11,7 +11,10 @@ import {
   type InsightConfidenceModel,
   type InsightPairConfidence
 } from "./insightConfidence"
-import { getAdjustedTagInsights } from "./insightRanking"
+import {
+  getAdjustedTagInsights,
+  getDiscoveryImpact
+} from "./insightRanking"
 import { createSeededRng, type ConfidenceLevel } from "./stats"
 import {
   calculateTagEffects,
@@ -489,4 +492,106 @@ describe("getAdjustedTagInsights model confidence", () => {
     expect(alcohol?.evidence).toBe("adjusted")
     expect(alcohol?.adjustedConfidence).toBeUndefined()
   })
+})
+
+describe("getDiscoveryImpact", () => {
+  const noModels = { sleepScore: null, readinessScore: null }
+
+  it("shows the observed delta when no model estimated the tag", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const correlation = correlations.find((item) => item.tag === "alcohol")
+    const impact = getDiscoveryImpact(
+      correlation,
+      noModels,
+      mockObserved({ "alcohol-sleepScore": "high" })
+    )
+
+    expect(impact?.evidence).toBe("observed")
+    expect(impact?.metric).toBe("sleepScore")
+    expect(impact?.delta).toBe(correlation?.deltas.sleepScore)
+    expect(impact?.confidence).toBe("high")
+  })
+
+  it("prefers the model's guarded effect when it speaks", () => {
+    const { metrics, tags } = buildConfounded()
+    // Readiness blanked out so the comparison between the two metrics
+    // cannot decide this case: the point is which evidence sleep uses.
+    const sleepOnly = metrics.map((day) => ({ ...day, readinessScore: null }))
+    const correlations = calculateTagCorrelations(sleepOnly, tags)
+    const correlation = correlations.find((item) => item.tag === "late meal")
+    const model = mockModel([
+      mockEffect({
+        tag: "late meal",
+        sameDayEffect: -0.4,
+        sameDayConfidence: "high"
+      })
+    ])
+    const impact = getDiscoveryImpact(
+      correlation,
+      { sleepScore: model, readinessScore: null },
+      null
+    )
+
+    // The naive delta blames late meal for alcohol's damage; the model
+    // partialled it to almost nothing, and the discovery card follows.
+    expect(impact?.evidence).toBe("adjusted")
+    expect(impact?.delta).toBe(-0.4)
+    expect(Math.abs(correlation!.deltas.sleepScore!)).toBeGreaterThan(2)
+  })
+
+  it("never shows a model value that opposes a significant observed one", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const correlation = correlations.find((item) => item.tag === "alcohol")
+    const flipped = mockModel([
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: 6,
+        sameDayConfidence: "high"
+      })
+    ])
+    const impact = getDiscoveryImpact(
+      correlation,
+      { sleepScore: flipped, readinessScore: null },
+      mockObserved({ "alcohol-sleepScore": "high" })
+    )
+
+    expect(impact?.evidence).toBe("observed-conflict")
+    expect(impact?.delta).toBeLessThan(0)
+    expect(impact?.confidence).toBe("high")
+  })
+
+  it("picks the metric with the larger magnitude", () => {
+    const { metrics, tags } = buildMixedDiscovery()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const impact = getDiscoveryImpact(
+      correlations.find((item) => item.tag === "sauna"),
+      noModels,
+      null
+    )
+
+    expect(impact?.metric).toBe("readinessScore")
+  })
+
+  it("returns null for a tag with no correlation or no deltas", () => {
+    expect(getDiscoveryImpact(undefined, noModels, null)).toBeNull()
+  })
+
+  function buildMixedDiscovery() {
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < 60; i += 1) {
+      const date = isoDate(i)
+      const sauna = i % 5 === 0
+      if (sauna) tags.push(tagRow(date, "sauna"))
+      metrics.push({
+        date,
+        sleepScore: 70 + (sauna ? 1 : 0),
+        readinessScore: 70 + (sauna ? 6 : 0),
+        activityScore: null
+      } as DailyMetricRow)
+    }
+    return { metrics, tags }
+  }
 })
