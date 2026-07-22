@@ -124,24 +124,29 @@ export function groupExploreImpacts(
     .filter((group) => group.rows.length > 0)
 }
 
+// The headline metric of a category, ranked by standardized effect size so
+// that points, minutes, calories, and steps stay comparable. A raw delta
+// must never enter this comparison: a 480-step difference would outrank
+// every effect size that can exist, and the category would headline
+// whichever metric happens to have the largest units.
+//
+// A selection matching a single day yields no effect size anywhere (one
+// observation has no spread), and there is no honest way to name a
+// strongest metric across different units without one, so the group
+// reports none and the rows still show their own deltas.
 function strongestExploreImpact(rows: ExploreMetricImpact[]) {
   return rows.reduce<ExploreMetricImpact | null>((strongest, row) => {
-    if (row.delta === null) {
+    if (row.delta === null || row.effectSize === null) {
       return strongest
     }
 
-    if (strongest === null) {
+    if (strongest === null || strongest.effectSize === null) {
       return row
     }
 
-    const rowImpact = Math.abs(
-      row.effectSize ?? row.toneDelta ?? row.delta
-    )
-    const strongestImpact = Math.abs(
-      strongest.effectSize ?? strongest.toneDelta ?? strongest.delta ?? 0
-    )
-
-    return rowImpact > strongestImpact ? row : strongest
+    return Math.abs(row.effectSize) > Math.abs(strongest.effectSize)
+      ? row
+      : strongest
   }, null)
 }
 
