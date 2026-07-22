@@ -224,25 +224,6 @@ export function calculateTagEffectsMemoized(
   return result
 }
 
-// The ridge model is linear, so its genuine prediction for a combination of
-// tags on the same day is the sum of their same-day coefficients. Returns
-// null when the model is missing, the selection is empty, or any selected
-// tag lacks a same-day coefficient (a tag can sit in the effects map with
-// only a lag coefficient, so membership alone is not enough).
-export function combinedAdjustedEffect(
-  model: TagEffectsModel | null,
-  tags: string[]
-): number | null {
-  if (model === null || tags.length === 0) return null
-  let sum = 0
-  for (const tag of tags) {
-    const effect = model.effects.get(tag)
-    if (effect?.sameDayEffect == null) return null
-    sum += effect.sameDayEffect
-  }
-  return sum
-}
-
 function meetsMediumConfidence(level: ConfidenceLevel | null) {
   return level === "medium" || level === "high"
 }

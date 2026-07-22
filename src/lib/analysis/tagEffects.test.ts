@@ -6,7 +6,6 @@ import {
   adjustedHeadlineEffect,
   calculateTagEffects,
   calculateTagEffectsMemoized,
-  combinedAdjustedEffect,
   combinedGuardedSameDayEffect,
   peekTagEffects,
   type TagEffect,
@@ -321,58 +320,6 @@ describe("activity metric support", () => {
     expect(peekTagEffects(withActivity, tags, "readinessScore")).toBe(
       undefined
     )
-  })
-})
-
-describe("combinedAdjustedEffect", () => {
-  it("sums the same-day coefficients of the selected tags", () => {
-    const { metrics, tags } = build({
-      tagEvery: { alcohol: 4 },
-      sameDayBoost: { alcohol: -8 }
-    })
-    const withSecond = [
-      ...tags,
-      ...Array.from({ length: 40 }, (_, i) => tagRow(isoDate(i * 3 + 1), "coffee"))
-    ]
-    const model = calculateTagEffects(metrics, withSecond, "sleepScore")!
-    const alcohol = model.effects.get("alcohol")!.sameDayEffect!
-    const coffee = model.effects.get("coffee")!.sameDayEffect!
-    expect(combinedAdjustedEffect(model, ["alcohol"])).toBe(alcohol)
-    expect(combinedAdjustedEffect(model, ["alcohol", "coffee"])).toBeCloseTo(
-      alcohol + coffee,
-      10
-    )
-  })
-
-  it("returns null for a null model or empty selection", () => {
-    const { metrics, tags } = build({ tagEvery: { coffee: 3 } })
-    const model = calculateTagEffects(metrics, tags, "sleepScore")
-    expect(combinedAdjustedEffect(null, ["coffee"])).toBeNull()
-    expect(combinedAdjustedEffect(model, [])).toBeNull()
-  })
-
-  it("returns null when any selected tag is unknown to the model", () => {
-    const { metrics, tags } = build({ tagEvery: { coffee: 3 } })
-    const model = calculateTagEffects(metrics, tags, "sleepScore")!
-    expect(combinedAdjustedEffect(model, ["coffee", "sauna"])).toBeNull()
-  })
-
-  it("returns null for a tag with only a lag coefficient", () => {
-    // Metric rows are missing on every tag day but present the day after:
-    // the same-day column is gated out, the lag column survives.
-    const tagDayIndices = Array.from({ length: 30 }, (_, i) => i * 4)
-    const { metrics, tags } = build({
-      days: 120,
-      tagEvery: { melatonin: 4 },
-      nextDayBoost: { melatonin: 7 },
-      skipMetricDates: tagDayIndices.map((i) => isoDate(i))
-    })
-    const model = calculateTagEffects(metrics, tags, "sleepScore")
-    expect(model).not.toBeNull()
-    const effect = model!.effects.get("melatonin")
-    expect(effect?.nextDayEffect).not.toBeNull()
-    expect(effect?.sameDayEffect ?? null).toBeNull()
-    expect(combinedAdjustedEffect(model, ["melatonin"])).toBeNull()
   })
 })
 
