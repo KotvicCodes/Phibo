@@ -105,7 +105,7 @@ export interface ExploreMetricDefinition {
   unit: string
 }
 
-interface TagMetricCorrelation {
+export interface TagMetricCorrelation {
   tag: string
   daysWithTag: number
   daysWithoutTag: number

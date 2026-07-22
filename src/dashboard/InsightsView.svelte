@@ -2,10 +2,12 @@
   import {
     calculateTagCorrelations,
     getTagDiscoveries,
-    type PrimaryInsightMetric,
     type TagInsight
   } from "../lib/analysis/correlations"
-  import { getAdjustedTagInsights } from "../lib/analysis/insightRanking"
+  import {
+    getAdjustedTagInsights,
+    getDiscoveryImpact
+  } from "../lib/analysis/insightRanking"
   import {
     calculateInsightConfidenceMemoized,
     peekInsightConfidence,
@@ -446,26 +448,22 @@
     ]
   }
 
-  function discoveryImpact(tag: string) {
-    const correlation = correlations.find((item) => item.tag === tag)
-
-    if (!correlation) {
-      return null
-    }
-
-    const impacts = (["sleepScore", "readinessScore"] as const)
-      .map((metric) => ({
-        delta: correlation.deltas[metric],
-        metric
-      }))
-      .filter(
-        (impact): impact is { delta: number; metric: PrimaryInsightMetric } =>
-          impact.delta !== null
+  // Recomputed whenever the deferred passes land, so a discovery picks up
+  // the guarded model effect and the corrected badge as soon as they exist
+  // instead of staying on the first naive value it rendered with.
+  $: discoveryImpacts = new Map(
+    discoveries.map((discovery) => [
+      discovery.tag,
+      getDiscoveryImpact(
+        correlations.find((item) => item.tag === discovery.tag),
+        { sleepScore: sleepEffects, readinessScore: readinessEffects },
+        insightConfidenceModel
       )
+    ])
+  )
 
-    return impacts.sort(
-      (left, right) => Math.abs(right.delta) - Math.abs(left.delta)
-    )[0]
+  function discoveryImpact(tag: string) {
+    return discoveryImpacts.get(tag) ?? null
   }
 
   function discoveryAction(tag: string, reason: "new" | "neglected") {
@@ -653,6 +651,15 @@
               </div>
               <div class="discovery-meta">
                 {#if discoveryImpact(item.tag)}
+                  {#if discoveryImpact(item.tag)?.confidence}
+                    <span
+                      class="confidence-badge {discoveryImpact(item.tag)?.confidence}"
+                    >
+                      {confidenceBadgeLabel(
+                        discoveryImpact(item.tag)?.confidence ?? "low"
+                      )}
+                    </span>
+                  {/if}
                   <strong
                     class="score-impact {impactTone(
                       discoveryImpact(item.tag)?.delta ?? null
