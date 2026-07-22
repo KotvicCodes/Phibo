@@ -17,7 +17,7 @@
   import type { ConfidenceLevel } from "../lib/analysis/stats"
   import {
     calculateTagEffectsMemoized,
-    combinedAdjustedEffect,
+    combinedGuardedSameDayEffect,
     peekTagEffects,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
@@ -265,17 +265,35 @@
     selectedExploreTags.length > 0
   )
   $: adjustedScoreEffects = scoreModelsReady
-    ? new Map<InsightComparisonMetric, number | null>([
+    ? new Map<InsightComparisonMetric, AdjustedScoreEntry>([
         [
           "sleepScore",
-          combinedAdjustedEffect(sleepEffectsModel, selectedExploreTags)
+          buildAdjustedScoreEntry(
+            sleepEffectsModel,
+            "sleepScore",
+            selectedExploreTags,
+            exploreScoreComparisons,
+            impactConfidence
+          )
         ],
         [
           "readinessScore",
-          combinedAdjustedEffect(readinessEffectsModel, selectedExploreTags)
+          buildAdjustedScoreEntry(
+            readinessEffectsModel,
+            "readinessScore",
+            selectedExploreTags,
+            exploreScoreComparisons,
+            impactConfidence
+          )
         ]
       ])
     : null
+  $: conflictedScoreLabels = adjustedScoreEffects
+    ? insightComparisonMetrics
+        .filter((item) => adjustedScoreEffects?.get(item.metric)?.conflicted)
+        .map((item) => item.label)
+        .join(" and ")
+    : ""
   // A sum of coefficients has no standard error without their covariances,
   // so only single-tag selections carry a confidence label.
   $: adjustedScoreConfidence =
@@ -350,6 +368,44 @@
       )
       exploreConfidenceReady = true
     })
+  }
+
+  interface AdjustedScoreEntry {
+    value: number | null
+    conflicted: boolean
+  }
+
+  // A model value must be meaningful before its direction counts as a
+  // claim, mirroring the guards in the insight ranking and Optimal.
+  const scoreConflictMinEffect = 1.5
+
+  // The guarded sum may refine the observed comparison shown right above
+  // it, but it must not contradict its direction: when the model points
+  // against a significant observed delta, the row shows n/a and a note
+  // says why instead of arguing with the bars.
+  function buildAdjustedScoreEntry(
+    model: TagEffectsModel | null,
+    metric: InsightComparisonMetric,
+    tags: string[],
+    comparisons: InsightComparison[],
+    confidence: Map<ExploreMetricKey, ExploreMetricConfidence> | null
+  ): AdjustedScoreEntry {
+    const guarded = combinedGuardedSameDayEffect(model, tags)
+    if (guarded === null) return { value: null, conflicted: false }
+    const observed =
+      comparisons.find((item) => item.metric === metric)?.comparison.delta ??
+      null
+    const level = confidence?.get(metric)?.level
+    const significant = level === "medium" || level === "high"
+    const conflicted =
+      significant &&
+      observed !== null &&
+      Math.abs(guarded) >= scoreConflictMinEffect &&
+      Math.sign(observed) !== 0 &&
+      Math.sign(guarded) !== Math.sign(observed)
+    return conflicted
+      ? { value: null, conflicted: true }
+      : { value: guarded, conflicted: false }
   }
 
   // Fits are shared with InsightsView through the tagEffects memo, so after
@@ -650,7 +706,7 @@
                   <div class="adjusted-row">
                     <span>Adjusted</span>
                     <span class="adjusted-value">
-                      {#if adjustedScoreConfidence?.get(item.metric)}
+                      {#if adjustedScoreConfidence?.get(item.metric) && adjustedScoreEffects?.get(item.metric)?.value != null}
                         <span
                           class="confidence-badge {adjustedScoreConfidence.get(item.metric)}"
                         >
@@ -663,7 +719,8 @@
                         {adjustedScoreEffects === null
                           ? "..."
                           : formatNullableDelta(
-                              adjustedScoreEffects.get(item.metric) ?? null
+                              adjustedScoreEffects.get(item.metric)?.value ??
+                                null
                             )}
                       </strong>
                     </span>
@@ -671,11 +728,20 @@
                 </article>
               {/each}
             </div>
+            {#if conflictedScoreLabels}
+              <p class="adjusted-note">
+                For {conflictedScoreLabels}, the model disagrees with the
+                observed direction here, so no adjusted number is shown.
+                More nights may untangle this selection from the context it
+                travels with.
+              </p>
+            {/if}
             <p class="adjusted-note">
               Adjusted holds your other tags, weekday, season, and trend
-              constant. It
-              assumes tag effects add up, and it models your whole tagging
-              period, while the bars use the current analysis sample.
+              constant, counting only effects the model trusts at least
+              moderately. It assumes tag effects add up, and it models your
+              whole tagging period, while the bars use the current analysis
+              sample.
             </p>
           {:else}
             <p class="empty-state">Select tags with matching nights to compare scores.</p>
