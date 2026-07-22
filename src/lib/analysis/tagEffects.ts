@@ -3,7 +3,12 @@ import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import type { PrimaryInsightMetric } from "./correlations"
 import { fitRidge, selectRidgeLambda } from "./regression"
 import { groupTagsByName } from "./shared"
-import { confidenceFromEffectSe, type ConfidenceLevel } from "./stats"
+import {
+  benjaminiHochberg,
+  confidenceFromPValue,
+  normalPValueFromZ,
+  type ConfidenceLevel
+} from "./stats"
 
 // Every score the ridge model can target. The string values deliberately
 // coincide with optimal.ts's ScoreCategory so Optimal can key its adjusted
@@ -183,15 +188,36 @@ export function calculateTagEffects(
     effects.set(tag, created)
     return created
   }
+  // Every tag coefficient in this fit is one simultaneous test, so a badge
+  // based on its own z-score alone would promote whichever tag happened to
+  // land furthest from zero. Benjamini-Hochberg over the whole tag family
+  // (same-day and lag columns, control columns excluded since they are not
+  // claims the product displays) fixes the same winner's curse the observed
+  // side already corrects for in insightConfidence.ts. The family is one
+  // metric's fit: the models are fitted and memoized independently per
+  // metric, so a cross-metric family would couple them. The observed side
+  // spans tags and metrics together, which makes this the narrower of the
+  // two corrections.
+  const tagColumnCount = sameDayTags.length + lagTags.length
+  const coefficientPValues: Array<number | null> = []
+  for (let index = 0; index < tagColumnCount; index += 1) {
+    const standardError = fit.standardErrors[index]
+    coefficientPValues.push(
+      standardError > 0
+        ? normalPValueFromZ(fit.coefficients[index] / standardError)
+        : null
+    )
+  }
+  const coefficientQValues = benjaminiHochberg(coefficientPValues)
+
   sameDayTags.forEach((column, index) => {
     const effect = effectFor(column.tag)
     effect.daysWithTag = column.count
     effect.sameDayEffect = fit.coefficients[index]
     effect.sameDayStandardError = fit.standardErrors[index]
     effect.sameDayIndex = index
-    effect.sameDayConfidence = confidenceFromEffectSe(
-      fit.coefficients[index],
-      fit.standardErrors[index],
+    effect.sameDayConfidence = confidenceFromPValue(
+      coefficientQValues[index],
       column.count,
       modeledDays - column.count
     )
@@ -207,9 +233,8 @@ export function calculateTagEffects(
     effect.nextDayEffect = fit.coefficients[index]
     effect.nextDayStandardError = fit.standardErrors[index]
     effect.nextDayIndex = index
-    effect.nextDayConfidence = confidenceFromEffectSe(
-      fit.coefficients[index],
-      fit.standardErrors[index],
+    effect.nextDayConfidence = confidenceFromPValue(
+      coefficientQValues[index],
       column.count,
       modeledDays - column.count
     )

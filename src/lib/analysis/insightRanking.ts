@@ -127,6 +127,12 @@ export function getAdjustedTagInsights(
         } else {
           value = guarded
           evidence = "adjusted"
+          // The summed effect is priced on its own z-score, outside the
+          // Benjamini-Hochberg family that corrects the individual
+          // coefficients. It is one pre-specified quantity per card, not a
+          // winner picked out of many, the same reason Explore's primary
+          // scores sit outside its exploratory FDR family.
+          //
           // No standard error means no badge at all: a fabricated "low"
           // would read as a claim about precision the fit never made.
           const standardError = guardedWithSe?.standardError ?? null

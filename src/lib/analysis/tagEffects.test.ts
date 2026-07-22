@@ -13,7 +13,7 @@ import {
   type TagEffect,
   type TagEffectsModel
 } from "./tagEffects"
-import { createSeededRng } from "./stats"
+import { confidenceFromEffectSe, createSeededRng } from "./stats"
 import { isoDate, shiftIso, tagRow } from "./testHelpers"
 
 function metricRow(date: string, sleepScore: number | null): DailyMetricRow {
@@ -581,5 +581,83 @@ describe("standard errors for summed effects", () => {
       effect: combinedGuardedSameDayEffect(model, ["alpha"]),
       standardError: null
     })
+  })
+})
+
+describe("coefficient confidence multiplicity", () => {
+  // Many tags, none with any real effect: the fit will still hand one of
+  // them the largest z-score by chance, and that is the tag the product
+  // would otherwise present as a trustworthy finding.
+  function buildNoiseTags(tagCount: number, seed: number) {
+    const tagEvery: Record<string, number> = {}
+    for (let i = 0; i < tagCount; i += 1) {
+      tagEvery[`noise${i}`] = 3 + (i % 9)
+    }
+    return build({ days: 300, seed, tagEvery, noiseSpread: 6 })
+  }
+
+  it("does not trust the luckiest coefficient in a family of noise", () => {
+    const { metrics, tags } = buildNoiseTags(24, 13)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const effects = [...model.effects.values()]
+
+    // Left uncorrected, the luckiest of these ~48 coefficients clears the
+    // medium bar on its own z-score, and medium is the bar the guarded
+    // helpers treat as trustworthy, so a pure-noise tag would reach the
+    // Insights cards and the Optimal sums as a real finding.
+    const uncorrected = effects.map((effect) =>
+      confidenceFromEffectSe(
+        effect.sameDayEffect ?? 0,
+        effect.sameDayStandardError ?? 0,
+        effect.daysWithTag,
+        model.modeledDays - effect.daysWithTag
+      )
+    )
+    expect(uncorrected).toContain("medium")
+
+    // After the family correction none of them is trusted, so every tag
+    // falls back to its observed effect instead.
+    for (const effect of effects) {
+      expect(effect.sameDayConfidence).toBe("low")
+      expect(adjustedHeadlineEffect(effect)).toBeNull()
+    }
+  })
+
+  it("still trusts one clearly real effect standing among noise", () => {
+    const { metrics, tags } = buildNoiseTags(24, 12)
+    const realDates = new Set<string>()
+    for (let i = 0; i < 300; i += 4) realDates.add(isoDate(i))
+    for (const date of realDates) tags.push(tagRow(date, "alcohol"))
+    const shifted = metrics.map((day) =>
+      realDates.has(day.date)
+        ? metricRow(day.date, (day.sleepScore ?? 0) - 12)
+        : day
+    )
+    const model = calculateTagEffects(shifted, tags, "sleepScore")!
+
+    expect(model.effects.get("alcohol")?.sameDayConfidence).toBe("high")
+  })
+
+  it("only ever demotes a coefficient relative to its own z-score", () => {
+    // BH raises p to q, never lowers it, so a tag the corrected badge trusts
+    // would always have been trusted uncorrected too. That direction is what
+    // keeps the sign guard safe: a demoted coefficient falls back to the
+    // observed effect rather than newly overruling it.
+    const { metrics, tags } = buildNoiseTags(16, 13)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")!
+    const rank = { low: 0, medium: 1, high: 2 }
+
+    for (const effect of model.effects.values()) {
+      if (effect.sameDayEffect === null) continue
+      const uncorrected = confidenceFromEffectSe(
+        effect.sameDayEffect,
+        effect.sameDayStandardError ?? 0,
+        effect.daysWithTag,
+        model.modeledDays - effect.daysWithTag
+      )
+      expect(rank[effect.sameDayConfidence ?? "low"]).toBeLessThanOrEqual(
+        rank[uncorrected]
+      )
+    }
   })
 })

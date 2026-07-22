@@ -6,6 +6,7 @@ import {
   confidenceFromPValue,
   createSeededRng,
   hashSeed,
+  normalPValueFromZ,
   permutationTestDelta
 } from "./stats"
 
@@ -164,6 +165,26 @@ describe("permutationTestDelta", () => {
     })
     expect(result!.pValue).toBeGreaterThan(0.2)
     expect(result!.pValue).toBeLessThan(0.3)
+  })
+})
+
+describe("normalPValueFromZ", () => {
+  it("matches the textbook two-sided tail probabilities", () => {
+    expect(normalPValueFromZ(0)).toBeCloseTo(1, 6)
+    expect(normalPValueFromZ(1.959964)).toBeCloseTo(0.05, 5)
+    expect(normalPValueFromZ(1.3)).toBeCloseTo(0.1936, 4)
+    expect(normalPValueFromZ(2.575829)).toBeCloseTo(0.01, 5)
+  })
+
+  it("is symmetric in the sign of the effect", () => {
+    expect(normalPValueFromZ(-2.4)).toBe(normalPValueFromZ(2.4))
+  })
+
+  it("stays inside the unit interval and rejects non-finite input", () => {
+    expect(normalPValueFromZ(40)).toBeGreaterThanOrEqual(0)
+    expect(normalPValueFromZ(40)).toBeLessThan(1e-6)
+    expect(normalPValueFromZ(Number.NaN)).toBeNull()
+    expect(normalPValueFromZ(Number.POSITIVE_INFINITY)).toBeNull()
   })
 })
 
