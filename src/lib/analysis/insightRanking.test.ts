@@ -6,8 +6,13 @@ import {
   calculateTagCorrelations,
   getRankedTagInsights
 } from "./correlations"
+import {
+  calculateInsightConfidence,
+  type InsightConfidenceModel,
+  type InsightPairConfidence
+} from "./insightConfidence"
 import { getAdjustedTagInsights } from "./insightRanking"
-import { createSeededRng } from "./stats"
+import { createSeededRng, type ConfidenceLevel } from "./stats"
 import {
   calculateTagEffects,
   type TagEffect,
@@ -36,6 +41,22 @@ function mockModel(effects: TagEffect[]): TagEffectsModel {
   }
 }
 
+function mockObserved(
+  levels: Record<string, ConfidenceLevel>
+): InsightConfidenceModel {
+  const results = new Map<string, InsightPairConfidence>()
+  for (const [key, level] of Object.entries(levels)) {
+    results.set(key, {
+      level,
+      pValue: level === "high" ? 0.001 : level === "medium" ? 0.05 : 0.5,
+      qValue: level === "high" ? 0.01 : level === "medium" ? 0.1 : 0.7,
+      taggedCount: 15,
+      untaggedCount: 200
+    })
+  }
+  return { results, familySize: results.size }
+}
+
 // 200 days: "alcohol" every 4th day with a real -8 sleep effect, and
 // "late meal" only ever alongside alcohol (every 8th day) with no effect of
 // its own. The naive delta blames late meal for alcohol's damage.
@@ -59,23 +80,159 @@ function buildConfounded() {
 }
 
 describe("getAdjustedTagInsights", () => {
-  it("drops a confounded tag the naive ranking blames", () => {
+  it("drops a confounded tag even with the real observed-confidence family", () => {
     const { metrics, tags } = buildConfounded()
     const correlations = calculateTagCorrelations(metrics, tags)
     const naive = getRankedTagInsights(correlations)
     const naiveTags = naive.concerning.map((insight) => insight.tag)
     expect(naiveTags).toContain("alcohol")
     expect(naiveTags).toContain("late meal")
+    // Late meal's observed sleep delta IS significant (it rides along on
+    // alcohol nights), which is exactly why the fallback must not use it.
+    const observed = calculateInsightConfidence(metrics, tags)
+    const lateMeal = observed.results.get("late meal-sleepScore")!
+    expect(["medium", "high"]).toContain(lateMeal.level)
 
     const model = calculateTagEffects(metrics, tags, "sleepScore")
     expect(model).not.toBeNull()
     const adjusted = getAdjustedTagInsights(
       { sleepScore: model, readinessScore: null },
-      correlations
+      correlations,
+      observed
     )
     const adjustedTags = adjusted.concerning.map((insight) => insight.tag)
     expect(adjustedTags).toContain("alcohol")
     expect(adjustedTags).not.toContain("late meal")
+  })
+
+  it("reproduces the Beer bug: a flipped model cannot overrule the observed effect", () => {
+    // 15 beer nights of 195, observed readiness strongly negative, but the
+    // model reports a flipped positive same-day and a low-confidence
+    // positive next-day. The card must stay concerning by the observed
+    // delta and say so.
+    const rng = createSeededRng(8)
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < 195; i += 1) {
+      const date = isoDate(i)
+      const beer = i % 13 === 0
+      if (beer) tags.push(tagRow(date, "beer"))
+      metrics.push({
+        date,
+        sleepScore: 70 + (rng() - 0.5) * 5,
+        readinessScore: 75 - (beer ? 10.6 : 0) + (rng() - 0.5) * 5,
+        activityScore: null
+      } as DailyMetricRow)
+    }
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model: TagEffectsModel = {
+      ...mockModel([
+        mockEffect({
+          tag: "beer",
+          sameDayEffect: 3.5,
+          sameDayConfidence: "medium",
+          nextDayEffect: 3.1,
+          nextDayConfidence: "low"
+        })
+      ]),
+      metric: "readinessScore"
+    }
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: null, readinessScore: model },
+      correlations,
+      mockObserved({ "beer-readinessScore": "high" })
+    )
+    const beer = [...adjusted.rewarding, ...adjusted.concerning].find(
+      (insight) => insight.tag === "beer" && insight.metric === "readinessScore"
+    )
+    expect(beer).toBeDefined()
+    expect(beer!.kind).toBe("concerning")
+    expect(beer!.delta).toBeLessThan(-8)
+    expect(beer!.evidence).toBe("observed-conflict")
+    expect(adjusted.rewarding.map((insight) => insight.tag)).not.toContain(
+      "beer"
+    )
+  })
+
+  it("excludes low-confidence components from the headline", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = mockModel([
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: 2,
+        sameDayConfidence: "high",
+        nextDayEffect: 4,
+        nextDayConfidence: "low"
+      })
+    ])
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      null
+    )
+    const alcohol = adjusted.rewarding.find(
+      (insight) => insight.tag === "alcohol"
+    )
+    // Headline is the guarded 2, not 6; the low next-day does not count.
+    expect(alcohol?.delta).toBe(2)
+    expect(alcohol?.evidence).toBe("adjusted")
+  })
+
+  it("lets the observed effect show when a low-confidence model weakly agrees", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = mockModel([
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: -6,
+        sameDayConfidence: "low"
+      })
+    ])
+    const observedDelta = correlations.find(
+      (correlation) => correlation.tag === "alcohol"
+    )!.deltas.sleepScore!
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      mockObserved({ "alcohol-sleepScore": "high" })
+    )
+    const alcohol = adjusted.concerning.find(
+      (insight) => insight.tag === "alcohol"
+    )
+    expect(alcohol?.evidence).toBe("observed")
+    expect(alcohol?.delta).toBeCloseTo(observedDelta, 1)
+  })
+
+  it("keeps a partialled-away tag out despite a significant observed delta", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const model = mockModel([
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: -8,
+        sameDayConfidence: "high"
+      }),
+      // The model estimated late meal and partialled it to nearly nothing.
+      mockEffect({
+        tag: "late meal",
+        sameDayEffect: 0.4,
+        sameDayConfidence: "low"
+      })
+    ])
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: model, readinessScore: null },
+      correlations,
+      mockObserved({
+        "alcohol-sleepScore": "high",
+        "late meal-sleepScore": "high"
+      })
+    )
+    expect(
+      [...adjusted.rewarding, ...adjusted.concerning].map(
+        (insight) => insight.tag
+      )
+    ).not.toContain("late meal")
   })
 
   it("returns exactly the naive ranking when both models are null", () => {
@@ -84,21 +241,33 @@ describe("getAdjustedTagInsights", () => {
     expect(
       getAdjustedTagInsights(
         { sleepScore: null, readinessScore: null },
-        correlations
+        correlations,
+        null
       )
     ).toEqual(getRankedTagInsights(correlations))
   })
 
-  it("ranks by the steady-state effect including next-day carry-over", () => {
+  it("ranks by the guarded steady-state effect including trusted carry-over", () => {
     const { metrics, tags } = buildConfounded()
     const correlations = calculateTagCorrelations(metrics, tags)
     const model = mockModel([
-      mockEffect({ tag: "alcohol", sameDayEffect: 2, nextDayEffect: 2 }),
-      mockEffect({ tag: "late meal", sameDayEffect: 1.2 })
+      mockEffect({
+        tag: "alcohol",
+        sameDayEffect: 2,
+        sameDayConfidence: "high",
+        nextDayEffect: 2,
+        nextDayConfidence: "medium"
+      }),
+      mockEffect({
+        tag: "late meal",
+        sameDayEffect: 1.2,
+        sameDayConfidence: "high"
+      })
     ])
     const adjusted = getAdjustedTagInsights(
       { sleepScore: model, readinessScore: null },
-      correlations
+      correlations,
+      null
     )
     const alcohol = adjusted.rewarding.find(
       (insight) => insight.tag === "alcohol"
@@ -110,36 +279,19 @@ describe("getAdjustedTagInsights", () => {
     ).toBe(false)
   })
 
-  it("counts a lag-only effect and skips tags with no coefficients", () => {
+  it("shows a tag the model never estimated when its observed effect is significant", () => {
     const { metrics, tags } = buildConfounded()
     const correlations = calculateTagCorrelations(metrics, tags)
-    const model = mockModel([
-      mockEffect({ tag: "alcohol", nextDayEffect: -3 }),
-      mockEffect({ tag: "late meal" })
-    ])
+    // Empty model: neither tag has any coefficient.
     const adjusted = getAdjustedTagInsights(
-      { sleepScore: model, readinessScore: null },
-      correlations
+      { sleepScore: mockModel([]), readinessScore: null },
+      correlations,
+      mockObserved({ "alcohol-sleepScore": "high" })
     )
-    expect(adjusted.concerning.map((insight) => insight.tag)).toEqual([
-      "alcohol"
-    ])
-  })
-
-  it("shows analysis-sample nights on adjusted candidates", () => {
-    const { metrics, tags } = buildConfounded()
-    const correlations = calculateTagCorrelations(metrics, tags)
-    const analysisNights = correlations.find(
-      (correlation) => correlation.tag === "alcohol"
-    )!.daysWithTag
-    const model = mockModel([
-      mockEffect({ tag: "alcohol", sameDayEffect: -5, daysWithTag: 999 })
-    ])
-    const adjusted = getAdjustedTagInsights(
-      { sleepScore: model, readinessScore: null },
-      correlations
+    const alcohol = adjusted.concerning.find(
+      (insight) => insight.tag === "alcohol"
     )
-    expect(adjusted.concerning[0].daysWithTag).toBe(analysisNights)
+    expect(alcohol?.evidence).toBe("observed")
   })
 
   it("falls back to the naive ranking for a metric without a model", () => {
@@ -159,12 +311,61 @@ describe("getAdjustedTagInsights", () => {
       } as DailyMetricRow)
     }
     const correlations = calculateTagCorrelations(metrics, tags)
-    const model = mockModel([])
     const adjusted = getAdjustedTagInsights(
-      { sleepScore: model, readinessScore: null },
-      correlations
+      { sleepScore: mockModel([]), readinessScore: null },
+      correlations,
+      null
     )
     const sauna = adjusted.rewarding.find((insight) => insight.tag === "sauna")
     expect(sauna?.metric).toBe("readinessScore")
+  })
+
+  it("property: a candidate never opposes a significant observed direction", () => {
+    const { metrics, tags } = buildConfounded()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const levels: Array<ConfidenceLevel | null> = [
+      null,
+      "low",
+      "medium",
+      "high"
+    ]
+    const rng = createSeededRng(42)
+    for (let round = 0; round < 200; round += 1) {
+      const effects = ["alcohol", "late meal"].map((tag) => {
+        const sameDay = rng() < 0.2 ? null : (rng() - 0.5) * 16
+        const nextDay = rng() < 0.4 ? null : (rng() - 0.5) * 10
+        return mockEffect({
+          tag,
+          sameDayEffect: sameDay,
+          sameDayConfidence:
+            sameDay === null ? null : levels[1 + Math.floor(rng() * 3)],
+          nextDayEffect: nextDay,
+          nextDayConfidence:
+            nextDay === null ? null : levels[1 + Math.floor(rng() * 3)]
+        })
+      })
+      const observedLevels: Record<string, ConfidenceLevel> = {}
+      for (const tag of ["alcohol", "late meal"]) {
+        const pick = levels[Math.floor(rng() * 4)]
+        if (pick !== null) observedLevels[`${tag}-sleepScore`] = pick
+      }
+      const observed = mockObserved(observedLevels)
+      const adjusted = getAdjustedTagInsights(
+        { sleepScore: mockModel(effects), readinessScore: null },
+        correlations,
+        observed
+      )
+      for (const insight of [...adjusted.rewarding, ...adjusted.concerning]) {
+        const level = observed.results.get(
+          `${insight.tag}-${insight.metric}`
+        )?.level
+        if (level !== "medium" && level !== "high") continue
+        const observedDelta = correlations.find(
+          (correlation) => correlation.tag === insight.tag
+        )?.deltas[insight.metric]
+        if (observedDelta == null || Math.sign(observedDelta) === 0) continue
+        expect(Math.sign(insight.delta)).toBe(Math.sign(observedDelta))
+      }
+    }
   })
 })

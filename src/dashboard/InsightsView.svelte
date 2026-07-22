@@ -73,14 +73,17 @@
   export let selectedInsightKey: string
 
   $: correlations = calculateTagCorrelations(analysisMetrics, analysisEntries)
-  // Cards rank by the model's adjusted steady-state effects once the fits
-  // land (falling back to observed averages per metric when a model is
-  // below its gates); until then the lists show a computing state instead
-  // of naive rankings that would reorder a beat later.
-  $: insights = effectsReady
+  // Cards rank by the model's guarded adjusted effects once BOTH deferred
+  // passes land: the fits, and the observed-confidence family the sign
+  // guard anchors to (the model must never flip the direction of a strong
+  // significant observed effect). Until then the lists show a computing
+  // state instead of rankings that would reorder a beat later.
+  $: rankingReady = effectsReady && insightConfidenceModel !== null
+  $: insights = rankingReady
     ? getAdjustedTagInsights(
         { sleepScore: sleepEffects, readinessScore: readinessEffects },
-        correlations
+        correlations,
+        insightConfidenceModel
       )
     : { rewarding: [], concerning: [] }
   $: allInsights = [
@@ -494,7 +497,7 @@
         <section class="insight-column">
           <h3>Rewarding</h3>
           <div class="insight-stack">
-            {#if !effectsReady}
+            {#if !rankingReady}
               <p class="empty-state">Computing adjusted effects...</p>
             {/if}
             {#each insights.rewarding as item}
@@ -520,7 +523,7 @@
                 </strong>
               </button>
             {:else}
-              {#if effectsReady}
+              {#if rankingReady}
                 <p class="empty-state">No supported positive pattern yet.</p>
               {/if}
             {/each}
@@ -530,7 +533,7 @@
         <section class="insight-column">
           <h3>Concerning</h3>
           <div class="insight-stack">
-            {#if !effectsReady}
+            {#if !rankingReady}
               <p class="empty-state">Computing adjusted effects...</p>
             {/if}
             {#each insights.concerning as item}
@@ -556,7 +559,7 @@
                 </strong>
               </button>
             {:else}
-              {#if effectsReady}
+              {#if rankingReady}
                 <p class="empty-state">No supported concerning pattern yet.</p>
               {/if}
             {/each}
@@ -673,6 +676,19 @@
         <p class="empty-state">Select an insight to compare tagged nights.</p>
       {/if}
 
+      {#if selectedInsight?.evidence === "observed-conflict"}
+        <p class="evidence-note">
+          The model disagrees with the observed direction for this tag, so
+          the card shows the observed effect instead. More nights may
+          untangle the tag from the context it travels with.
+        </p>
+      {:else if selectedInsight?.evidence === "observed"}
+        <p class="evidence-note">
+          The model cannot estimate this tag confidently yet, so the card
+          shows the observed effect.
+        </p>
+      {/if}
+
       <div class="detail-stats" aria-label="Selected insight stats">
         {#each selectedStats as stat}
           <div>
@@ -703,8 +719,13 @@
           <strong>Next day</strong> is the same model's estimate of the tag's
           carry-over onto the following day. The rewarding and concerning
           cards rank tags by the model's total effect, today plus the
-          next-day carry-over, and fall back to observed averages while
-          there is not enough data for the model.
+          next-day carry-over, counting only the parts the model is at
+          least medium-confident about. The observed effect stays the
+          anchor: when the model cannot speak confidently, or points in the
+          opposite direction from a significant observed effect, the card
+          shows the observed effect instead and says so. A tag always
+          carries the context it travels with, and the model is never
+          allowed to argue away what your nights actually looked like.
         </p>
         <p>
           <strong>Confidence</strong> reflects a shuffle test: how often
@@ -838,6 +859,13 @@
 
   .correlation-card.low-confidence:not(.selected):not(:hover) {
     opacity: 0.62;
+  }
+
+  .evidence-note {
+    color: #6f786f;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    margin-top: 0.6rem;
   }
 
   .methodology {
