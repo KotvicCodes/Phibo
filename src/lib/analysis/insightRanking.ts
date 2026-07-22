@@ -52,10 +52,22 @@ export function getAdjustedTagInsights(
   for (const metric of primaryMetrics) {
     const model = models[metric]
     if (model === null) {
+      // A metric whose model never fit falls back to the naive insights,
+      // but not to the naive ranking weight. That weight multiplies the
+      // delta by the support score and a per-metric heuristic (sleep counts
+      // 1.2x), while adjusted candidates rank on plain score points, so the
+      // two would be compared on different scales and a naive sleep insight
+      // could outrank a larger adjusted one purely through the multiplier.
+      // Support still decides which naive insights qualify at all, inside
+      // getRankedTagInsights; only the ordering weight is rewritten here.
       candidates.push(
-        ...[...naive.rewarding, ...naive.concerning].filter(
-          (insight) => insight.metric === metric
-        )
+        ...[...naive.rewarding, ...naive.concerning]
+          .filter((insight) => insight.metric === metric)
+          .map((insight) => ({
+            ...insight,
+            supportScore: 1,
+            weightedImpact: Math.abs(insight.delta)
+          }))
       )
       continue
     }

@@ -369,3 +369,70 @@ describe("getAdjustedTagInsights", () => {
     }
   })
 })
+
+describe("getAdjustedTagInsights mixed-mode ranking", () => {
+  // Sleep has no model and falls back to naive insights; readiness has one.
+  // "sauna" moves sleep by exactly 2.0 points and "plunge" moves readiness
+  // by 2.2, with no noise, so the ordering is decided purely by the weights.
+  function buildMixed() {
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < 200; i += 1) {
+      const date = isoDate(i)
+      const sauna = i % 5 === 0
+      const plunge = i % 7 === 0
+      if (sauna) tags.push(tagRow(date, "sauna"))
+      if (plunge) tags.push(tagRow(date, "plunge"))
+      metrics.push({
+        date,
+        sleepScore: 70 + (sauna ? 2 : 0),
+        readinessScore: 70 + (plunge ? 2.2 : 0),
+        activityScore: null
+      } as DailyMetricRow)
+    }
+    return { metrics, tags }
+  }
+
+  it("compares fallback and adjusted candidates on the same scale", () => {
+    const { metrics, tags } = buildMixed()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const readinessModel = mockModel([
+      mockEffect({
+        tag: "plunge",
+        sameDayEffect: 2.2,
+        sameDayConfidence: "high"
+      })
+    ])
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: null, readinessScore: readinessModel },
+      correlations,
+      null
+    )
+
+    const sauna = adjusted.rewarding.find((insight) => insight.tag === "sauna")
+    const plunge = adjusted.rewarding.find((insight) => insight.tag === "plunge")
+    expect(sauna?.metric).toBe("sleepScore")
+    expect(plunge?.metric).toBe("readinessScore")
+    // The naive sleep weight would have been 2.0 * 1.2 = 2.4, enough to beat
+    // the larger adjusted readiness effect purely through the multiplier.
+    expect(sauna?.weightedImpact).toBe(2)
+    expect(plunge?.weightedImpact).toBeCloseTo(2.2, 5)
+    expect(adjusted.rewarding[0]?.tag).toBe("plunge")
+  })
+
+  it("leaves the naive weights alone when no model fit at all", () => {
+    const { metrics, tags } = buildMixed()
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const naive = getRankedTagInsights(correlations)
+    const adjusted = getAdjustedTagInsights(
+      { sleepScore: null, readinessScore: null },
+      correlations,
+      null
+    )
+
+    expect(adjusted).toEqual(naive)
+    expect(
+      naive.rewarding.find((insight) => insight.tag === "sauna")?.weightedImpact
+    ).toBe(2.4)
+  })
+})
