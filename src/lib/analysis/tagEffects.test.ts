@@ -661,3 +661,88 @@ describe("coefficient confidence multiplicity", () => {
     }
   })
 })
+
+describe("comparison-day gating", () => {
+  // A history where no day is bare: a rotating routine tag covers all of
+  // them, on top of the tag whose effect we want back.
+  function buildHeavyTagger(routineTags: number) {
+    const rng = createSeededRng(4)
+    const days = 400
+    const tags: TagEntryRow[] = []
+    const realDates = new Set<string>()
+    for (let i = 0; i < days; i += 5) realDates.add(isoDate(i))
+    for (const date of realDates) tags.push(tagRow(date, "alcohol"))
+    for (let i = 0; i < days; i += 1) {
+      tags.push(tagRow(isoDate(i), `routine${i % routineTags}`))
+    }
+    const metrics: DailyMetricRow[] = []
+    for (let i = 0; i <= days; i += 1) {
+      const date = isoDate(i)
+      metrics.push(
+        metricRow(
+          date,
+          70 + (rng() - 0.5) * 12 + (realDates.has(date) ? -8 : 0)
+        )
+      )
+    }
+    return { metrics, tags }
+  }
+
+  it("fits for someone who tags every single day", () => {
+    const { metrics, tags } = buildHeavyTagger(3)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")
+
+    // No day in the sample is untagged, which used to deny the model
+    // outright even though every coefficient is perfectly estimable.
+    expect(model).not.toBeNull()
+    // Only the trailing day past the last tag is bare, nowhere near the
+    // eight the old model-level gate demanded before it would fit at all.
+    expect(model!.untaggedDays).toBeLessThan(8)
+    expect(model!.effects.get("alcohol")?.sameDayEffect).toBeLessThan(-5)
+    expect(model!.effects.get("alcohol")?.sameDayConfidence).toBe("high")
+  })
+
+  it("drops a tag that blankets the sample without losing the others", () => {
+    const { metrics, tags } = buildHeavyTagger(1)
+    const model = calculateTagEffects(metrics, tags, "sleepScore")
+
+    // routine0 is on every day, so it has nothing to contrast against and
+    // earns no column; alcohol is unaffected.
+    expect(model).not.toBeNull()
+    expect(model!.effects.get("routine0")?.sameDayEffect ?? null).toBeNull()
+    expect(model!.effects.get("alcohol")?.sameDayEffect).toBeLessThan(-5)
+  })
+
+  it("requires a tag to be absent on enough days to earn a column", () => {
+    const rng = createSeededRng(6)
+    const days = 200
+    const tags: TagEntryRow[] = []
+    // Absent on only five days of the sample, below the eight required.
+    for (let i = 0; i < days; i += 1) {
+      if (i % 40 !== 7 || i > 200) tags.push(tagRow(isoDate(i), "constant"))
+    }
+    for (let i = 0; i < days; i += 3) tags.push(tagRow(isoDate(i), "real"))
+    const metrics: DailyMetricRow[] = []
+    for (let i = 0; i <= days; i += 1) {
+      metrics.push(metricRow(isoDate(i), 70 + (rng() - 0.5) * 8))
+    }
+    const model = calculateTagEffects(metrics, tags, "sleepScore")
+
+    expect(model).not.toBeNull()
+    expect(model!.effects.get("constant")?.sameDayEffect ?? null).toBeNull()
+    expect(model!.effects.get("real")?.sameDayEffect).not.toBeNull()
+  })
+
+  it("still declines when no tag has anything to contrast against", () => {
+    const rng = createSeededRng(8)
+    const days = 200
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i <= days; i += 1) tags.push(tagRow(isoDate(i), "always"))
+    const metrics: DailyMetricRow[] = []
+    for (let i = 0; i <= days; i += 1) {
+      metrics.push(metricRow(isoDate(i), 70 + (rng() - 0.5) * 8))
+    }
+
+    expect(calculateTagEffects(metrics, tags, "sleepScore")).toBeNull()
+  })
+})

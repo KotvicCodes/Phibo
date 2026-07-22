@@ -43,7 +43,9 @@ export interface TagEffectsModel {
 }
 
 const MIN_MODELED_DAYS = 60
-const MIN_UNTAGGED_DAYS = 8
+// Days a tag must be ABSENT for, inside the sample, before its coefficient
+// has anything to contrast against.
+const MIN_COMPARISON_DAYS = 8
 const MIN_TAG_DAYS = 5
 
 // Local calendar shift; src/dashboard/format.ts has the same helper, but the
@@ -109,13 +111,21 @@ export function calculateTagEffects(
   for (const dates of datesByTag.values()) {
     for (const date of dates) taggedDates.add(date)
   }
+  // Reported for context only. It deliberately does not gate the fit: what
+  // identifies a tag's coefficient is the contrast between days with that
+  // tag and days without it, not days without ANY tag. Requiring bare days
+  // used to deny a model outright to anyone who logs a routine daily, even
+  // when every coefficient was perfectly estimable, and the whole product
+  // then fell back to naive numbers with nothing said about it.
   const untaggedDays = sampleDays.filter(
     (day) => !taggedDates.has(day.date)
   ).length
-  if (untaggedDays < MIN_UNTAGGED_DAYS) return null
 
   // Gate columns: a tag needs enough same-day (and separately enough
-  // next-day) matches inside the sample, and must not cover every day.
+  // next-day) matches inside the sample, and enough days without it to
+  // contrast against. Tags that blanket the sample drop their column while
+  // the rest of the model still fits; if that leaves nothing, the emptiness
+  // check below ends the fit.
   const sameDayTags: Array<{ tag: string; dates: Set<string>; count: number }> =
     []
   const lagTags: Array<{ tag: string; dates: Set<string>; count: number }> = []
@@ -126,10 +136,16 @@ export function calculateTagEffects(
       if (dates.has(day.date)) sameDayCount += 1
       if (dates.has(shiftDate(day.date, -1))) lagCount += 1
     }
-    if (sameDayCount >= MIN_TAG_DAYS && sameDayCount < modeledDays) {
+    if (
+      sameDayCount >= MIN_TAG_DAYS &&
+      modeledDays - sameDayCount >= MIN_COMPARISON_DAYS
+    ) {
       sameDayTags.push({ tag, dates, count: sameDayCount })
     }
-    if (lagCount >= MIN_TAG_DAYS && lagCount < modeledDays) {
+    if (
+      lagCount >= MIN_TAG_DAYS &&
+      modeledDays - lagCount >= MIN_COMPARISON_DAYS
+    ) {
       lagTags.push({ tag, dates, count: lagCount })
     }
   }
