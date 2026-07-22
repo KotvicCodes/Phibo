@@ -1041,11 +1041,16 @@ function calculateMetricDeltas(
   )
 }
 
+// How much evidence stands behind a tag's contrast, saturating at 5 tagged
+// and 8 comparison days. Returned unrounded: nothing displays this number,
+// it only ever multiplies a delta, and rounding a multiplier to 0.1 costs
+// several percent and collapses genuinely different supports onto the same
+// value. Callers round their own result at the display boundary.
 export function calculateSupportScore(daysWithTag: number, daysWithoutTag: number) {
   const taggedSupport = Math.min(daysWithTag / 5, 1)
   const comparisonSupport = Math.min(daysWithoutTag / 8, 1)
 
-  return roundToOne(Math.sqrt(taggedSupport * comparisonSupport))
+  return Math.sqrt(taggedSupport * comparisonSupport)
 }
 
 function classifyInsight(delta: number): InsightKind {

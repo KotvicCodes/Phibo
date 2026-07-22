@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest"
 
-import type { DailyMetricRow } from "../db/types"
+import type { DailyMetricRow, TagEntryRow } from "../db/types"
 
 import type { ExploreDay } from "./correlations"
-import { calculateExploreMetricImpacts } from "./correlations"
-import { isoDate } from "./testHelpers"
+import {
+  calculateExploreMetricImpacts,
+  calculateSupportScore,
+  calculateTagCorrelations,
+  getRankedTagInsights
+} from "./correlations"
+import { isoDate, tagRow } from "./testHelpers"
 
 // Builds explore days carrying a single populated metric (sleep score), so
 // the effect size under test is not diluted by other columns.
@@ -99,5 +104,62 @@ describe("calculateExploreMetricImpacts effect size", () => {
 
     expect(impact.delta).toBe(10)
     expect(impact.effectSize).toBeCloseTo(3.87, 2)
+  })
+})
+
+describe("calculateSupportScore", () => {
+  it("keeps the value unrounded so it can weight a delta faithfully", () => {
+    // Both of these used to come back as 0.9, hiding a seven percent
+    // difference in how much evidence stands behind the two tags.
+    expect(calculateSupportScore(5, 7)).toBeCloseTo(Math.sqrt(7 / 8), 10)
+    expect(calculateSupportScore(4, 8)).toBeCloseTo(Math.sqrt(0.8), 10)
+    expect(calculateSupportScore(5, 7)).not.toBe(calculateSupportScore(4, 8))
+  })
+
+  it("still saturates at five tagged and eight comparison days", () => {
+    expect(calculateSupportScore(5, 8)).toBe(1)
+    expect(calculateSupportScore(40, 200)).toBe(1)
+    expect(calculateSupportScore(0, 50)).toBe(0)
+  })
+})
+
+describe("naive insight ranking support weighting", () => {
+  it("orders two tags whose supports round to the same value", () => {
+    // Twelve days: "alpha" on five, "beta" on four, both scoring 0.9 support
+    // once rounded. Alpha has the smaller delta but the stronger support,
+    // and only the unrounded weight puts it first.
+    const alphaBonus = (9.7 + 40 / 7) * (14 / 9)
+    const betaBonus = 10 + (5 * alphaBonus) / 8
+    const metrics: DailyMetricRow[] = []
+    const tags: TagEntryRow[] = []
+    for (let i = 0; i < 12; i += 1) {
+      const date = isoDate(i)
+      if (i < 5) tags.push(tagRow(date, "alpha"))
+      if (i >= 5 && i < 9) tags.push(tagRow(date, "beta"))
+      metrics.push({
+        date,
+        sleepScore:
+          70 + (i < 5 ? alphaBonus : 0) + (i >= 5 && i < 9 ? betaBonus : 0),
+        readinessScore: null,
+        activityScore: null
+      } as DailyMetricRow)
+    }
+
+    const correlations = calculateTagCorrelations(metrics, tags)
+    const alpha = correlations.find((item) => item.tag === "alpha")!
+    const beta = correlations.find((item) => item.tag === "beta")!
+
+    // The fixture's premise: beta has the larger observed delta, alpha the
+    // better support, and the two supports are indistinguishable once
+    // rounded to a tenth.
+    expect(alpha.deltas.sleepScore).toBe(9.7)
+    expect(beta.deltas.sleepScore).toBe(10)
+    expect(alpha.supportScore).toBeGreaterThan(beta.supportScore)
+    expect(Math.round(alpha.supportScore * 10)).toBe(
+      Math.round(beta.supportScore * 10)
+    )
+
+    const ranked = getRankedTagInsights(correlations)
+    expect(ranked.rewarding[0]?.tag).toBe("alpha")
   })
 })
