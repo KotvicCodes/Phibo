@@ -123,6 +123,11 @@ export interface TagInsight {
   delta: number
   supportScore: number
   weightedImpact: number
+  // Which number the card shows: the model's guarded adjusted effect, the
+  // observed delta because the model could not speak confidently, or the
+  // observed delta because the model contradicted a significant observed
+  // direction. Absent on naive-ranking insights.
+  evidence?: "adjusted" | "observed" | "observed-conflict"
 }
 
 interface TagDiscovery {
