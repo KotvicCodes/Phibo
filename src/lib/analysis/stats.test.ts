@@ -260,7 +260,19 @@ describe("confidence mapping", () => {
     expect(confidenceFromEffectSe(3, 2, 10, 20)).toBe("medium")
     expect(confidenceFromEffectSe(1, 2, 10, 20)).toBe("low")
     expect(confidenceFromEffectSe(5, 2, 4, 20)).toBe("low")
-    expect(confidenceFromEffectSe(5, 0, 10, 20)).toBe("low")
     expect(confidenceFromEffectSe(Number.NaN, 2, 10, 20)).toBe("low")
+  })
+
+  it("promotes a pinned-down effect (zero SE) instead of downgrading it", () => {
+    // A non-zero effect with zero standard error is maximally significant,
+    // the same direction the p-value path takes as p approaches zero.
+    expect(confidenceFromEffectSe(5, 0, 10, 20)).toBe("high")
+    // The count gate still applies to the promoted strength.
+    expect(confidenceFromEffectSe(5, 0, 6, 12)).toBe("medium")
+    expect(confidenceFromEffectSe(5, 0, 4, 20)).toBe("low")
+    // A zero effect with zero error carries no signal, and a negative
+    // (nonsensical) standard error stays low.
+    expect(confidenceFromEffectSe(0, 0, 10, 20)).toBe("low")
+    expect(confidenceFromEffectSe(5, -1, 10, 20)).toBe("low")
   })
 })

@@ -166,8 +166,17 @@ export function confidenceFromEffectSe(
   untaggedCount: number
 ): ConfidenceLevel {
   if (!Number.isFinite(effect) || !Number.isFinite(standardError)) return "low"
-  if (standardError <= 0) return "low"
-  const ratio = Math.abs(effect) / standardError
+  if (standardError < 0) return "low"
+  // A zero standard error means the effect is pinned down exactly, so a
+  // non-zero effect is maximally significant (infinite ratio), mirroring the
+  // p-value path where p approaching zero reads high, not low. Only a zero
+  // effect with zero error is genuinely uninformative.
+  const ratio =
+    standardError === 0
+      ? effect === 0
+        ? 0
+        : Number.POSITIVE_INFINITY
+      : Math.abs(effect) / standardError
   const strength = ratio > 2 ? "high" : ratio > 1.3 ? "medium" : "none"
   return confidenceFromCounts(strength, taggedCount, untaggedCount)
 }
