@@ -4,7 +4,7 @@ import { average, groupTagsByName, roundToOne } from "./shared"
 import type { ConfidenceLevel } from "./stats"
 import {
   adjustedHeadlineEffect,
-  type TagEffect,
+  summedEffectConfidence,
   type TagEffectsModel
 } from "./tagEffects"
 
@@ -36,8 +36,9 @@ interface OptimalTagContribution {
   supportScore: number
   deltas: Record<ScoreCategory, number | null>
   weightedDeltas: Record<ScoreCategory, number>
-  // Model confidence per category in adjusted mode (the weaker of the
-  // same-day and next-day levels); all null in naive mode.
+  // Model confidence per category in adjusted mode: the guarded headline
+  // rated by the covariance-aware standard error of its summed effect, the
+  // same rule Insights uses. All null in naive mode.
   confidences: Record<ScoreCategory, ConfidenceLevel | null>
   targetContribution: number
   // Marginal effect on the summed target estimate of toggling this tag
@@ -236,13 +237,23 @@ export function calculateOptimalDay(
       const weightedDeltas = mapCategories((key) =>
         roundToOne(rawWeightedDeltas[key])
       )
-      const confidences = mapCategories((key) =>
-        adjustedCategories.has(key)
-          ? usedObservedFallback[key]
-            ? "low"
-            : guardedEffectConfidence(adjustedModels[key]?.effects.get(tag))
-          : null
-      )
+      const confidences = mapCategories((key) => {
+        if (!adjustedCategories.has(key)) return null
+        if (usedObservedFallback[key]) return "low"
+        // Same rule as Insights: rate the guarded headline by the covariance-
+        // aware standard error of the summed effect, gated on the tag's own
+        // model sample. Both views now describe one model's confidence one
+        // way instead of Optimal taking the weakest component confidence.
+        const model = adjustedModels[key]
+        if (model == null) return null
+        const modeledTagDays = model.effects.get(tag)?.daysWithTag ?? 0
+        return summedEffectConfidence(
+          model,
+          tag,
+          modeledTagDays,
+          model.modeledDays - modeledTagDays
+        )
+      })
 
       const rawTargetContribution = targetCategories.reduce(
         (total, key) => total + rawWeightedDeltas[key],
@@ -422,30 +433,6 @@ function stripRawWeights<Contribution extends RawWeightedContribution>(
   const { rawWeightedDeltas, ...contribution } = candidate
 
   return contribution
-}
-
-const confidenceRank: Record<ConfidenceLevel, number> = {
-  low: 0,
-  medium: 1,
-  high: 2
-}
-
-// The weaker confidence among the components that actually feed the
-// guarded headline (medium-plus only); a chain is only as trustworthy as
-// its weakest used link. Null when no component qualifies.
-function guardedEffectConfidence(effect: TagEffect | undefined) {
-  if (effect == null) return null
-  const levels = [
-    effect.sameDayEffect !== null ? effect.sameDayConfidence : null,
-    effect.nextDayEffect !== null ? effect.nextDayConfidence : null
-  ].filter(
-    (level): level is ConfidenceLevel =>
-      level === "medium" || level === "high"
-  )
-  if (levels.length === 0) return null
-  return levels.reduce((weakest, level) =>
-    confidenceRank[level] < confidenceRank[weakest] ? level : weakest
-  )
 }
 
 // The optimal day cannot be better than the user's actually-observed best

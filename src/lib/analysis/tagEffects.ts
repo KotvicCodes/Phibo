@@ -5,6 +5,7 @@ import { fitRidge, selectRidgeLambda } from "./regression"
 import { groupTagsByName } from "./shared"
 import {
   benjaminiHochberg,
+  confidenceFromEffectSe,
   confidenceFromPValue,
   normalPValueFromZ,
   type ConfidenceLevel
@@ -323,6 +324,28 @@ export function adjustedHeadlineEffectWithSe(
     effect: parts.sum,
     standardError: sumStandardError(model.covariance, parts.indices)
   }
+}
+
+// The one confidence rule for a tag's guarded headline effect, shared by
+// Insights and Optimal so both views rate the same model the same way: the
+// summed effect over its medium-plus components, priced by the covariance-
+// aware standard error of that sum. Each view passes the tagged/untagged
+// counts it already tracks. Null when nothing qualifies or the SE is
+// unavailable, matching the headline value's own null.
+export function summedEffectConfidence(
+  model: TagEffectsModel | null,
+  tag: string,
+  taggedCount: number,
+  untaggedCount: number
+): ConfidenceLevel | null {
+  const headline = adjustedHeadlineEffectWithSe(model, tag)
+  if (headline === null || headline.standardError === null) return null
+  return confidenceFromEffectSe(
+    headline.effect,
+    headline.standardError,
+    taggedCount,
+    untaggedCount
+  )
 }
 
 // Guarded variant of the combined same-day prediction for a tag selection:

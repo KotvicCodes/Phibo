@@ -14,14 +14,12 @@
     type InsightConfidenceModel,
     type InsightPairConfidence
   } from "../lib/analysis/insightConfidence"
-  import {
-    confidenceFromEffectSe,
-    type ConfidenceLevel
-  } from "../lib/analysis/stats"
+  import type { ConfidenceLevel } from "../lib/analysis/stats"
   import {
     adjustedHeadlineEffectWithSe,
     calculateTagEffectsMemoized,
     peekTagEffects,
+    summedEffectConfidence,
     type TagEffect,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
@@ -332,15 +330,12 @@
     // confidence nor what adding their errors separately would suggest.
     const headline = adjustedHeadlineEffectWithSe(model, item.tag)
     if (headline !== null && usesBothComponents(effect)) {
-      const level =
-        headline.standardError === null
-          ? null
-          : confidenceFromEffectSe(
-              headline.effect,
-              headline.standardError,
-              item.daysWithTag,
-              model.modeledDays - item.daysWithTag
-            )
+      const level = summedEffectConfidence(
+        model,
+        item.tag,
+        item.daysWithTag,
+        model.modeledDays - item.daysWithTag
+      )
       stats.push({
         helper:
           level === null

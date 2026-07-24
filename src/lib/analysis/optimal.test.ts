@@ -570,17 +570,31 @@ describe("calculateOptimalDay adjusted mode", () => {
     expect(withNull.contributions).toEqual(plain.contributions)
   })
 
-  it("passes through the weaker of the two confidence levels", () => {
+  it("rates the row by the summed effect's covariance-aware SE", () => {
+    // Same rule Insights uses since v0.4.24: the badge no longer echoes the
+    // weaker component's own confidence label. It prices the summed effect
+    // (6 + 2 = 8) by the standard error of that sum. Independent-looking
+    // component labels ("high", "medium") do not decide it; the SE does.
     const { metrics, tags } = build({ tagEvery: { mag: 3 } })
-    const model = mockModel([
-      mockEffect({
-        tag: "mag",
-        sameDayEffect: 6,
-        sameDayConfidence: "high" as ConfidenceLevel,
-        nextDayEffect: 2,
-        nextDayConfidence: "medium" as ConfidenceLevel
-      })
-    ])
+    const model: TagEffectsModel = {
+      ...mockModel([
+        mockEffect({
+          tag: "mag",
+          daysWithTag: 40,
+          sameDayEffect: 6,
+          sameDayConfidence: "high" as ConfidenceLevel,
+          sameDayIndex: 0,
+          nextDayEffect: 2,
+          nextDayConfidence: "medium" as ConfidenceLevel,
+          nextDayIndex: 1
+        })
+      ]),
+      // var(sum) = 1 + 0 + 0 + 1 = 2, SE sqrt(2), ratio 8/1.41 = 5.7 -> high.
+      covariance: [
+        [1, 0],
+        [0, 1]
+      ]
+    }
     const adjusted = calculateOptimalDay(metrics, tags, {
       target: "sleep",
       adjustedModels: { sleepScore: model }
@@ -589,7 +603,8 @@ describe("calculateOptimalDay adjusted mode", () => {
       ...adjusted.contributions,
       ...adjusted.otherEligibleTags
     ].find((item) => item.tag === "mag")!
-    expect(row.confidences.sleepScore).toBe("medium")
+    // The old weakest-component rule would have read "medium" here.
+    expect(row.confidences.sleepScore).toBe("high")
     expect(row.confidences.readinessScore).toBeNull()
 
     const naive = calculateOptimalDay(metrics, tags, { target: "sleep" })

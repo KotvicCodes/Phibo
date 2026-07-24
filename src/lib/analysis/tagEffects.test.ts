@@ -10,6 +10,7 @@ import {
   combinedGuardedSameDayEffect,
   combinedGuardedSameDayEffectWithSe,
   peekTagEffects,
+  summedEffectConfidence,
   weakestTagSupport,
   type TagEffect,
   type TagEffectsModel
@@ -470,6 +471,80 @@ describe("weakestTagSupport", () => {
     ).toBeNull()
     expect(weakestTagSupport(model, [])).toBeNull()
     expect(weakestTagSupport(null, ["plentiful"])).toBeNull()
+  })
+})
+
+describe("summedEffectConfidence", () => {
+  // The shared rule Insights and Optimal both rate the guarded headline by:
+  // the summed effect over medium-plus components, priced by the covariance-
+  // aware standard error of that sum, then gated on the tagged/untagged
+  // counts the caller passes.
+  function modelWith(effect: TagEffect, covariance: number[][]): TagEffectsModel {
+    return { ...guardModel([effect]), covariance }
+  }
+
+  it("rates a strong ratio high once the counts clear the gate", () => {
+    const model = modelWith(
+      guardEffect({
+        tag: "a",
+        sameDayEffect: 6,
+        sameDayConfidence: "high",
+        sameDayIndex: 0
+      }),
+      [[4]] // SE 2, ratio 6/2 = 3 > 2
+    )
+    expect(summedEffectConfidence(model, "a", 15, 100)).toBe("high")
+    // Thin tagged sample caps it regardless of the ratio.
+    expect(summedEffectConfidence(model, "a", 3, 100)).toBe("low")
+  })
+
+  it("prices the sum with the off-diagonal covariance, not variances alone", () => {
+    const model = modelWith(
+      guardEffect({
+        tag: "a",
+        sameDayEffect: 3,
+        sameDayConfidence: "medium",
+        sameDayIndex: 0,
+        nextDayEffect: 3,
+        nextDayConfidence: "medium",
+        nextDayIndex: 1
+      }),
+      [
+        [4, 1],
+        [1, 4]
+      ] // var(sum) = 4+1+1+4 = 10, SE sqrt(10), ratio 6/3.16 = 1.9 -> medium
+    )
+    expect(summedEffectConfidence(model, "a", 20, 100)).toBe("medium")
+    // Treating the two as independent (var 8, ratio 2.12) would read high,
+    // so a medium here proves the positive covariance is in the price.
+    const ratio =
+      6 /
+      Math.sqrt(4 + 4) // independent-variance ratio
+    expect(ratio).toBeGreaterThan(2)
+  })
+
+  it("returns null when no component qualifies or the SE is unavailable", () => {
+    const untrusted = modelWith(
+      guardEffect({
+        tag: "a",
+        sameDayEffect: 6,
+        sameDayConfidence: "low",
+        sameDayIndex: 0
+      }),
+      [[4]]
+    )
+    expect(summedEffectConfidence(untrusted, "a", 20, 100)).toBeNull()
+    // Medium component but the model exported no covariance to price it.
+    const noCov = guardModel([
+      guardEffect({
+        tag: "a",
+        sameDayEffect: 6,
+        sameDayConfidence: "medium",
+        sameDayIndex: 0
+      })
+    ])
+    expect(summedEffectConfidence(noCov, "a", 20, 100)).toBeNull()
+    expect(summedEffectConfidence(null, "a", 20, 100)).toBeNull()
   })
 })
 

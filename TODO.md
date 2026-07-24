@@ -48,20 +48,5 @@ it is done rather than checking it off.
    extension, especially the backup round-trip and delete-local-data items
    that automated tests cannot reach.
 
-9. Explore's multi-tag confidence badge gates on the co-occurrence night
-   count (days carrying ALL selected tags), while the standard error behind
-   it comes from each tag's own model sample. Both are defensible: the
-   intersection is the support for "doing them together," the per-tag counts
-   are what the model actually estimated on. Currently the intersection, the
-   more conservative of the two. Decide which the badge should mean. See
-   buildAdjustedScoreEntry in `src/dashboard/ExploreView.svelte`.
-
-10. Optimal's per-category confidence uses the weakest medium-plus component
-    (`guardedEffectConfidence` in `src/lib/analysis/optimal.ts`), while
-    Insights switched to the covariance-aware standard error of the summed
-    effect in v0.4.24. The two views now describe the same model's confidence
-    by different rules. Consider moving Optimal onto the summed SE for one
-    consistent story, weighing that it would change the badges shown there.
-
-11. Rewrite the project as a webapp instead of a browser extension. The
-    extension form factor adds no value for a local-first dashboard.
+9. Rewrite the project as a webapp instead of a browser extension. The
+   extension form factor adds no value for a local-first dashboard.
