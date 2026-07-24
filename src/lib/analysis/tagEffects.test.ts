@@ -10,6 +10,7 @@ import {
   combinedGuardedSameDayEffect,
   combinedGuardedSameDayEffectWithSe,
   peekTagEffects,
+  weakestTagSupport,
   type TagEffect,
   type TagEffectsModel
 } from "./tagEffects"
@@ -428,6 +429,47 @@ describe("combinedGuardedSameDayEffect", () => {
     expect(combinedGuardedSameDayEffect(model, ["missing"])).toBeNull()
     expect(combinedGuardedSameDayEffect(model, [])).toBeNull()
     expect(combinedGuardedSameDayEffect(null, ["solid"])).toBeNull()
+  })
+})
+
+describe("weakestTagSupport", () => {
+  // The multi-tag Explore badge gates its summed-effect confidence on this,
+  // not on the co-occurrence night count. The intersection is always a
+  // subset of every tag's own days, so it can only understate the support
+  // the model actually estimated on.
+  const model = guardModel([
+    guardEffect({ tag: "plentiful", daysWithTag: 40 }),
+    guardEffect({ tag: "thin", daysWithTag: 8 }),
+    guardEffect({ tag: "middling", daysWithTag: 25 })
+  ])
+
+  it("reports the thinnest selected tag's tagged and untagged counts", () => {
+    expect(weakestTagSupport(model, ["plentiful", "thin", "middling"])).toEqual(
+      { taggedCount: 8, untaggedCount: 192 }
+    )
+    // Order does not matter: the minimum tagged count wins either way.
+    expect(weakestTagSupport(model, ["middling", "plentiful"])).toEqual({
+      taggedCount: 25,
+      untaggedCount: 175
+    })
+  })
+
+  it("returns the tag's own counts for a single-tag selection", () => {
+    expect(weakestTagSupport(model, ["plentiful"])).toEqual({
+      taggedCount: 40,
+      untaggedCount: 160
+    })
+  })
+
+  it("returns null when any selected tag is missing or never modeled", () => {
+    expect(weakestTagSupport(model, ["plentiful", "absent"])).toBeNull()
+    expect(
+      weakestTagSupport(guardModel([guardEffect({ tag: "z", daysWithTag: 0 })]), [
+        "z"
+      ])
+    ).toBeNull()
+    expect(weakestTagSupport(model, [])).toBeNull()
+    expect(weakestTagSupport(null, ["plentiful"])).toBeNull()
   })
 })
 

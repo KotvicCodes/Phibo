@@ -22,6 +22,7 @@
     calculateTagEffectsMemoized,
     combinedGuardedSameDayEffectWithSe,
     peekTagEffects,
+    weakestTagSupport,
     type TagEffectsModel
   } from "../lib/analysis/tagEffects"
   import type { DailyMetricRow, TagEntryRow } from "../lib/db/types"
@@ -276,9 +277,7 @@
             "sleepScore",
             selectedExploreTags,
             exploreScoreComparisons,
-            impactConfidence,
-            matchingExploreDays.length,
-            otherExploreDays.length
+            impactConfidence
           )
         ],
         [
@@ -288,9 +287,7 @@
             "readinessScore",
             selectedExploreTags,
             exploreScoreComparisons,
-            impactConfidence,
-            matchingExploreDays.length,
-            otherExploreDays.length
+            impactConfidence
           )
         ]
       ])
@@ -390,9 +387,7 @@
     metric: InsightComparisonMetric,
     tags: string[],
     comparisons: InsightComparison[],
-    confidence: Map<ExploreMetricKey, ExploreMetricConfidence> | null,
-    matchingCount: number,
-    otherCount: number
+    confidence: Map<ExploreMetricKey, ExploreMetricConfidence> | null
   ): AdjustedScoreEntry {
     const guarded = combinedGuardedSameDayEffectWithSe(model, tags)
     if (guarded === null) {
@@ -416,18 +411,22 @@
     // the covariance between the selected tags' coefficients. Selections
     // that overlap on the same nights are estimated together, so their
     // errors partly cancel and treating them as independent would be wrong
-    // in either direction.
+    // in either direction. The count gate follows the same evidence: the SE
+    // comes from each tag's own model sample, so it is gated on the thinnest
+    // selected tag's support, not the co-occurrence intersection (which the
+    // observed-delta bars above already answer for).
+    const support = weakestTagSupport(model, tags)
     return {
       value: guarded.effect,
       conflicted: false,
       confidence:
-        guarded.standardError === null
+        guarded.standardError === null || support === null
           ? null
           : confidenceFromEffectSe(
               guarded.effect,
               guarded.standardError,
-              matchingCount,
-              otherCount
+              support.taggedCount,
+              support.untaggedCount
             )
     }
   }

@@ -359,6 +359,32 @@ export function combinedGuardedSameDayEffectWithSe(
   }
 }
 
+// Weakest-link support for a tag selection: the tagged/untagged counts of
+// the selected tag the model saw the fewest days of. The combined effect's
+// standard error is built from each tag's own model sample, so its count
+// gate should reflect the same samples, not the co-occurrence intersection.
+// The thinnest tag is the binding constraint. Null when the model is absent
+// or any selected tag never earned a modeled row.
+export function weakestTagSupport(
+  model: TagEffectsModel | null,
+  tags: string[]
+): { taggedCount: number; untaggedCount: number } | null {
+  if (model === null || tags.length === 0) return null
+  let weakest: number | null = null
+  for (const tag of tags) {
+    const effect = model.effects.get(tag)
+    if (effect == null || effect.daysWithTag <= 0) return null
+    if (weakest === null || effect.daysWithTag < weakest) {
+      weakest = effect.daysWithTag
+    }
+  }
+  if (weakest === null) return null
+  return {
+    taggedCount: weakest,
+    untaggedCount: model.modeledDays - weakest
+  }
+}
+
 // The components that clear the medium-plus bar, with their design columns
 // so a caller can price the sum. Null when nothing qualifies.
 function guardedComponents(effect: TagEffect | null | undefined) {
