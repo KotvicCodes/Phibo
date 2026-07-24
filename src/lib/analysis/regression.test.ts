@@ -144,6 +144,36 @@ describe("fitRidge", () => {
     expect(largeFit.standardErrors[0]).toBeLessThan(smallFit.standardErrors[0])
   })
 
+  it("divides the residual variance by ridge effective degrees of freedom", () => {
+    // One standardized binary column has Gram G = n exactly, so its hat-matrix
+    // trace (the effective dof) is n / (n + lambda), not the raw column count
+    // of 1. Reconstructing the reported SE from that effective dof matches;
+    // the naive n - k denominator would report a larger, different value.
+    const n = 40
+    const lambda = 10
+    const { rows, outcomes } = synthetic(7, n, [5], 20, 6)
+    const fit = fitRidge(rows, outcomes, { lambda })!
+    const x = rows.map((row) => row[0])
+    const mean = x.reduce((sum, value) => sum + value, 0) / n
+    const scale = Math.sqrt(
+      x.reduce((sum, value) => sum + (value - mean) ** 2, 0) / n
+    )
+    let rss = 0
+    for (let i = 0; i < n; i += 1) {
+      const residual = outcomes[i] - fit.intercept - fit.coefficients[0] * x[i]
+      rss += residual * residual
+    }
+    const effectiveDof = n / (n + lambda)
+    const sigmaSquared = rss / (n - effectiveDof)
+    const expectedSe = Math.sqrt((sigmaSquared * n) / (n + lambda) ** 2) / scale
+    expect(fit.standardErrors[0]).toBeCloseTo(expectedSe, 6)
+    // The old denominator (n - 1) would inflate sigma^2 and the SE.
+    const naiveSe =
+      Math.sqrt((rss / (n - 1)) * (n / (n + lambda) ** 2)) / scale
+    expect(naiveSe).toBeGreaterThan(fit.standardErrors[0])
+    expect(fit.standardErrors[0]).not.toBeCloseTo(naiveSe, 6)
+  })
+
   it("keeps a strong effect above 2 standard errors and pure noise below", () => {
     const strong = synthetic(10, 400, [8], 70, 6)
     const strongFit = fitRidge(strong.rows, strong.outcomes, { lambda: 2 })!

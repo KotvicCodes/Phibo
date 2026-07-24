@@ -222,8 +222,8 @@ function solvePrepared(
 // features a coefficient reads directly in outcome units (score points).
 // Standard errors use the sandwich estimate
 // Var(b) = sigma^2 (Z'Z + lambda I)^-1 Z'Z (Z'Z + lambda I)^-1
-// with sigma^2 = RSS / max(1, n - k), where k approximates the effective
-// degrees of freedom (a slight overcount, so sigma^2 leans conservative).
+// with sigma^2 = RSS / max(1, n - df), where df = trace(G (G + lambda I)^-1)
+// is ridge's effective degrees of freedom, fewer than the column count k.
 export function fitRidge(
   rows: number[][],
   outcomes: number[],
@@ -254,8 +254,6 @@ export function fitRidge(
       const residual = centeredY[i] - predicted
       rss += residual * residual
     }
-    const sigmaSquared = rss / Math.max(1, n - featureCount)
-
     // Sandwich covariance on the standardized scale, reusing the Cholesky
     // factor already computed for the coefficient solve. The whole matrix
     // is kept, not only its diagonal: a caller that reports the SUM of
@@ -278,6 +276,19 @@ export function fitRidge(
         gramTimesInverse[a][k] = sum
       }
     }
+
+    // Ridge's effective degrees of freedom are trace(H) = trace(G P^-1),
+    // the diagonal sum of the matrix just built, not the raw column count:
+    // the penalty shrinks each direction, so the fit spends fewer than k
+    // parameters, and dropped (constant) columns contribute a clean zero.
+    // Dividing the RSS by n minus this effective count, rather than n - k,
+    // stops the residual variance (and every standard error downstream)
+    // from carrying a conservative upward bias.
+    let effectiveDof = 0
+    for (let a = 0; a < featureCount; a += 1) {
+      effectiveDof += gramTimesInverse[a][a]
+    }
+    const sigmaSquared = rss / Math.max(1, n - effectiveDof)
 
     // Cov(b) = sigma^2 * P^-1 G P^-1 where P = G + lambda I, then divided
     // back onto the raw feature scale. Only the upper triangle is computed
