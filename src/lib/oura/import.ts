@@ -6,8 +6,6 @@ import {
   mapTagEntries,
   mergeDailyMetrics,
   mergeWithStoredRow,
-  type OuraDailyActivity,
-  type OuraDailySummary,
   type OuraMetricInput,
   type OuraTag
 } from "./normalizer"
