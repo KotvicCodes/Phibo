@@ -246,7 +246,7 @@
   $: exploreImpacts = calculateExploreMetricImpacts(exploreDays).filter(
     (row) => !isPrimaryScoreMetric(row.metric.key)
   )
-  $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts)
+  $: groupedExploreImpacts = groupExploreImpacts(exploreImpacts, impactConfidence)
   // The permutation confidence pass (68 seeded tests plus the FDR
   // adjustment) is too heavy for a synchronous reactive block, so it runs
   // deferred: bars and deltas update instantly, badges follow a beat later.

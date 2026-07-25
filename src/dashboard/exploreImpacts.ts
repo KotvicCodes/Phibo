@@ -3,7 +3,13 @@ import type {
   ExploreMetricImpact,
   ExploreMetricKey
 } from "../lib/analysis/correlations"
+import type { ExploreMetricConfidence } from "../lib/analysis/exploreConfidence"
 import { formatExploreDelta } from "./exploreCharts"
+
+export type ExploreImpactConfidence = Map<
+  ExploreMetricKey,
+  ExploreMetricConfidence
+> | null
 
 interface ExploreImpactGroup {
   category: ExploreMetricCategory
@@ -109,7 +115,8 @@ export function impactWidth(
 }
 
 export function groupExploreImpacts(
-  rows: ExploreMetricImpact[]
+  rows: ExploreMetricImpact[],
+  confidence: ExploreImpactConfidence = null
 ): ExploreImpactGroup[] {
   return exploreImpactCategoryOrder
     .map((category) => {
@@ -118,7 +125,7 @@ export function groupExploreImpacts(
       return {
         category,
         rows: categoryRows,
-        strongest: strongestExploreImpact(categoryRows)
+        strongest: strongestExploreImpact(categoryRows, confidence)
       }
     })
     .filter((group) => group.rows.length > 0)
@@ -130,11 +137,30 @@ export function groupExploreImpacts(
 // every effect size that can exist, and the category would headline
 // whichever metric happens to have the largest units.
 //
+// The largest effect is chosen from the metrics that clear medium
+// confidence, so a big but noisy metric cannot headline over a smaller
+// trustworthy one. When none qualify (or confidence has not computed yet)
+// it falls back to the largest effect outright, so the group still names a
+// headline rather than going blank.
+//
 // A selection matching a single day yields no effect size anywhere (one
 // observation has no spread), and there is no honest way to name a
 // strongest metric across different units without one, so the group
 // reports none and the rows still show their own deltas.
-function strongestExploreImpact(rows: ExploreMetricImpact[]) {
+function strongestExploreImpact(
+  rows: ExploreMetricImpact[],
+  confidence: ExploreImpactConfidence
+) {
+  const trusted = (row: ExploreMetricImpact) => {
+    const level = confidence?.get(row.metric.key)?.level
+    return level === "medium" || level === "high"
+  }
+  return (
+    largestEffect(rows.filter(trusted)) ?? largestEffect(rows)
+  )
+}
+
+function largestEffect(rows: ExploreMetricImpact[]) {
   return rows.reduce<ExploreMetricImpact | null>((strongest, row) => {
     if (row.delta === null || row.effectSize === null) {
       return strongest

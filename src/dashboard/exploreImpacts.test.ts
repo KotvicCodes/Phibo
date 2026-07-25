@@ -4,11 +4,33 @@ import type { DailyMetricRow } from "../lib/db/types"
 
 import {
   calculateExploreMetricImpacts,
-  type ExploreDay
+  type ExploreDay,
+  type ExploreMetricKey
 } from "../lib/analysis/correlations"
+import type { ExploreMetricConfidence } from "../lib/analysis/exploreConfidence"
+import type { ConfidenceLevel } from "../lib/analysis/stats"
 import { createSeededRng } from "../lib/analysis/stats"
 import { isoDate } from "../lib/analysis/testHelpers"
-import { groupExploreImpacts } from "./exploreImpacts"
+import {
+  groupExploreImpacts,
+  type ExploreImpactConfidence
+} from "./exploreImpacts"
+
+function confidenceMap(
+  levels: Partial<Record<ExploreMetricKey, ConfidenceLevel>>
+): ExploreImpactConfidence {
+  const map = new Map<ExploreMetricKey, ExploreMetricConfidence>()
+  for (const [key, level] of Object.entries(levels)) {
+    map.set(key as ExploreMetricKey, {
+      level: level as ConfidenceLevel,
+      pValue: null,
+      qValue: null,
+      taggedCount: 0,
+      otherCount: 0
+    })
+  }
+  return map
+}
 
 // Sleep score carries the only real effect. Steps move by a few hundred,
 // which is nothing in step terms but a huge raw number next to a handful of
@@ -94,5 +116,56 @@ describe("groupExploreImpacts strongest metric", () => {
 
     expect(activity?.strongest?.metric.key).not.toBe("steps")
     expect(activity?.strongest?.effectSize).not.toBeNull()
+  })
+})
+
+describe("groupExploreImpacts strongest trustworthy metric", () => {
+  // Pull the biggest- and smallest-effect metrics of a category straight from
+  // the data, so the tests do not hard-code which metric wins.
+  function activityByEffect() {
+    const impacts = calculateExploreMetricImpacts(buildDays(8))
+    const rows = impacts
+      .filter(
+        (row) => row.metric.category === "Activity" && row.effectSize !== null
+      )
+      .sort((a, b) => Math.abs(b.effectSize!) - Math.abs(a.effectSize!))
+    return { impacts, top: rows[0], bottom: rows[rows.length - 1] }
+  }
+
+  it("skips a larger but untrusted effect for a smaller trusted one", () => {
+    const { impacts, top, bottom } = activityByEffect()
+    expect(top.metric.key).not.toBe(bottom.metric.key)
+    const groups = groupExploreImpacts(
+      impacts,
+      confidenceMap({ [top.metric.key]: "low", [bottom.metric.key]: "medium" })
+    )
+    const activity = groups.find((group) => group.category === "Activity")!
+    expect(activity.strongest?.metric.key).toBe(bottom.metric.key)
+  })
+
+  it("keeps the largest effect when it is itself trusted", () => {
+    const { impacts, top } = activityByEffect()
+    const groups = groupExploreImpacts(
+      impacts,
+      confidenceMap({ [top.metric.key]: "high" })
+    )
+    const activity = groups.find((group) => group.category === "Activity")!
+    expect(activity.strongest?.metric.key).toBe(top.metric.key)
+  })
+
+  it("falls back to the largest effect when none clear medium confidence", () => {
+    const { impacts, top } = activityByEffect()
+    const groups = groupExploreImpacts(
+      impacts,
+      confidenceMap({ [top.metric.key]: "low" })
+    )
+    const activity = groups.find((group) => group.category === "Activity")!
+    // No metric is trusted, so the headline is the plain largest effect,
+    // exactly what the no-confidence path returns.
+    const fallback = groupExploreImpacts(impacts).find(
+      (group) => group.category === "Activity"
+    )!
+    expect(activity.strongest?.metric.key).toBe(fallback.strongest?.metric.key)
+    expect(activity.strongest?.metric.key).toBe(top.metric.key)
   })
 })

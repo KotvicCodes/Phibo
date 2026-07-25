@@ -8,14 +8,9 @@ it is done rather than checking it off.
    end to end, so the API-dependent tests in TESTING.md are on hold until
    this lands.
 
-2. Adjusted-effects follow-up ideas: Explore category headlines now rank by
-   standardized effect size (v0.4.27); a further step would rank them by
-   confidence instead. Also consider letting Optimal's selection weigh
-   confidence, not just point estimates.
-
-3. Run the unchecked manual TESTING.md backlog once against the real
+2. Run the unchecked manual TESTING.md backlog once against the real
    extension, especially the backup round-trip and delete-local-data items
    that automated tests cannot reach.
 
-4. Rewrite the project as a webapp instead of a browser extension. The
+3. Rewrite the project as a webapp instead of a browser extension. The
    extension form factor adds no value for a local-first dashboard.
