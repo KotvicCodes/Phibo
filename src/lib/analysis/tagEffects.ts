@@ -250,6 +250,11 @@ export function calculateTagEffects(
     effect.nextDayEffect = fit.coefficients[index]
     effect.nextDayStandardError = fit.standardErrors[index]
     effect.nextDayIndex = index
+    // The count gate uses lagCount (column.count for a lag column: days whose
+    // PREVIOUS day carried the tag), not the tag-day count. That is
+    // deliberate: the lag coefficient is estimated from the treated next-day
+    // observations, so lagCount is its actual support. The tag-day count would
+    // overstate it whenever a tag day has no valid following day in the sample.
     effect.nextDayConfidence = confidenceFromPValue(
       coefficientQValues[index],
       column.count,
