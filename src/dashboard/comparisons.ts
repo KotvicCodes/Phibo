@@ -1,4 +1,4 @@
-import { average } from "../lib/analysis/shared"
+import { winsorizedMean } from "../lib/analysis/shared"
 import type { DailyMetricRow } from "../lib/db/types"
 
 export type InsightComparisonMetric = keyof Pick<
@@ -28,14 +28,16 @@ export const insightComparisonMetrics: Array<
 
 // The tagged-vs-other average comparison behind the Insights detail bars
 // and the Explore score panel; both views split the days their own way and
-// share the averaging and delta rounding here.
+// share the averaging and delta rounding here. The averages are winsorized
+// so a single extreme night cannot swing the delta (and its rewarding vs
+// concerning read) far, matching the permutation test that scores it.
 export function buildMetricComparison(
   taggedDays: DailyMetricRow[],
   otherDays: DailyMetricRow[],
   metric: InsightComparisonMetric
 ): MetricComparison {
-  const taggedAverage = average(taggedDays.map((day) => day[metric]))
-  const baselineAverage = average(otherDays.map((day) => day[metric]))
+  const taggedAverage = winsorizedMean(taggedDays.map((day) => day[metric]))
+  const baselineAverage = winsorizedMean(otherDays.map((day) => day[metric]))
 
   return {
     baselineAverage,

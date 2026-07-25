@@ -1,6 +1,6 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
 import { calculateSupportScore } from "./correlations"
-import { average, groupTagsByName, roundToOne } from "./shared"
+import { average, groupTagsByName, roundToOne, winsorizedMean } from "./shared"
 import type { ConfidenceLevel } from "./stats"
 import {
   adjustedHeadlineEffect,
@@ -119,6 +119,11 @@ export function calculateOptimalDay(
   )
   const targetCategories =
     optimalTargets.find((option) => option.id === target)?.categories ?? []
+  // The overall baseline stays a plain mean: it is a whole-dataset average
+  // where winsorizing is nearly a no-op, and when a single tag blankets the
+  // data it would clip that tag's own untagged minority and collapse its
+  // delta to zero. Only the tagged group, small enough for one night to
+  // swing, is winsorized below.
   const baselines = mapCategories((key) =>
     average(metrics.map((day) => day[key]))
   )
@@ -146,7 +151,7 @@ export function calculateOptimalDay(
       // a repeatable routine, so each day earns today's same-day effect and
       // yesterday's lag effect.
       const observedDeltas = mapCategories((key) => {
-        const taggedAverage = average(daysWithTag.map((day) => day[key]))
+        const taggedAverage = winsorizedMean(daysWithTag.map((day) => day[key]))
         const overallAverage = baselines[key]
 
         return taggedAverage === null || overallAverage === null

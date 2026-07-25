@@ -1,3 +1,5 @@
+import { winsorizedMeanOfFinite } from "./shared"
+
 export type ConfidenceLevel = "high" | "medium" | "low"
 
 const DEFAULT_RESAMPLES = 1000
@@ -54,29 +56,38 @@ export function permutationTestDelta(
   const resamples = options?.resamples ?? DEFAULT_RESAMPLES
   const rng = createSeededRng(options?.seed ?? 1)
   const values = [...tagged, ...untagged]
-  const total = values.reduce((sum, value) => sum + value, 0)
   const taggedCount = tagged.length
   const untaggedCount = untagged.length
 
-  const taggedSum = tagged.reduce((sum, value) => sum + value, 0)
+  // Winsorized so a single extreme night cannot dominate the delta. The null
+  // moves with it: each shuffled split winsorizes its own two groups, so the
+  // p-value scores the same statistic the views display, not a mean contrast.
   const observedDelta =
-    taggedSum / taggedCount - (total - taggedSum) / untaggedCount
+    winsorizedMeanOfFinite(tagged)! - winsorizedMeanOfFinite(untagged)!
   const observedMagnitude = Math.abs(observedDelta)
 
   const indices = values.map((_, index) => index)
+  const taggedBuffer = new Array<number>(taggedCount)
+  const untaggedBuffer = new Array<number>(untaggedCount)
   let hits = 0
   for (let resample = 0; resample < resamples; resample += 1) {
-    let subsetSum = 0
+    // Partial Fisher-Yates: the first taggedCount indices become the shuffled
+    // tagged subset, the rest its complement. Winsorizing needs the actual
+    // values on both sides, not just a running sum, so both are collected.
     for (let position = 0; position < taggedCount; position += 1) {
       const pick =
         position + Math.floor(rng() * (indices.length - position))
       const picked = indices[pick]
       indices[pick] = indices[position]
       indices[position] = picked
-      subsetSum += values[picked]
+      taggedBuffer[position] = values[picked]
+    }
+    for (let position = 0; position < untaggedCount; position += 1) {
+      untaggedBuffer[position] = values[indices[taggedCount + position]]
     }
     const shuffledDelta =
-      subsetSum / taggedCount - (total - subsetSum) / untaggedCount
+      winsorizedMeanOfFinite(taggedBuffer)! -
+      winsorizedMeanOfFinite(untaggedBuffer)!
     if (Math.abs(shuffledDelta) >= observedMagnitude) hits += 1
   }
 
@@ -110,7 +121,13 @@ export function benjaminiHochberg(
   let runningMinimum = 1
   for (let rank = familySize; rank >= 1; rank -= 1) {
     const entry = indexed[rank - 1]
-    const raw = (entry.pValue * familySize) / rank
+    // The largest p-value's adjusted value is itself; computing it as
+    // (p * n) / n instead can land one ulp below p and break the q >= p
+    // invariant, so the boundary is taken exactly.
+    const raw =
+      rank === familySize
+        ? entry.pValue
+        : (entry.pValue * familySize) / rank
     runningMinimum = Math.min(runningMinimum, raw)
     qValues[entry.index] = Math.min(1, runningMinimum)
   }

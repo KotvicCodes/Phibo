@@ -1,5 +1,10 @@
 import type { DailyMetricRow, TagEntryRow } from "../db/types"
-import { average, groupTagsByName, roundToOne } from "./shared"
+import {
+  average,
+  groupTagsByName,
+  roundToOne,
+  winsorizedMean
+} from "./shared"
 import type { ConfidenceLevel } from "./stats"
 
 type MetricKey =
@@ -1027,8 +1032,13 @@ function calculateMetricDeltas(
 ) {
   return metricKeys.reduce(
     (deltas, key) => {
-      const taggedAverage = average(daysWithTag.map((day) => day[key]))
-      const untaggedAverage = average(daysWithoutTag.map((day) => day[key]))
+      // Winsorized so one extreme night cannot flip a tag's rewarding vs
+      // concerning classification; the permutation test scores the same
+      // winsorized delta.
+      const taggedAverage = winsorizedMean(daysWithTag.map((day) => day[key]))
+      const untaggedAverage = winsorizedMean(
+        daysWithoutTag.map((day) => day[key])
+      )
 
       deltas[key] =
         taggedAverage === null || untaggedAverage === null
