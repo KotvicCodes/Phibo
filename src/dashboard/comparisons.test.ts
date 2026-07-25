@@ -50,9 +50,10 @@ describe("buildMetricComparison", () => {
 
   it("does not let one freak night flip the rewarding vs concerning read", () => {
     // Twelve tagged nights sit at 72 except a single 0, twelve other nights
-    // at 70. Winsorizing (k = 1) clamps the freak back to 72, so the tag
-    // reads a touch rewarding. A plain mean would drag the tagged side to 66
-    // and report the tag as concerning, a classification a single night flips.
+    // at 70. Winsorizing the tagged side within itself (k = 1) clamps the
+    // freak back up to 72, so the tag reads rewarding. A plain mean would drag
+    // the tagged side to 66 and report the tag as concerning, a classification
+    // a single night should not be able to flip.
     const tagged = Array.from({ length: 12 }, (_, i) =>
       day(`2026-02-${String(i + 1).padStart(2, "0")}`, i === 0 ? 0 : 72)
     )

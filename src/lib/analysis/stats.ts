@@ -1,5 +1,3 @@
-import { winsorizedMeanOfFinite } from "./shared"
-
 export type ConfidenceLevel = "high" | "medium" | "low"
 
 const DEFAULT_RESAMPLES = 1000
@@ -56,38 +54,34 @@ export function permutationTestDelta(
   const resamples = options?.resamples ?? DEFAULT_RESAMPLES
   const rng = createSeededRng(options?.seed ?? 1)
   const values = [...tagged, ...untagged]
+  const total = values.reduce((sum, value) => sum + value, 0)
   const taggedCount = tagged.length
   const untaggedCount = untagged.length
 
-  // Winsorized so a single extreme night cannot dominate the delta. The null
-  // moves with it: each shuffled split winsorizes its own two groups, so the
-  // p-value scores the same statistic the views display, not a mean contrast.
+  // A plain-mean contrast on purpose. The classification-facing deltas are
+  // winsorized (calculateMetricDeltas, buildMetricComparison), but the
+  // significance test stays on the raw contrast: winsorizing the resampled
+  // null is too slow per-group at scale and biases concentrated effects
+  // toward zero when pooled, so the null keeps the standard mean difference.
+  const taggedSum = tagged.reduce((sum, value) => sum + value, 0)
   const observedDelta =
-    winsorizedMeanOfFinite(tagged)! - winsorizedMeanOfFinite(untagged)!
+    taggedSum / taggedCount - (total - taggedSum) / untaggedCount
   const observedMagnitude = Math.abs(observedDelta)
 
   const indices = values.map((_, index) => index)
-  const taggedBuffer = new Array<number>(taggedCount)
-  const untaggedBuffer = new Array<number>(untaggedCount)
   let hits = 0
   for (let resample = 0; resample < resamples; resample += 1) {
-    // Partial Fisher-Yates: the first taggedCount indices become the shuffled
-    // tagged subset, the rest its complement. Winsorizing needs the actual
-    // values on both sides, not just a running sum, so both are collected.
+    let subsetSum = 0
     for (let position = 0; position < taggedCount; position += 1) {
       const pick =
         position + Math.floor(rng() * (indices.length - position))
       const picked = indices[pick]
       indices[pick] = indices[position]
       indices[position] = picked
-      taggedBuffer[position] = values[picked]
-    }
-    for (let position = 0; position < untaggedCount; position += 1) {
-      untaggedBuffer[position] = values[indices[taggedCount + position]]
+      subsetSum += values[picked]
     }
     const shuffledDelta =
-      winsorizedMeanOfFinite(taggedBuffer)! -
-      winsorizedMeanOfFinite(untaggedBuffer)!
+      subsetSum / taggedCount - (total - subsetSum) / untaggedCount
     if (Math.abs(shuffledDelta) >= observedMagnitude) hits += 1
   }
 

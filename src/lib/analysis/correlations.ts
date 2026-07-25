@@ -1032,9 +1032,10 @@ function calculateMetricDeltas(
 ) {
   return metricKeys.reduce(
     (deltas, key) => {
-      // Winsorized so one extreme night cannot flip a tag's rewarding vs
-      // concerning classification; the permutation test scores the same
-      // winsorized delta.
+      // Each side winsorized within itself so one freak night cannot flip a
+      // tag's rewarding vs concerning classification. Per group, not pooled:
+      // pooling would clamp a concentrated real effect (a tag whose nights all
+      // sit in the distribution's tail) back toward the middle.
       const taggedAverage = winsorizedMean(daysWithTag.map((day) => day[key]))
       const untaggedAverage = winsorizedMean(
         daysWithoutTag.map((day) => day[key])

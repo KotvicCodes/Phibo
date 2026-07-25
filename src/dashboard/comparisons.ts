@@ -28,9 +28,10 @@ export const insightComparisonMetrics: Array<
 
 // The tagged-vs-other average comparison behind the Insights detail bars
 // and the Explore score panel; both views split the days their own way and
-// share the averaging and delta rounding here. The averages are winsorized
-// so a single extreme night cannot swing the delta (and its rewarding vs
-// concerning read) far, matching the permutation test that scores it.
+// share the averaging and delta rounding here. Each side is winsorized
+// within itself so a single extreme night cannot swing the delta (and its
+// rewarding vs concerning read) far. Winsorizing per group, not against the
+// pooled extremes, keeps a genuinely strong effect from being clamped away.
 export function buildMetricComparison(
   taggedDays: DailyMetricRow[],
   otherDays: DailyMetricRow[],

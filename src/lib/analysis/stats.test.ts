@@ -97,14 +97,14 @@ describe("permutationTestDelta", () => {
     expect(result?.delta).toBe(20)
   })
 
-  it("scores a winsorized delta so one freak night cannot dominate", () => {
-    // Twelve tagged values at 72 except one 0; twelve untagged at 70. The
-    // winsorized delta (k = 1) clamps the freak and reads +2. A plain-mean
-    // delta would be 66 - 70 = -4, the opposite sign.
+  it("scores the plain-mean contrast, not a winsorized one", () => {
+    // The significance test deliberately stays on the raw mean difference: the
+    // winsorized deltas live in the classification path, not here. Twelve
+    // tagged values at 72 with one 0 average 66, giving a plain delta of -4.
     const tagged = Array.from({ length: 12 }, (_, i) => (i === 0 ? 0 : 72))
     const untagged = Array.from({ length: 12 }, () => 70)
     const result = permutationTestDelta(tagged, untagged, { resamples: 100 })
-    expect(result?.delta).toBeCloseTo(2, 10)
+    expect(result?.delta).toBeCloseTo(-4, 10)
   })
 
   it("does not flag a no-effect dataset as significant", () => {
