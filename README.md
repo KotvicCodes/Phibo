@@ -4,6 +4,15 @@ Phibo is a local-first browser extension for understanding how your Oura tags re
 
 It is built for people who track real-life context in Oura: sleeping solo, room temperature, late meals, workouts, travel, stress, alcohol, supplements, routines, experiments, and anything else that might explain why a night felt different. Phibo turns those tagged nights into honest, readable comparisons without sending health data anywhere.
 
+## Try It Without Health Data
+
+Use the [synthetic Oura dataset and short import walkthrough](docs/demo/README.md)
+to explore Phibo without an Oura account or API key. The downloadable ZIP contains
+six months of entirely invented scores, sleep metrics, and clearly labelled Demo
+tags. Import it in a separate browser profile to keep it apart from personal data.
+
+![Phibo Insights with the synthetic Oura dataset](docs/demo/insights.png)
+
 ## What It Does
 
 - Imports Oura personal data exports directly in the browser, no account or upload.
