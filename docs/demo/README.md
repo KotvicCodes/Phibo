@@ -1,7 +1,7 @@
 # Try Phibo with synthetic Oura data
 
 Explore Phibo without an Oura account, API key, or personal health data.
-[Download the synthetic Oura ZIP](https://raw.githubusercontent.com/KotvicCodes/Phibo/main/docs/demo/phibo-synthetic-oura.zip)
+[Download the synthetic Oura ZIP](phibo-synthetic-oura.zip?raw=true)
 (save the file; no need to unzip it).
 
 Every value, date, and tag was generated from scratch. The sample contains

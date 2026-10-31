@@ -24,6 +24,7 @@ it("imports the downloadable demo ZIP through the real importer and supports ana
   expect(result.dailyMetrics[0].date).toBe("2025-01-01")
   expect(result.dailyMetrics.at(-1)?.date).toBe("2025-06-30")
   expect(new Set(result.tagEntries.map((entry) => entry.tag)).size).toBe(6)
+  expect(result.tagEntries).toHaveLength(301)
   expect(result.tagEntries.every((entry) => entry.tag.startsWith("Demo: "))).toBe(true)
   expect(result.dailyMetrics.every((row) =>
     [row.sleepScore, row.readinessScore, row.activityScore].every((value) =>

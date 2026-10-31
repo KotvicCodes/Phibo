@@ -18,6 +18,7 @@ const integer = (value) => Math.round(value)
 const dateAt = (index) =>
   new Date(Date.UTC(2025, 0, 1 + index)).toISOString().slice(0, 10)
 
+/** Append a generated record, creating its CSV's row collection on first use. */
 function addRow(name, row) {
   if (!files.has(name)) files.set(name, [])
   files.get(name).push(row)
